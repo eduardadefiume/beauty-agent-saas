@@ -19,27 +19,27 @@
 
 ## Evidência do Supabase DEV
 
-| Verificação | Resultado |
-|---|---|
-| Projeto | `agente-beleza-saas-dev` — `ACTIVE_HEALTHY` |
-| Migration base | Aplicada |
-| Migration de hardening | Aplicada |
-| Tabelas | 5 em `app`, todas com RLS |
-| Dados permanentes do teste | 0; transação revertida |
-| Leitura cross-tenant | Negada |
-| Escrita cross-tenant | Negada |
-| Função pública privilegiada | Sem `EXECUTE` para `anon` e `authenticated` |
-| Advisor de segurança | 0 alertas |
-| Advisor de performance | 2 informações de índices ainda não usados; esperado em banco vazio |
+| Verificação                 | Resultado                                                          |
+| --------------------------- | ------------------------------------------------------------------ |
+| Projeto                     | `agente-beleza-saas-dev` — `ACTIVE_HEALTHY`                        |
+| Migration base              | Aplicada                                                           |
+| Migration de hardening      | Aplicada                                                           |
+| Tabelas                     | 5 em `app`, todas com RLS                                          |
+| Dados permanentes do teste  | 0; transação revertida                                             |
+| Leitura cross-tenant        | Negada                                                             |
+| Escrita cross-tenant        | Negada                                                             |
+| Função pública privilegiada | Sem `EXECUTE` para `anon` e `authenticated`                        |
+| Advisor de segurança        | 0 alertas                                                          |
+| Advisor de performance      | 2 informações de índices ainda não usados; esperado em banco vazio |
 
 ## Estado dos ambientes
 
-| Ambiente | Estado | Observação |
-|---|---|---|
-| DEV | Migrado e testado para o escopo base | Região `ca-central-1` |
-| PROD | Vazio e sem migrations | Região `us-west-2`; não foi alterado |
-| Configurador Sites | Protótipo público, versão 10 | 0 variáveis de runtime; sem conexão com backend/Supabase |
-| WhatsApp, Google e OpenAI | `MOCK` | Nenhum evento real conectado |
+| Ambiente                  | Estado                               | Observação                                               |
+| ------------------------- | ------------------------------------ | -------------------------------------------------------- |
+| DEV                       | Migrado e testado para o escopo base | Região `ca-central-1`                                    |
+| PROD                      | Vazio e sem migrations               | Região `us-west-2`; não foi alterado                     |
+| Configurador Sites        | Protótipo público, versão 10         | 0 variáveis de runtime; sem conexão com backend/Supabase |
+| WhatsApp, Google e OpenAI | `MOCK`                               | Nenhum evento real conectado                             |
 
 O Sites está em acesso público e sem variáveis de runtime configuradas. Deve permanecer rotulado como\nprotótipo e não receber dados reais enquanto autenticação, backend e políticas não estiverem conectados.\n\nA região dos dois projetos diverge da decisão anterior de usar São Paulo. Isso não invalida o teste
 técnico da FV-01, mas deve ser decidido antes de clientes reais por latência, residência de dados,
@@ -47,15 +47,15 @@ custo e eventual migração.
 
 ## Matriz de QA
 
-| Critério | Estado | Evidência/limite |
-|---|---|---|
-| Visível | Parcial | Site protótipo existe; aplicação do monorepo ainda é mínima |
-| Editável | Não iniciado | Configurador persistente ainda não implementado |
-| Persistente | Parcial | Schema remoto persiste; CRUD de configuração não existe |
-| Aplicado ao motor | Parcial | Compilador inicial possui 7 testes unitários |
-| Erro tratado | Parcial | RLS nega cross-tenant; fluxos de aplicação ainda incompletos |
-| Testado | Parcial | Smoke RLS aprovado; Gate A ainda exige 20 cenários |
-| Rotulado | Aprovado | Integrações seguem declaradas como `MOCK` |
+| Critério          | Estado       | Evidência/limite                                             |
+| ----------------- | ------------ | ------------------------------------------------------------ |
+| Visível           | Parcial      | Site protótipo existe; aplicação do monorepo ainda é mínima  |
+| Editável          | Não iniciado | Configurador persistente ainda não implementado              |
+| Persistente       | Parcial      | Schema remoto persiste; CRUD de configuração não existe      |
+| Aplicado ao motor | Parcial      | Compilador inicial possui 7 testes unitários                 |
+| Erro tratado      | Parcial      | RLS nega cross-tenant; fluxos de aplicação ainda incompletos |
+| Testado           | Parcial      | Smoke RLS aprovado; Gate A ainda exige 20 cenários           |
+| Rotulado          | Aprovado     | Integrações seguem declaradas como `MOCK`                    |
 
 ## Avaliação do WhatsApp MCP externo
 

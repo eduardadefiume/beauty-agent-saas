@@ -30,13 +30,13 @@ WhatsApp, pode banir o número e amplia o risco de exfiltração por prompt inje
 
 ## Mapeamento útil para a implementação oficial futura
 
-| Conceito observado no MCP externo | Destino aprovado no SaaS |
-|---|---|
-| `send_message` e status de envio | Outbox durável e adapter Cloud API (BT-500/BT-504) |
-| `wait_for_message` | Teste E2E dirigido por evento persistido |
-| allowlist de chats | Allowlist por `tenant_id` e número da Duda (BT-503) |
-| busca/listagem de mensagens | Inbox tenant-scoped com retenção e RLS (BT-501/BT-506) |
-| download de mídia | Storage privado, autorização, retenção e exclusão (BT-505/BT-506) |
+| Conceito observado no MCP externo | Destino aprovado no SaaS                                          |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `send_message` e status de envio  | Outbox durável e adapter Cloud API (BT-500/BT-504)                |
+| `wait_for_message`                | Teste E2E dirigido por evento persistido                          |
+| allowlist de chats                | Allowlist por `tenant_id` e número da Duda (BT-503)               |
+| busca/listagem de mensagens       | Inbox tenant-scoped com retenção e RLS (BT-501/BT-506)            |
+| download de mídia                 | Storage privado, autorização, retenção e exclusão (BT-505/BT-506) |
 
 ## Consequências
 

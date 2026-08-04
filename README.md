@@ -18,7 +18,7 @@ estão fora do piloto.
 | Monorepo               | Em revisão para `dev`      | 10 workspaces compilam                         |
 | Contratos/domínio      | Em desenvolvimento         | 7 testes unitários aprovados                   |
 | Motor de agenda        | Em desenvolvimento         | Compilador inicial de serviço simples/composto |
-| Banco/RLS              | Migrado no Supabase DEV     | RLS cross-tenant e advisors aprovados           |
+| Banco/RLS              | Migrado no Supabase DEV    | RLS cross-tenant e advisors aprovados          |
 | Configurador web       | Não iniciado               | Página mínima sem edição/persistência          |
 | Google/WhatsApp/OpenAI | `MOCK`                     | Nenhum evento real conectado                   |
 | Backup externo         | Implementado estaticamente | Execução real no Windows/`E:` pendente         |
