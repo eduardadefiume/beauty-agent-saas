@@ -9,10 +9,10 @@ Os ambientes Supabase DEV e PROD foram recriados na região específica
 `sa-east-1` (South America — São Paulo). Os projetos anteriores foram
 pausados e permanecem recuperáveis durante a janela de validação.
 
-| Ambiente | Projeto ativo | Região | Projeto anterior |
-| --- | --- | --- | --- |
-| DEV | `agente-beleza-saas-dev-sp` (`hjghwryhphgusefyivbl`) | `sa-east-1` | `mhlnhtvvleprnamxrsoi`, pausado em `ca-central-1` |
-| PROD | `agente-beleza-saas-prod-sp` (`dboygmtrzgsfcmoquegp`) | `sa-east-1` | `vwtqgukockqaiptdqwtt`, pausado em `us-west-2` |
+| Ambiente | Projeto ativo                                         | Região      | Projeto anterior                                  |
+| -------- | ----------------------------------------------------- | ----------- | ------------------------------------------------- |
+| DEV      | `agente-beleza-saas-dev-sp` (`hjghwryhphgusefyivbl`)  | `sa-east-1` | `mhlnhtvvleprnamxrsoi`, pausado em `ca-central-1` |
+| PROD     | `agente-beleza-saas-prod-sp` (`dboygmtrzgsfcmoquegp`) | `sa-east-1` | `vwtqgukockqaiptdqwtt`, pausado em `us-west-2`    |
 
 A organização permanece no plano Free. A criação dos projetos teve custo
 confirmado de US$ 0/mês por projeto.
