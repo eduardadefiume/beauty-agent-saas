@@ -1,53 +1,47 @@
 # FV-01 — Checkpoint 006: configurador real no DEV
 
 Data: 2026-08-04  
-Status: **IN_PROGRESS** — versão do Sites salva, ainda não implantada
+Status: **DEPLOYED_DEV** — leitura E2E aprovada; primeira gravação pela interface pendente
 
 ## Resultado entregue
 
-- O configurador do Sites está em acesso proprietário (custom) e permite somente a conta eddigital.oficial@gmail.com.
+- O configurador do Sites está em acesso proprietário e permite somente a conta eddigital.oficial@gmail.com.
 - Os tenants DEV Salão do William e Studio da Jack existem no projeto Supabase São Paulo e estão vinculados à identidade proprietária do Sites.
-- A persistência normalizada cobre:
-  - unidade e fuso horário;
-  - expediente e último término;
-  - competências, equipe e disponibilidade;
-  - tipos de recurso, itens e capacidade;
-  - serviços, variações, etapas e requisitos;
-  - mensagem final, prontidão e publicação imutável.
-- Sinal de pagamento permanece estruturalmente desativado (deposit_enabled = false).
-- Google Agenda e WhatsApp não aparecem como integrações conectadas e permanecem fora do fluxo até os gates do motor de disponibilidade.
+- A persistência normalizada cobre unidade, fuso, expediente, último término, competências, equipe, disponibilidade, recursos, capacidade, serviços, variações, etapas, requisitos, prontidão e publicação imutável.
+- Sinal de pagamento permanece estruturalmente desativado.
+- Google Agenda e WhatsApp não aparecem como conectados e permanecem fora do fluxo até os gates do motor de disponibilidade.
 
 ## Segurança e arquitetura
 
 - A página exige Sign in with ChatGPT.
 - Toda chamada do navegador passa pela rota server-side /api/configuration.
-- A rota resolve a identidade autenticada pelo header confiável do Sites.
-- A Edge Function site-configurator-api valida um segredo servidor-a-servidor e só então chama RPCs concedidas a service_role.
-- A identidade do Sites é mapeada explicitamente por site_project_id, e-mail normalizado e tenant.
-- Nenhuma chave administrativa é enviada ao navegador.
-- Supabase Security Advisor: zero lints após a política explícita exclusiva de service_role.
+- A rota usa a identidade autenticada do Sites.
+- A Edge Function site-configurator-api valida um segredo compartilhado antes de chamar RPCs exclusivas de service_role.
+- O segredo está armazenado como secreto no Sites e no Supabase DEV; não existe no navegador nem no Git.
+- A identidade é mapeada por projeto Sites, e-mail normalizado e tenant.
+- Supabase Security Advisor: zero lints.
 
 ## Evidências
 
 - Edge Function site-configurator-api: versão 1, ACTIVE.
+- Chamada sem segredo: HTTP 401.
+- Chamada autenticada: 2 workspaces; William carregado em DRAFT, revisão 1.
 - Sites source commit: 1827e0db43243a1174beca05c5707fa5adca3b42.
-- Sites version: 11, salva e não implantada.
-- Lint: aprovado.
-- Build Vinext: aprovado; rotas / e /api/configuration.
-- Testes: 3/3 aprovados (bloqueio sem autenticação, render autenticado e ausência de estado demo).
-- Smoke transacional com rollback:
-  - configuração completa do William;
-  - prontidão sem bloqueios;
-  - publicação imutável gerada;
-  - rollback confirmado sem deixar dados de teste.
+- Sites versão 11: implantada com sucesso.
+- URL: https://configurador-agentes-beleza.eddigital-oficial.chatgpt.site
+- Lint e build Vinext aprovados.
+- Testes: 3/3 aprovados.
+- Smoke transacional com rollback: salvar configuração completa, prontidão sem bloqueios e publicar versão imutável.
+- Rollback confirmado sem deixar dados de teste.
 
-## Bloqueio atual
+## Limite de evidência
 
-A revisão de segurança bloqueou a cópia do segredo compartilhado gerado para o Supabase DEV sem uma autorização específica do usuário para essa transferência. O segredo já está armazenado como secreto no ambiente do Sites, mas ainda não foi confirmado no Supabase. Por isso, a versão 11 não foi implantada.
+A revisão de segurança impediu um teste automatizado que substituiria persistentemente o draft real do William. A automação visual do navegador também não iniciou no runtime Windows. Portanto, a primeira gravação persistente pela interface publicada deve ser feita pela proprietária; não foi marcada como aprovada sem evidência.
 
 ## Próximo gate
 
-1. Obter autorização explícita para armazenar o segredo compartilhado no Supabase DEV.
-2. Testar list, load, save e publish pelo caminho real Sites → Edge Function → Supabase.
-3. Implantar a versão 11 com acesso proprietário.
-4. Reabrir a URL publicada, salvar dados reais de William e Jack e confirmar persistência após reload.
+1. Abrir a versão publicada com a conta proprietária.
+2. Preencher dados reais de William ou Jack e clicar em Salvar no DEV.
+3. Recarregar e confirmar persistência.
+4. Completar readiness e publicar a primeira versão operacional.
+5. Iniciar motor de disponibilidade, hold e simulador de concorrência.
