@@ -1,7 +1,12 @@
 begin;
 
-revoke execute on function public.rls_auto_enable()
-  from public, anon, authenticated, service_role;
+do $
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke execute on function public.rls_auto_enable() from public, anon, authenticated, service_role';
+  end if;
+end;
+$;
 
 alter default privileges for role postgres in schema public
   revoke select, insert, update, delete on tables
