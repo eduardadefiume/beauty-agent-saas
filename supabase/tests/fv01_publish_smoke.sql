@@ -219,7 +219,7 @@ begin
     when insufficient_privilege or object_not_in_prerequisite_state then null;
   end;
 end;
-$;
+$$;
 
 reset role;
 rollback;
