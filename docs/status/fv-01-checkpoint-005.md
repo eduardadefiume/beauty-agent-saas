@@ -61,29 +61,29 @@ A política do piloto está materializada no banco: `deposit_enabled=false` e ca
 
 ## Evidências executadas no DEV
 
-| Evidência | Resultado |
-| --- | --- |
-| Isolamento e integridade da configuração | `CONFIGURATION_SMOKE_OK` |
-| Prontidão e publicação atômica | `PUBLISH_SMOKE_OK` |
-| Security Advisor | zero lints |
-| Performance Advisor | sem chaves estrangeiras não indexadas; somente índices ainda não usados no banco vazio |
+| Evidência                                | Resultado                                                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| Isolamento e integridade da configuração | `CONFIGURATION_SMOKE_OK`                                                               |
+| Prontidão e publicação atômica           | `PUBLISH_SMOKE_OK`                                                                     |
+| Security Advisor                         | zero lints                                                                             |
+| Performance Advisor                      | sem chaves estrangeiras não indexadas; somente índices ainda não usados no banco vazio |
 
 Os testes usam transação com `ROLLBACK`; nenhum tenant, usuário ou dado de agenda de teste foi mantido.
 
 ## Estado honesto do Gate A
 
-| Área | Estado | Observação |
-| --- | --- | --- |
-| Fundação, contratos e tenancy | parcial | base versionada; autenticação/seleção de tenant ainda sem fluxo completo |
-| Modelo configurável | em revisão | núcleo do banco e integridade concluídos no DEV |
-| Prontidão e publicação | em revisão | funções e testes de banco concluídos no DEV |
-| Painel configurador | backlog | site publicado ainda é protótipo |
-| Motor completo e simulador | backlog | compilador cobre somente linha do tempo relativa |
-| Hold, concorrência e agenda | backlog | não pertencem a este checkpoint |
-| Google Calendar | `MOCK` | conexão real proibida antes dos gates anteriores |
-| OpenAI | `MOCK` | não participa de disponibilidade, duração, preço ou confirmação |
-| WhatsApp | `MOCK` | conexão real restrita ao número da Duda e posterior ao simulador |
-| Sinal/pagamento | suspenso | explicitamente fora da primeira fase |
+| Área                          | Estado     | Observação                                                               |
+| ----------------------------- | ---------- | ------------------------------------------------------------------------ |
+| Fundação, contratos e tenancy | parcial    | base versionada; autenticação/seleção de tenant ainda sem fluxo completo |
+| Modelo configurável           | em revisão | núcleo do banco e integridade concluídos no DEV                          |
+| Prontidão e publicação        | em revisão | funções e testes de banco concluídos no DEV                              |
+| Painel configurador           | backlog    | site publicado ainda é protótipo                                         |
+| Motor completo e simulador    | backlog    | compilador cobre somente linha do tempo relativa                         |
+| Hold, concorrência e agenda   | backlog    | não pertencem a este checkpoint                                          |
+| Google Calendar               | `MOCK`     | conexão real proibida antes dos gates anteriores                         |
+| OpenAI                        | `MOCK`     | não participa de disponibilidade, duração, preço ou confirmação          |
+| WhatsApp                      | `MOCK`     | conexão real restrita ao número da Duda e posterior ao simulador         |
+| Sinal/pagamento               | suspenso   | explicitamente fora da primeira fase                                     |
 
 ## Promoção
 

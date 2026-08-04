@@ -33,14 +33,14 @@ A IA não calcula disponibilidade, duração, preço, equipe, recursos, polític
 
 ## Evidências
 
-| Evidência | Resultado |
-| --- | --- |
-| OpenAI Responses API real | `OPENAI_API_OK` |
-| Modelo resolvido em documentação oficial | `gpt-5.6-sol` |
-| Função remota | versão 1, `ACTIVE` |
-| Requisição sem autenticação | `UNAUTHENTICATED_REQUEST_BLOCKED_401` |
-| Edge log | POST 401 registrado, sem conteúdo da mensagem |
-| Security Advisor após hardening | zero lints |
+| Evidência                                | Resultado                                     |
+| ---------------------------------------- | --------------------------------------------- |
+| OpenAI Responses API real                | `OPENAI_API_OK`                               |
+| Modelo resolvido em documentação oficial | `gpt-5.6-sol`                                 |
+| Função remota                            | versão 1, `ACTIVE`                            |
+| Requisição sem autenticação              | `UNAUTHENTICATED_REQUEST_BLOCKED_401`         |
+| Edge log                                 | POST 401 registrado, sem conteúdo da mensagem |
+| Security Advisor após hardening          | zero lints                                    |
 
 ## O que falta para `SANDBOX_CONNECTED`
 

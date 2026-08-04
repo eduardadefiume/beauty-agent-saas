@@ -231,8 +231,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           content: [
             {
               type: 'input_text',
-              text:
-                'Extraia intenção e dados de agendamento em português do Brasil. Não calcule disponibilidade, duração, preço, política ou confirmação. Não invente dados ausentes. Quando faltar algo necessário, marque needsClarification e liste missingFields.',
+              text: 'Extraia intenção e dados de agendamento em português do Brasil. Não calcule disponibilidade, duração, preço, política ou confirmação. Não invente dados ausentes. Quando faltar algo necessário, marque needsClarification e liste missingFields.',
             },
           ],
         },
@@ -269,14 +268,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const outputText = extractOutputText(openaiPayload);
 
   if (!outputText) {
-    return response(req, { code: 'OPENAI_INVALID_OUTPUT', correlationId: input.correlationId }, 502);
+    return response(
+      req,
+      { code: 'OPENAI_INVALID_OUTPUT', correlationId: input.correlationId },
+      502
+    );
   }
 
   let interpretation: unknown;
   try {
     interpretation = JSON.parse(outputText);
   } catch {
-    return response(req, { code: 'OPENAI_INVALID_OUTPUT', correlationId: input.correlationId }, 502);
+    return response(
+      req,
+      { code: 'OPENAI_INVALID_OUTPUT', correlationId: input.correlationId },
+      502
+    );
   }
 
   console.log(
