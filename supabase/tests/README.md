@@ -1,8 +1,13 @@
 # Remote database tests
 
-These tests run only against the dedicated Supabase homologation project for this SaaS.
-They must never target the existing `refeitorio` projects and must not start a local database.
+These tests run only against the dedicated Supabase DEV project for this SaaS. They must never
+target another product, PROD, or start a local database.
 
-The first executable RLS suite will be added after the exclusive remote project and its test
-users exist. Gate A requires positive and cross-tenant read/write tests before BT-012 can be
-marked `DONE`.
+## FV-01
+
+`fv01_rls_smoke.sql` creates transaction-scoped users and tenants, validates positive access,
+denies cross-tenant read/write, checks that the public automatic-RLS function is not executable by
+API roles, and rolls all test data back.
+
+Evidence from 04 August 2026 is recorded in
+`docs/status/fv-01-checkpoint-003.md`. The file must be rerun after every policy or grant change.
