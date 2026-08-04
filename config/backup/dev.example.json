@@ -1,0 +1,7 @@
+{
+  "environment": "dev",
+  "projectRef": "SUBSTITUA_PELO_PROJECT_REF_DEV",
+  "expectedVolumeLabel": "BEAUTY-BACKUP",
+  "ageRecipient": "age1SUBSTITUA_PELA_CHAVE_PUBLICA",
+  "schemas": ["app", "private", "public"]
+}

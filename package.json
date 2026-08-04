@@ -1,0 +1,29 @@
+{
+  "name": "beauty-agent-saas",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "format:check": "prettier --check .",
+    "guardrails": "node scripts/guardrails.mjs",
+    "backup:check": "node scripts/backup/check-backup-kit.mjs",
+    "quality": "pnpm guardrails && pnpm backup:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm format:check"
+  },
+  "devDependencies": {
+    "eslint": "10.8.0",
+    "prettier": "3.9.6",
+    "supabase": "2.111.0",
+    "turbo": "2.10.8",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.66.0",
+    "vitest": "4.1.10"
+  }
+}

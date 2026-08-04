@@ -1,0 +1,27 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+minimumReleaseAgeExclude:
+  - '@supabase/auth-js@2.112.0'
+  - '@supabase/functions-js@2.112.0'
+  - '@supabase/postgrest-js@2.112.0'
+  - '@supabase/realtime-js@2.112.0'
+  - '@supabase/storage-js@2.112.0'
+  - '@supabase/supabase-js@2.112.0'
+  - '@typescript-eslint/eslint-plugin@8.66.0'
+  - '@typescript-eslint/parser@8.66.0'
+  - '@typescript-eslint/project-service@8.66.0'
+  - '@typescript-eslint/scope-manager@8.66.0'
+  - '@typescript-eslint/tsconfig-utils@8.66.0'
+  - '@typescript-eslint/type-utils@8.66.0'
+  - '@typescript-eslint/types@8.66.0'
+  - '@typescript-eslint/typescript-estree@8.66.0'
+  - '@typescript-eslint/utils@8.66.0'
+  - '@typescript-eslint/visitor-keys@8.66.0'
+  - tsx@4.23.5
+  - typescript-eslint@8.66.0
