@@ -38,10 +38,10 @@
 |---|---|---|
 | DEV | Migrado e testado para o escopo base | Região `ca-central-1` |
 | PROD | Vazio e sem migrations | Região `us-west-2`; não foi alterado |
-| Configurador Sites | Protótipo público, versão 10 | Não está conectado a este backend/Supabase |
+| Configurador Sites | Protótipo público, versão 10 | 0 variáveis de runtime; sem conexão com backend/Supabase |
 | WhatsApp, Google e OpenAI | `MOCK` | Nenhum evento real conectado |
 
-A região dos dois projetos diverge da decisão anterior de usar São Paulo. Isso não invalida o teste
+O Sites está em acesso público e sem variáveis de runtime configuradas. Deve permanecer rotulado como\nprotótipo e não receber dados reais enquanto autenticação, backend e políticas não estiverem conectados.\n\nA região dos dois projetos diverge da decisão anterior de usar São Paulo. Isso não invalida o teste
 técnico da FV-01, mas deve ser decidido antes de clientes reais por latência, residência de dados,
 custo e eventual migração.
 
