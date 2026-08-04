@@ -77,7 +77,17 @@ rollback;
 
 select
   'RLS_SMOKE_OK' as result,
-  has_function_privilege('anon', 'public.rls_auto_enable()', 'execute')
+  coalesce(
+    has_function_privilege('anon', to_regprocedure('public.rls_auto_enable()'), 'execute'),
+    false
+  )
     as anon_can_execute_rls_auto_enable,
-  has_function_privilege('authenticated', 'public.rls_auto_enable()', 'execute')
+  coalesce(
+    has_function_privilege(
+      'authenticated',
+      to_regprocedure('public.rls_auto_enable()'),
+      'execute'
+    ),
+    false
+  )
     as authenticated_can_execute_rls_auto_enable;
