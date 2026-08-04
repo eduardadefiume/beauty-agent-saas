@@ -18,7 +18,7 @@ estão fora do piloto.
 | Monorepo               | Em revisão para `dev`      | 10 workspaces compilam                         |
 | Contratos/domínio      | Em desenvolvimento         | 7 testes unitários aprovados                   |
 | Motor de agenda        | Em desenvolvimento         | Compilador inicial de serviço simples/composto |
-| Banco/RLS              | Migration desenhada        | Ainda não aplicada no Supabase DEV             |
+| Banco/RLS              | Migrado no Supabase DEV     | RLS cross-tenant e advisors aprovados           |
 | Configurador web       | Não iniciado               | Página mínima sem edição/persistência          |
 | Google/WhatsApp/OpenAI | `MOCK`                     | Nenhum evento real conectado                   |
 | Backup externo         | Implementado estaticamente | Execução real no Windows/`E:` pendente         |
@@ -59,7 +59,7 @@ Leia nesta ordem:
 4. `docs/canonical/arquitetura-tecnica-piloto-v1.md`
 5. `docs/canonical/backlog-tecnico-piloto-v1.md`
 
-O runbook de continuidade está em `docs/operations/backup-and-recovery.md`.
+O runbook de continuidade está em `docs/operations/backup-and-recovery.md`. A avaliação do MCP\nexterno de WhatsApp está em `docs/decisions/adr-002-whatsapp-mcp-upstream-evaluation.md`.
 
 ## Pré-requisitos
 
