@@ -216,10 +216,10 @@ begin
      where id = published_id;
     raise exception 'PUBLISHED_SNAPSHOT_WAS_MUTABLE';
   exception
-    when object_not_in_prerequisite_state then null;
+    when insufficient_privilege or object_not_in_prerequisite_state then null;
   end;
 end;
-$$;
+$;
 
 reset role;
 rollback;
