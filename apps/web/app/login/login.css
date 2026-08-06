@@ -1,0 +1,75 @@
+.login-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: #f7f5ef;
+  padding: 24px;
+}
+.login-card {
+  width: min(420px, 100%);
+  background: #fffdf9;
+  border: 1px solid #dfddd4;
+  border-radius: 18px;
+  padding: 32px;
+  box-shadow: 0 16px 40px rgba(18, 69, 51, 0.1);
+  display: grid;
+  gap: 14px;
+}
+.login-eyebrow {
+  color: #1f674f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.login-card h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #17231f;
+}
+.login-card p {
+  margin: 0;
+  color: #65716c;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.login-card label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #44514c;
+}
+.login-card input {
+  border: 1px solid #dfddd4;
+  border-radius: 9px;
+  padding: 11px 12px;
+  font: inherit;
+}
+.login-card button {
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 16px;
+  background: #1f674f;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+.login-card button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.login-sent {
+  background: #edf5f1;
+  color: #124533;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-weight: 600;
+}
+.login-error {
+  background: #f8e9e7;
+  color: #a33e3e;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
