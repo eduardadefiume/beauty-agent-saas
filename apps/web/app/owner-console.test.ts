@@ -35,7 +35,7 @@ describe('owner console — auth boundary', () => {
     ]) {
       expect(source).toMatch(new RegExp(capability));
     }
-    expect(source).toMatch(/fetch\("\/api\/configuration"/);
+    expect(source).toMatch(/fetch\(['"]\/api\/configuration['"]/);
     expect(source).not.toMatch(
       /localStorage|sessionStorage|signin-with-chatgpt|signout-with-chatgpt/
     );

@@ -60,9 +60,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@beauty/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       '@supabase/ssr':
         specifier: 0.8.0
         version: 0.8.0(@supabase/supabase-js@2.112.0)
