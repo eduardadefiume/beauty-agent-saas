@@ -38,8 +38,8 @@ export default function LoginPage() {
 
         {sent ? (
           <p className="login-sent">
-            Link enviado para <strong>{email}</strong>. Abra seu e-mail e clique no link para
-            entrar.
+            Link enviado para <strong>{email}</strong>. Abra seu e-mail e clique no link (o mais
+            recente) para entrar.
           </p>
         ) : (
           <>
