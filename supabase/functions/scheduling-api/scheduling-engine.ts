@@ -1,4 +1,14 @@
 /**
+ * CÓPIA SINCRONIZADA MANUALMENTE de packages/scheduling-engine/src/index.ts.
+ *
+ * Edge Functions deste projeto são publicadas como arquivos autocontidos
+ * (deploy_edge_function envia os arquivos direto, sem passar pelo bundler
+ * pnpm/Turborepo do monorepo), então um import cross-package não funciona
+ * em runtime Deno aqui. Até existir um passo de build que empacote
+ * @beauty/scheduling-engine para as functions, esta cópia precisa ser
+ * atualizada manualmente sempre que o pacote original mudar. Os testes
+ * (vitest) continuam rodando só contra o pacote original, não esta cópia.
+ *
  * Motor determinístico de agenda — pacote puro.
  *
  * Regras de pureza (docs/canonical/arquitetura-tecnica-piloto-v1.md, seção 13.3):

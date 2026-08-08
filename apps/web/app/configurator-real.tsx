@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createSupabaseBrowserClient } from '../lib/supabase/browser';
+import SchedulingSimulator from './scheduling-simulator';
 import './configurator-real.css';
 
 type Workspace = {
@@ -146,13 +147,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
     soonNote:
       'Segmentação e campanhas ainda não foram modeladas — são a última prioridade do plano, depois do motor de agenda estar validado.',
   },
-  {
-    key: 'simulacao',
-    label: 'Simulação',
-    ready: false,
-    soonNote:
-      'A suíte de cenários de teste por segmento ainda roda só por código, sem tela própria para você acompanhar.',
-  },
+  { key: 'simulacao', label: 'Simulação', ready: true },
   { key: 'publicar', label: 'Publicar', ready: true },
 ];
 const DEFAULT_MODULE = MODULES[0] as (typeof MODULES)[number];
@@ -243,6 +238,7 @@ function normalize(data: Loaded): Config {
 export default function Configurator({ user }: { user: { displayName: string; email: string } }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [tenantId, setTenantId] = useState('');
+  const [unitId, setUnitId] = useState('');
   const [config, setConfig] = useState<Config>(EMPTY);
   const [revision, setRevision] = useState(0);
   const [status, setStatus] = useState<Workspace['status']>('DRAFT');
@@ -275,6 +271,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
         setRevision(loaded.draft.revision);
         setStatus(loaded.draft.status);
         setReadiness(loaded.readiness);
+        setUnitId(loaded.unit.id);
         setDirty(false);
         setNotice('');
       })
@@ -1204,6 +1201,17 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     </article>
                   ))}
                 </article>
+              )}
+
+              {module === 'simulacao' && (
+                unitId ? (
+                  <SchedulingSimulator tenantId={tenantId} unitId={unitId} />
+                ) : (
+                  <article className="card">
+                    <h2>Simulação</h2>
+                    <p className="empty">Carregando…</p>
+                  </article>
+                )
               )}
 
               {module === 'publicar' && (
