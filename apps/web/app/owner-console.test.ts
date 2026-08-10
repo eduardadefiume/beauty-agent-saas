@@ -41,9 +41,26 @@ describe('owner console — auth boundary', () => {
     );
   });
 
-  it('the login page uses passwordless magic-link sign-in, not a password field', async () => {
+  it('the login page offers password sign-in via the server route, with magic-link as a fallback', async () => {
     const source = await read('./login/page.tsx');
+    expect(source).toMatch(/type=["']password["']/);
+    expect(source).toMatch(/\/api\/auth\/login/);
+    // O link mágico continua existindo como alternativa para contas
+    // criadas antes da senha existir (Duda, William, Jack, Piloto Eduarda).
     expect(source).toMatch(/signInWithOtp/);
-    expect(source).not.toMatch(/type=["']password["']/);
+  });
+
+  it('password sign-in happens server-side through real Supabase Auth, never a custom scheme', async () => {
+    const source = await read('./api/auth/login/route.ts');
+    expect(source).toMatch(/signInWithPassword/);
+    // Nada de comparar senha "na mão" nem hashear por conta própria — quem
+    // valida a senha é o Supabase Auth.
+    expect(source).not.toMatch(/bcrypt|crypto\.pbkdf2|createHash\(['"]sha/);
+  });
+
+  it('signup stores personal data server-side via real Supabase Auth, not in the client bundle', async () => {
+    const source = await read('./api/auth/signup/route.ts');
+    expect(source).toMatch(/auth\.signUp/);
+    expect(source).toMatch(/isValidCpf/);
   });
 });

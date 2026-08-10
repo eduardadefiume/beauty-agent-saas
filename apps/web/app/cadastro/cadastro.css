@@ -1,0 +1,117 @@
+.cadastro-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: #f7f5ef;
+  padding: 24px;
+}
+.cadastro-card {
+  width: min(640px, 100%);
+  background: #fffdf9;
+  border: 1px solid #dfddd4;
+  border-radius: 18px;
+  padding: 32px;
+  box-shadow: 0 16px 40px rgba(18, 69, 51, 0.1);
+  display: grid;
+  gap: 16px;
+}
+.cadastro-narrow {
+  width: min(460px, 100%);
+}
+.cadastro-eyebrow {
+  color: #1f674f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cadastro-card h1 {
+  margin: 0;
+  font-size: 26px;
+  color: #17231f;
+}
+.cadastro-hint {
+  margin: 0;
+  color: #65716c;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cadastro-hint.small {
+  margin-top: -6px;
+}
+.cadastro-section {
+  border-top: 1px solid #eceae4;
+  padding-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+.cadastro-section h2 {
+  margin: 0;
+  font-size: 14px;
+  color: #1f674f;
+}
+.cadastro-card label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #44514c;
+}
+.cadastro-card input {
+  border: 1px solid #dfddd4;
+  border-radius: 9px;
+  padding: 11px 12px;
+  font: inherit;
+}
+.cadastro-grid {
+  display: grid;
+  gap: 12px;
+}
+.cadastro-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.cadastro-card button[type='submit'] {
+  border: 0;
+  border-radius: 10px;
+  padding: 13px 16px;
+  background: #1f674f;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.cadastro-card button[type='submit']:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.cadastro-error {
+  background: #f8e9e7;
+  color: #a33e3e;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.cadastro-footer {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: #65716c;
+}
+.cadastro-footer a {
+  color: #1f674f;
+  font-weight: 700;
+  text-decoration: none;
+}
+.cadastro-back {
+  display: inline-block;
+  margin-top: 8px;
+  color: #1f674f;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+@media (max-width: 560px) {
+  .cadastro-grid.two {
+    grid-template-columns: 1fr;
+  }
+}

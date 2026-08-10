@@ -2,6 +2,7 @@
   min-height: 100dvh;
   display: grid;
   place-items: center;
+  gap: 16px;
   background: #f7f5ef;
   padding: 24px;
 }
@@ -72,4 +73,35 @@
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 13px;
+}
+.login-links {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-top: -4px;
+}
+.login-links a {
+  color: #1f674f;
+  font-weight: 700;
+  text-decoration: none;
+}
+.login-links a:hover {
+  text-decoration: underline;
+}
+.login-secondary {
+  padding: 16px 24px;
+}
+.login-secondary .linklike {
+  background: none;
+  border: 0;
+  color: #65716c;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.login-secondary form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
 }
