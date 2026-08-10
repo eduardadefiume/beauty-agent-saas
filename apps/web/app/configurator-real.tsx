@@ -12,10 +12,20 @@ type Workspace = {
   revision: number;
 };
 type Slot = { weekday: number; startsAt: string; endsAt: string };
+type Skill = {
+  name: string;
+  /** Vazio = competência simples, sem variação (ex.: Finalização). */
+  qualifierLabel: string;
+  qualifierAllowCustom: boolean;
+  qualifierOptions: string[];
+};
+/** Uma pessoa/etapa cobrindo uma opção específica do qualificador de uma competência. */
+type SkillQualifierChoice = { skillName: string; optionLabel?: string; customValue?: string };
 type Member = {
   name: string;
   availabilityMode: 'FIXED' | 'HYBRID' | 'DYNAMIC';
   skillNames: string[];
+  skillQualifiers: SkillQualifierChoice[];
   availability: Slot[];
 };
 type ResourceType = { name: string; resources: Array<{ name: string; capacity: number }> };
@@ -25,6 +35,7 @@ type Step = {
   durationMinutes: number;
   kind: 'ACTIVE' | 'PASSIVE';
   skillNames: string[];
+  skillQualifiers: SkillQualifierChoice[];
   resourceRequirements: Array<{
     resourceTypeName: string;
     quantity: number;
@@ -41,7 +52,7 @@ type Config = {
   unit: { name: string; timezone: string };
   finalMessageTemplate: string;
   operatingHours: Array<Slot & { latestEndTime: string }>;
-  skills: string[];
+  skills: Skill[];
   teamMembers: Member[];
   resourceTypes: ResourceType[];
   services: Service[];
@@ -71,7 +82,10 @@ const ISSUE: Record<string, string> = {
   MEMBER_AVAILABILITY_INVALID: 'Complete a disponibilidade da equipe.',
   NO_BOOKABLE_SERVICE: 'Cadastre ao menos um serviço.',
   SERVICE_HAS_NO_STEPS: 'Todo serviço precisa de etapas.',
-  STEP_HAS_NO_QUALIFIED_MEMBER: 'Vincule competência e profissional a cada etapa ativa.',
+  STEP_HAS_NO_QUALIFIED_MEMBER:
+    'Nenhum profissional cobre a competência (ou a variação exigida) de alguma etapa ativa.',
+  STEP_SKILL_QUALIFIER_MISSING:
+    'Alguma etapa exige uma competência com variação (ex.: tom, tipo) mas não escolheu qual.',
   RESOURCE_CAPACITY_MISSING: 'Aumente a capacidade dos recursos exigidos.',
   FINAL_MESSAGE_MISSING: 'Defina a mensagem final.',
 };
@@ -171,6 +185,26 @@ function normalize(data: Loaded): Config {
   const raw = data.configuration;
   const skills = rows(raw.skills);
   const skillNames = new Map(skills.map((item) => [String(item.id), String(item.name)]));
+  const qualifierOptionLabels = new Map<string, string>();
+  for (const item of skills) {
+    for (const option of rows(item.qualifierOptions)) {
+      qualifierOptionLabels.set(String(option.id), String(option.label));
+    }
+  }
+  const toQualifierChoice = (
+    skillId: unknown,
+    qualifier: { qualifier_option_id?: unknown; custom_value?: unknown } | null | undefined
+  ): SkillQualifierChoice | null => {
+    const skillName = skillNames.get(String(skillId));
+    if (!skillName || !qualifier) return null;
+    const optionLabel = qualifier.qualifier_option_id
+      ? qualifierOptionLabels.get(String(qualifier.qualifier_option_id))
+      : undefined;
+    const customValue = qualifier.custom_value ? String(qualifier.custom_value) : undefined;
+    if (optionLabel) return { skillName, optionLabel };
+    if (customValue) return { skillName, customValue };
+    return null;
+  };
   const types = rows(raw.resourceTypes);
   const typeNames = new Map(types.map((item) => [String(item.id), String(item.name)]));
   const limits = new Map(
@@ -188,13 +222,26 @@ function normalize(data: Loaded): Config {
       endsAt: clock(item.ends_at, '18:00'),
       latestEndTime: limits.get(Number(item.weekday)) ?? clock(item.ends_at, '18:00'),
     })),
-    skills: skills.map((item) => String(item.name)),
+    skills: skills.map((item) => ({
+      name: String(item.name),
+      qualifierLabel: item.qualifier_label ? String(item.qualifier_label) : '',
+      qualifierAllowCustom: Boolean(item.qualifier_allow_custom),
+      qualifierOptions: rows(item.qualifierOptions).map((option) => String(option.label)),
+    })),
     teamMembers: rows(raw.teamMembers).map((item) => ({
       name: String(item.name),
       availabilityMode: String(item.availability_mode ?? 'FIXED') as Member['availabilityMode'],
       skillNames: (Array.isArray(item.skillIds) ? item.skillIds : [])
         .map((id) => skillNames.get(String(id)))
         .filter(Boolean) as string[],
+      skillQualifiers: rows(item.skillQualifiers)
+        .map((q) =>
+          toQualifierChoice(q.skill_id, {
+            qualifier_option_id: q.qualifier_option_id,
+            custom_value: q.custom_value,
+          })
+        )
+        .filter((q): q is SkillQualifierChoice => q !== null),
       availability: rows(item.availability).map((slot) => ({
         weekday: Number(slot.weekday),
         startsAt: clock(slot.starts_at),
@@ -223,6 +270,14 @@ function normalize(data: Loaded): Config {
         skillNames: rows(step.skillRequirements)
           .map((requirement) => skillNames.get(String(requirement.skill_id)))
           .filter(Boolean) as string[],
+        skillQualifiers: rows(step.skillRequirements)
+          .map((requirement) =>
+            toQualifierChoice(
+              requirement.skill_id,
+              requirement.qualifier as { qualifier_option_id?: unknown; custom_value?: unknown } | null
+            )
+          )
+          .filter((q): q is SkillQualifierChoice => q !== null),
         resourceRequirements: rows(step.resourceRequirements)
           .map((requirement) => ({
             resourceTypeName: typeNames.get(String(requirement.resource_type_id)) ?? '',
@@ -585,34 +640,151 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     <h3>Competências</h3>
                     <button
                       disabled={!editable}
-                      onClick={() => change((draft) => draft.skills.push(''))}
+                      onClick={() =>
+                        change((draft) =>
+                          draft.skills.push({
+                            name: '',
+                            qualifierLabel: '',
+                            qualifierAllowCustom: false,
+                            qualifierOptions: [],
+                          })
+                        )
+                      }
                     >
                       Adicionar competência
                     </button>
                   </div>
-                  <div className="tags">
-                    {config.skills.map((skill, index) => (
-                      <div className="row" key={index}>
-                        <input
-                          disabled={!editable}
-                          placeholder="Ex.: Coloração"
-                          value={skill}
-                          onChange={(e) =>
-                            change((draft) => {
-                              draft.skills[index] = e.target.value;
-                            })
-                          }
-                        />
-                        <button
-                          className="danger"
-                          disabled={!editable}
-                          onClick={() => change((draft) => draft.skills.splice(index, 1))}
-                        >
-                          ×
-                        </button>
+                  <p className="hint small">
+                    Se a competência tem variações que nem toda a equipe cobre — ex.: nem toda
+                    colorista faz tom vermelho, o Gloss Express muda o tempo de ação conforme o
+                    tom — marque &ldquo;Tem variação&rdquo; e cadastre as opções. Assim o agente só
+                    marca quem realmente sabe fazer aquele caso específico, não qualquer coisa da
+                    competência.
+                  </p>
+                  {config.skills.length === 0 && (
+                    <p className="empty">Nenhuma competência cadastrada ainda.</p>
+                  )}
+                  {config.skills.map((skill, index) => (
+                    <article className="nested" key={index}>
+                      <div className="grid two">
+                        <label>
+                          Competência
+                          <input
+                            disabled={!editable}
+                            placeholder="Ex.: Coloração"
+                            value={skill.name}
+                            onChange={(e) =>
+                              change((draft) => {
+                                const target = draft.skills[index];
+                                if (target) target.name = e.target.value;
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="check">
+                          <input
+                            type="checkbox"
+                            disabled={!editable}
+                            checked={Boolean(skill.qualifierLabel)}
+                            onChange={(e) =>
+                              change((draft) => {
+                                const target = draft.skills[index];
+                                if (!target) return;
+                                target.qualifierLabel = e.target.checked
+                                  ? target.qualifierLabel || 'Tipo'
+                                  : '';
+                                if (!e.target.checked) {
+                                  target.qualifierOptions = [];
+                                  target.qualifierAllowCustom = false;
+                                }
+                              })
+                            }
+                          />
+                          Tem variação (ex.: tom, tipo)
+                        </label>
                       </div>
-                    ))}
-                  </div>
+                      {skill.qualifierLabel && (
+                        <article className="nested">
+                          <label>
+                            Nome da pergunta
+                            <input
+                              disabled={!editable}
+                              placeholder="Ex.: Tom, Tipo de corte"
+                              value={skill.qualifierLabel}
+                              onChange={(e) =>
+                                change((draft) => {
+                                  const target = draft.skills[index];
+                                  if (target) target.qualifierLabel = e.target.value;
+                                })
+                              }
+                            />
+                          </label>
+                          <div className="title minor">
+                            <h5>Opções</h5>
+                            <button
+                              disabled={!editable}
+                              onClick={() =>
+                                change((draft) => draft.skills[index]?.qualifierOptions.push(''))
+                              }
+                            >
+                              Adicionar opção
+                            </button>
+                          </div>
+                          {skill.qualifierOptions.length === 0 && (
+                            <p className="empty small">
+                              Nenhuma opção ainda — ex.: &ldquo;Castanho/Preto&rdquo;,
+                              &ldquo;Vermelho&rdquo;.
+                            </p>
+                          )}
+                          {skill.qualifierOptions.map((option, optionIndex) => (
+                            <div className="row" key={optionIndex}>
+                              <input
+                                disabled={!editable}
+                                placeholder="Ex.: Castanho/Preto"
+                                value={option}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.skills[index];
+                                    if (target) target.qualifierOptions[optionIndex] = e.target.value;
+                                  })
+                                }
+                              />
+                              <button
+                                className="danger"
+                                disabled={!editable}
+                                onClick={() =>
+                                  change((draft) => draft.skills[index]?.qualifierOptions.splice(optionIndex, 1))
+                                }
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          <label className="check">
+                            <input
+                              type="checkbox"
+                              disabled={!editable}
+                              checked={skill.qualifierAllowCustom}
+                              onChange={(e) =>
+                                change((draft) => {
+                                  const target = draft.skills[index];
+                                  if (target) target.qualifierAllowCustom = e.target.checked;
+                                })
+                              }
+                            />
+                            Permitir &ldquo;Outro&rdquo; (a pessoa escreve qual)
+                          </label>
+                        </article>
+                      )}
+                      <button
+                        className="danger ghost"
+                        disabled={!editable}
+                        onClick={() => change((draft) => draft.skills.splice(index, 1))}
+                      >
+                        Remover {skill.name || 'esta competência'}
+                      </button>
+                    </article>
+                  ))}
 
                   <div className="title minor">
                     <h3>Profissionais</h3>
@@ -624,6 +796,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             name: '',
                             availabilityMode: 'FIXED',
                             skillNames: [],
+                            skillQualifiers: [],
                             availability: [],
                           })
                         )
@@ -633,7 +806,10 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     </button>
                   </div>
                   {config.teamMembers.length === 0 && (
-                    <p className="empty">Nenhum profissional cadastrado ainda.</p>
+                    <p className="empty">
+                      Nenhum profissional cadastrado ainda. Se você trabalha sozinha, cadastre só
+                      você aqui — o resto do módulo funciona igual.
+                    </p>
                   )}
                   {config.teamMembers.map((member, memberIndex) => (
                     <article className="nested" key={memberIndex}>
@@ -673,28 +849,128 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       </div>
                       <fieldset>
                         <legend>Competências desta pessoa</legend>
-                        {config.skills.filter(Boolean).length === 0 && (
+                        {config.skills.filter((s) => s.name).length === 0 && (
                           <p className="empty small">Cadastre competências acima primeiro.</p>
                         )}
-                        {config.skills.filter(Boolean).map((skill) => (
-                          <label className="check" key={skill}>
-                            <input
-                              type="checkbox"
-                              disabled={!editable}
-                              checked={member.skillNames.includes(skill)}
-                              onChange={(e) =>
-                                change((draft) => {
-                                  const target = draft.teamMembers[memberIndex];
-                                  if (!target) return;
-                                  target.skillNames = e.target.checked
-                                    ? [...target.skillNames, skill]
-                                    : target.skillNames.filter((name) => name !== skill);
-                                })
-                              }
-                            />
-                            {skill}
-                          </label>
-                        ))}
+                        {config.skills
+                          .filter((s) => s.name)
+                          .map((skill) => {
+                            if (!skill.qualifierLabel) {
+                              return (
+                                <label className="check" key={skill.name}>
+                                  <input
+                                    type="checkbox"
+                                    disabled={!editable}
+                                    checked={member.skillNames.includes(skill.name)}
+                                    onChange={(e) =>
+                                      change((draft) => {
+                                        const target = draft.teamMembers[memberIndex];
+                                        if (!target) return;
+                                        target.skillNames = e.target.checked
+                                          ? [...target.skillNames, skill.name]
+                                          : target.skillNames.filter((name) => name !== skill.name);
+                                      })
+                                    }
+                                  />
+                                  {skill.name}
+                                </label>
+                              );
+                            }
+                            const coveredOptions = new Set(
+                              member.skillQualifiers
+                                .filter((q) => q.skillName === skill.name && q.optionLabel)
+                                .map((q) => q.optionLabel)
+                            );
+                            const customCoverage = member.skillQualifiers.find(
+                              (q) => q.skillName === skill.name && q.customValue !== undefined
+                            );
+                            return (
+                              <article className="nested" key={skill.name}>
+                                <strong>
+                                  {skill.name} — {skill.qualifierLabel}
+                                </strong>
+                                <p className="hint small">
+                                  Marque quais {skill.qualifierLabel.toLowerCase()} esta pessoa
+                                  sabe fazer nesta competência.
+                                </p>
+                                {skill.qualifierOptions.map((option) => (
+                                  <label className="check" key={option}>
+                                    <input
+                                      type="checkbox"
+                                      disabled={!editable}
+                                      checked={coveredOptions.has(option)}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target = draft.teamMembers[memberIndex];
+                                          if (!target) return;
+                                          if (e.target.checked) {
+                                            target.skillQualifiers.push({
+                                              skillName: skill.name,
+                                              optionLabel: option,
+                                            });
+                                            if (!target.skillNames.includes(skill.name)) {
+                                              target.skillNames.push(skill.name);
+                                            }
+                                          } else {
+                                            target.skillQualifiers = target.skillQualifiers.filter(
+                                              (q) => !(q.skillName === skill.name && q.optionLabel === option)
+                                            );
+                                            const stillCovers = target.skillQualifiers.some(
+                                              (q) => q.skillName === skill.name
+                                            );
+                                            if (!stillCovers) {
+                                              target.skillNames = target.skillNames.filter(
+                                                (name) => name !== skill.name
+                                              );
+                                            }
+                                          }
+                                        })
+                                      }
+                                    />
+                                    {option}
+                                  </label>
+                                ))}
+                                {skill.qualifierAllowCustom && (
+                                  <label>
+                                    Outro (qual?)
+                                    <input
+                                      disabled={!editable}
+                                      value={customCoverage?.customValue ?? ''}
+                                      placeholder="Ex.: Arco-íris"
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target = draft.teamMembers[memberIndex];
+                                          if (!target) return;
+                                          const value = e.target.value;
+                                          target.skillQualifiers = target.skillQualifiers.filter(
+                                            (q) => !(q.skillName === skill.name && q.customValue !== undefined)
+                                          );
+                                          if (value.trim()) {
+                                            target.skillQualifiers.push({
+                                              skillName: skill.name,
+                                              customValue: value,
+                                            });
+                                            if (!target.skillNames.includes(skill.name)) {
+                                              target.skillNames.push(skill.name);
+                                            }
+                                          } else {
+                                            const stillCovers = target.skillQualifiers.some(
+                                              (q) => q.skillName === skill.name
+                                            );
+                                            if (!stillCovers) {
+                                              target.skillNames = target.skillNames.filter(
+                                                (name) => name !== skill.name
+                                              );
+                                            }
+                                          }
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                )}
+                              </article>
+                            );
+                          })}
                       </fieldset>
                       <div className="title minor">
                         <h4>Faixas de disponibilidade</h4>
@@ -1031,6 +1307,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                   durationMinutes: 30,
                                   kind: 'ACTIVE',
                                   skillNames: [],
+                                  skillQualifiers: [],
                                   resourceRequirements: [],
                                 });
                             })
@@ -1090,25 +1367,98 @@ export default function Configurator({ user }: { user: { displayName: string; em
                           </div>
                           <fieldset>
                             <legend>Quem pode fazer</legend>
-                            {config.skills.filter(Boolean).map((skill) => (
-                              <label className="check" key={skill}>
-                                <input
-                                  type="checkbox"
-                                  disabled={!editable}
-                                  checked={step.skillNames.includes(skill)}
-                                  onChange={(e) =>
-                                    change((draft) => {
-                                      const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                      if (!target) return;
-                                      target.skillNames = e.target.checked
-                                        ? [...target.skillNames, skill]
-                                        : target.skillNames.filter((name) => name !== skill);
-                                    })
-                                  }
-                                />
-                                {skill}
-                              </label>
-                            ))}
+                            {config.skills.filter((s) => s.name).length === 0 && (
+                              <p className="empty small">Cadastre competências em Equipe primeiro.</p>
+                            )}
+                            {config.skills
+                              .filter((s) => s.name)
+                              .map((skill) => {
+                                if (!skill.qualifierLabel) {
+                                  return (
+                                    <label className="check" key={skill.name}>
+                                      <input
+                                        type="checkbox"
+                                        disabled={!editable}
+                                        checked={step.skillNames.includes(skill.name)}
+                                        onChange={(e) =>
+                                          change((draft) => {
+                                            const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                            if (!target) return;
+                                            target.skillNames = e.target.checked
+                                              ? [...target.skillNames, skill.name]
+                                              : target.skillNames.filter((name) => name !== skill.name);
+                                          })
+                                        }
+                                      />
+                                      {skill.name}
+                                    </label>
+                                  );
+                                }
+                                const currentChoice = step.skillQualifiers.find(
+                                  (q) => q.skillName === skill.name
+                                );
+                                const selectValue =
+                                  currentChoice?.optionLabel ?? (currentChoice?.customValue !== undefined ? '__custom__' : '');
+                                return (
+                                  <div className="row slot" key={skill.name}>
+                                    <span>
+                                      {skill.name} — {skill.qualifierLabel}
+                                    </span>
+                                    <select
+                                      disabled={!editable}
+                                      value={selectValue}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                          if (!target) return;
+                                          target.skillQualifiers = target.skillQualifiers.filter(
+                                            (q) => q.skillName !== skill.name
+                                          );
+                                          target.skillNames = target.skillNames.filter(
+                                            (name) => name !== skill.name
+                                          );
+                                          if (e.target.value === '') return;
+                                          if (e.target.value === '__custom__') {
+                                            target.skillQualifiers.push({ skillName: skill.name, customValue: '' });
+                                          } else {
+                                            target.skillQualifiers.push({
+                                              skillName: skill.name,
+                                              optionLabel: e.target.value,
+                                            });
+                                          }
+                                          target.skillNames.push(skill.name);
+                                        })
+                                      }
+                                    >
+                                      <option value="">Não exige esta competência</option>
+                                      {skill.qualifierOptions.map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                      {skill.qualifierAllowCustom && (
+                                        <option value="__custom__">Outro (escrever)</option>
+                                      )}
+                                    </select>
+                                    {currentChoice?.customValue !== undefined && (
+                                      <input
+                                        disabled={!editable}
+                                        placeholder="Qual?"
+                                        value={currentChoice.customValue}
+                                        onChange={(e) =>
+                                          change((draft) => {
+                                            const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                            const choice = target?.skillQualifiers.find(
+                                              (q) => q.skillName === skill.name
+                                            );
+                                            if (choice) choice.customValue = e.target.value;
+                                          })
+                                        }
+                                      />
+                                    )}
+                                  </div>
+                                );
+                              })}
                           </fieldset>
                           <div className="title minor">
                             <h5>Recursos exigidos</h5>
