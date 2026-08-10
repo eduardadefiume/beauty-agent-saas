@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compileServiceTimeline,
   findAvailableSlots,
+  resolveDynamicShiftWindows,
   resolveOperatingWindows,
   SchedulingConfigurationError,
   type AbsoluteWindow,
@@ -145,6 +146,44 @@ describe('resolveOperatingWindows', () => {
     });
 
     expect(new Date(windows[0]!.endMs).toISOString()).toBe('2026-08-10T20:00:00.000Z'); // 17:00 -03:00
+  });
+});
+
+describe('resolveDynamicShiftWindows', () => {
+  it('resolve uma data específica marcada à mão, não um padrão semanal', () => {
+    const searchWindow: AbsoluteWindow = {
+      startMs: Date.parse('2026-08-01T00:00:00Z'),
+      endMs: Date.parse('2026-08-31T00:00:00Z'),
+    };
+
+    const windows = resolveDynamicShiftWindows({
+      utcOffsetMinutes: -180,
+      searchWindow,
+      shifts: [{ shiftDateIso: '2026-08-15', startMinuteOfDay: 7 * 60, endMinuteOfDay: 18 * 60 }],
+    });
+
+    expect(windows).toHaveLength(1);
+    // 07:00 -03:00 == 10:00 UTC
+    expect(new Date(windows[0]!.startMs).toISOString()).toBe('2026-08-15T10:00:00.000Z');
+    expect(new Date(windows[0]!.endMs).toISOString()).toBe('2026-08-15T21:00:00.000Z');
+  });
+
+  it('ignora turnos fora da janela de busca e turnos com horário inválido', () => {
+    const searchWindow: AbsoluteWindow = {
+      startMs: Date.parse('2026-08-01T00:00:00Z'),
+      endMs: Date.parse('2026-08-10T00:00:00Z'),
+    };
+
+    const windows = resolveDynamicShiftWindows({
+      utcOffsetMinutes: -180,
+      searchWindow,
+      shifts: [
+        { shiftDateIso: '2026-09-01', startMinuteOfDay: 9 * 60, endMinuteOfDay: 18 * 60 }, // fora da janela
+        { shiftDateIso: '2026-08-05', startMinuteOfDay: 18 * 60, endMinuteOfDay: 9 * 60 }, // fim antes do início
+      ],
+    });
+
+    expect(windows).toHaveLength(0);
   });
 });
 

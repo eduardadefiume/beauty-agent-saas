@@ -21,12 +21,15 @@ type Skill = {
 };
 /** Uma pessoa/etapa cobrindo uma opção específica do qualificador de uma competência. */
 type SkillQualifierChoice = { skillName: string; optionLabel?: string; customValue?: string };
+/** Turno de disponibilidade Dinâmica: data específica (não recorrente), marcada no calendário. */
+type DynamicShift = { shiftDate: string; startsAt: string; endsAt: string };
 type Member = {
   name: string;
   availabilityMode: 'FIXED' | 'HYBRID' | 'DYNAMIC';
   skillNames: string[];
   skillQualifiers: SkillQualifierChoice[];
   availability: Slot[];
+  dynamicShifts: DynamicShift[];
 };
 type ResourceType = { name: string; resources: Array<{ name: string; capacity: number }> };
 type Step = {
@@ -247,6 +250,11 @@ function normalize(data: Loaded): Config {
         startsAt: clock(slot.starts_at),
         endsAt: clock(slot.ends_at, '18:00'),
       })),
+      dynamicShifts: rows(item.dynamicShifts).map((shift) => ({
+        shiftDate: String(shift.shift_date),
+        startsAt: clock(shift.starts_at),
+        endsAt: clock(shift.ends_at, '18:00'),
+      })),
     })),
     resourceTypes: types.map((item) => ({
       name: String(item.name),
@@ -288,6 +296,167 @@ function normalize(data: Loaded): Config {
       })),
     })),
   };
+}
+
+const MONTH_NAMES = [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+];
+const WEEKDAY_LETTERS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function formatDatePtBr(dateIso: string): string {
+  const [year, month, day] = dateIso.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+/**
+ * Calendário de disponibilidade Dinâmica: em vez da pessoa preencher uma
+ * faixa semanal recorrente, marca dia a dia (mês a mês) quando ela vai
+ * trabalhar — igual ao pedido da Duda: "geralmente deixo de outra cor
+ * (amarelo)". Cada dia marcado vira um turno em app.member_dynamic_shifts,
+ * que o motor de agenda usa para pessoas em modo Dinâmica/Híbrida.
+ */
+function DynamicShiftCalendar({
+  shifts,
+  editable,
+  onAddShift,
+  onUpdateShift,
+  onRemoveShift,
+}: {
+  shifts: DynamicShift[];
+  editable: boolean;
+  onAddShift: (dateIso: string) => void;
+  onUpdateShift: (dateIso: string, field: 'startsAt' | 'endsAt', value: string) => void;
+  onRemoveShift: (dateIso: string) => void;
+}) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  const shiftsByDate = useMemo(() => {
+    const map = new Map<string, DynamicShift>();
+    for (const shift of shifts) map.set(shift.shiftDate, shift);
+    return map;
+  }, [shifts]);
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const startWeekday = new Date(viewYear, viewMonth, 1).getDay();
+  const todayIso = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+
+  const cells: Array<{ dateIso: string; day: number } | null> = [];
+  for (let i = 0; i < startWeekday; i += 1) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    cells.push({ dateIso: `${viewYear}-${pad2(viewMonth + 1)}-${pad2(day)}`, day });
+  }
+
+  function changeMonth(delta: number) {
+    let nextMonth = viewMonth + delta;
+    let nextYear = viewYear;
+    if (nextMonth < 0) {
+      nextMonth = 11;
+      nextYear -= 1;
+    } else if (nextMonth > 11) {
+      nextMonth = 0;
+      nextYear += 1;
+    }
+    setViewMonth(nextMonth);
+    setViewYear(nextYear);
+  }
+
+  const sortedShifts = useMemo(
+    () => [...shifts].sort((left, right) => left.shiftDate.localeCompare(right.shiftDate)),
+    [shifts]
+  );
+
+  return (
+    <div className="dynamic-calendar">
+      <div className="dynamic-calendar-header">
+        <button type="button" className="ghost" onClick={() => changeMonth(-1)}>
+          ‹
+        </button>
+        <strong>
+          {MONTH_NAMES[viewMonth]} de {viewYear}
+        </strong>
+        <button type="button" className="ghost" onClick={() => changeMonth(1)}>
+          ›
+        </button>
+      </div>
+      <div className="dynamic-calendar-grid">
+        {WEEKDAY_LETTERS.map((letter, i) => (
+          <span className="dynamic-calendar-weekday" key={`weekday-${i}`}>
+            {letter}
+          </span>
+        ))}
+        {cells.map((cell, i) => {
+          if (!cell) return <span className="dynamic-calendar-cell empty" key={`empty-${i}`} />;
+          const shift = shiftsByDate.get(cell.dateIso);
+          return (
+            <button
+              type="button"
+              key={cell.dateIso}
+              disabled={!editable}
+              className={
+                'dynamic-calendar-cell' +
+                (shift ? ' working' : '') +
+                (cell.dateIso === todayIso ? ' today' : '')
+              }
+              onClick={() => (shift ? onRemoveShift(cell.dateIso) : onAddShift(cell.dateIso))}
+              title={
+                shift
+                  ? `${formatDatePtBr(cell.dateIso)}: vai trabalhar das ${shift.startsAt} às ${shift.endsAt} — clique para desmarcar`
+                  : `Marcar ${formatDatePtBr(cell.dateIso)} como dia de trabalho`
+              }
+            >
+              {cell.day}
+            </button>
+          );
+        })}
+      </div>
+      {sortedShifts.length > 0 && (
+        <div className="dynamic-calendar-list">
+          <p className="hint small">Dias marcados em amarelo — ajuste o horário de cada um:</p>
+          {sortedShifts.map((shift) => (
+            <div className="row slot" key={shift.shiftDate}>
+              <span className="dynamic-calendar-date">{formatDatePtBr(shift.shiftDate)}</span>
+              <input
+                type="time"
+                disabled={!editable}
+                value={shift.startsAt}
+                onChange={(e) => onUpdateShift(shift.shiftDate, 'startsAt', e.target.value)}
+              />
+              <input
+                type="time"
+                disabled={!editable}
+                value={shift.endsAt}
+                onChange={(e) => onUpdateShift(shift.shiftDate, 'endsAt', e.target.value)}
+              />
+              <button
+                className="danger"
+                disabled={!editable}
+                onClick={() => onRemoveShift(shift.shiftDate)}
+              >
+                Remover
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Configurator({ user }: { user: { displayName: string; email: string } }) {
@@ -798,6 +967,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             skillNames: [],
                             skillQualifiers: [],
                             availability: [],
+                            dynamicShifts: [],
                           })
                         )
                       }
@@ -972,81 +1142,131 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             );
                           })}
                       </fieldset>
-                      <div className="title minor">
-                        <h4>Faixas de disponibilidade</h4>
-                        <button
-                          disabled={!editable}
-                          onClick={() =>
-                            change((draft) => {
-                              const target = draft.teamMembers[memberIndex];
-                              if (target)
-                                target.availability.push({
-                                  weekday: 1,
+                      {member.availabilityMode !== 'DYNAMIC' && (
+                        <>
+                          <div className="title minor">
+                            <h4>Faixas de disponibilidade</h4>
+                            <button
+                              disabled={!editable}
+                              onClick={() =>
+                                change((draft) => {
+                                  const target = draft.teamMembers[memberIndex];
+                                  if (target)
+                                    target.availability.push({
+                                      weekday: 1,
+                                      startsAt: '09:00',
+                                      endsAt: '18:00',
+                                    });
+                                })
+                              }
+                            >
+                              Adicionar faixa
+                            </button>
+                          </div>
+                          {member.availability.map((slot, slotIndex) => (
+                            <div className="row slot" key={slotIndex}>
+                              <select
+                                disabled={!editable}
+                                value={slot.weekday}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target =
+                                      draft.teamMembers[memberIndex]?.availability[slotIndex];
+                                    if (target) target.weekday = Number(e.target.value);
+                                  })
+                                }
+                              >
+                                {DAYS.map((day, i) => (
+                                  <option value={i} key={day}>
+                                    {day}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                type="time"
+                                disabled={!editable}
+                                value={slot.startsAt}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target =
+                                      draft.teamMembers[memberIndex]?.availability[slotIndex];
+                                    if (target) target.startsAt = e.target.value;
+                                  })
+                                }
+                              />
+                              <input
+                                type="time"
+                                disabled={!editable}
+                                value={slot.endsAt}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target =
+                                      draft.teamMembers[memberIndex]?.availability[slotIndex];
+                                    if (target) target.endsAt = e.target.value;
+                                  })
+                                }
+                              />
+                              <button
+                                className="danger"
+                                disabled={!editable}
+                                onClick={() =>
+                                  change((draft) =>
+                                    draft.teamMembers[memberIndex]?.availability.splice(slotIndex, 1)
+                                  )
+                                }
+                              >
+                                Remover
+                              </button>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                      {member.availabilityMode !== 'FIXED' && (
+                        <div className="title minor">
+                          <h4>Calendário de disponibilidade Dinâmica</h4>
+                        </div>
+                      )}
+                      {member.availabilityMode !== 'FIXED' && (
+                        <>
+                          <p className="hint small">
+                            Clique nos dias em que {member.name || 'esta pessoa'} vai trabalhar —
+                            eles ficam marcados em amarelo, igual você já faz na sua agenda.
+                          </p>
+                          <DynamicShiftCalendar
+                            shifts={member.dynamicShifts}
+                            editable={editable}
+                            onAddShift={(dateIso) =>
+                              change((draft) => {
+                                const target = draft.teamMembers[memberIndex];
+                                if (!target) return;
+                                if (target.dynamicShifts.some((s) => s.shiftDate === dateIso)) return;
+                                target.dynamicShifts.push({
+                                  shiftDate: dateIso,
                                   startsAt: '09:00',
                                   endsAt: '18:00',
                                 });
-                            })
-                          }
-                        >
-                          Adicionar faixa
-                        </button>
-                      </div>
-                      {member.availability.map((slot, slotIndex) => (
-                        <div className="row slot" key={slotIndex}>
-                          <select
-                            disabled={!editable}
-                            value={slot.weekday}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target =
-                                  draft.teamMembers[memberIndex]?.availability[slotIndex];
-                                if (target) target.weekday = Number(e.target.value);
                               })
                             }
-                          >
-                            {DAYS.map((day, i) => (
-                              <option value={i} key={day}>
-                                {day}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="time"
-                            disabled={!editable}
-                            value={slot.startsAt}
-                            onChange={(e) =>
+                            onUpdateShift={(dateIso, field, value) =>
                               change((draft) => {
-                                const target =
-                                  draft.teamMembers[memberIndex]?.availability[slotIndex];
-                                if (target) target.startsAt = e.target.value;
+                                const target = draft.teamMembers[memberIndex]?.dynamicShifts.find(
+                                  (s) => s.shiftDate === dateIso
+                                );
+                                if (target) target[field] = value;
+                              })
+                            }
+                            onRemoveShift={(dateIso) =>
+                              change((draft) => {
+                                const target = draft.teamMembers[memberIndex];
+                                if (!target) return;
+                                target.dynamicShifts = target.dynamicShifts.filter(
+                                  (s) => s.shiftDate !== dateIso
+                                );
                               })
                             }
                           />
-                          <input
-                            type="time"
-                            disabled={!editable}
-                            value={slot.endsAt}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target =
-                                  draft.teamMembers[memberIndex]?.availability[slotIndex];
-                                if (target) target.endsAt = e.target.value;
-                              })
-                            }
-                          />
-                          <button
-                            className="danger"
-                            disabled={!editable}
-                            onClick={() =>
-                              change((draft) =>
-                                draft.teamMembers[memberIndex]?.availability.splice(slotIndex, 1)
-                              )
-                            }
-                          >
-                            Remover
-                          </button>
-                        </div>
-                      ))}
+                        </>
+                      )}
                       <button
                         className="danger ghost"
                         disabled={!editable}

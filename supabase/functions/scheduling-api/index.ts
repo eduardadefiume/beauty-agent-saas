@@ -2,10 +2,12 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import {
   compileServiceTimeline,
   findAvailableSlots,
+  resolveDynamicShiftWindows,
   resolveOperatingWindows,
   SchedulingConfigurationError,
   type AbsoluteWindow,
   type CandidateSlot,
+  type DynamicShift,
   type EligibleMember,
   type EligibleResource,
   type OccupancyRange,
@@ -111,6 +113,7 @@ interface Snapshot {
     skillIds: string[];
     skillQualifiers: { skill_id: string; qualifier_option_id: string | null; custom_value: string | null }[];
     availability: { weekday: number; starts_at: string; ends_at: string }[];
+    dynamicShifts: { shift_date: string; starts_at: string; ends_at: string }[];
   }[];
   resourceTypes: {
     id: string;
@@ -163,6 +166,14 @@ function toWeeklyLimits(entries: { weekday: number; latest_end_time: string }[])
   return entries.map((entry) => ({
     weekday: entry.weekday,
     latestEndMinuteOfDay: parseLocalTimeToMinutes(entry.latest_end_time),
+  }));
+}
+
+function toDynamicShifts(entries: { shift_date: string; starts_at: string; ends_at: string }[]): DynamicShift[] {
+  return entries.map((entry) => ({
+    shiftDateIso: entry.shift_date,
+    startMinuteOfDay: parseLocalTimeToMinutes(entry.starts_at),
+    endMinuteOfDay: parseLocalTimeToMinutes(entry.ends_at),
   }));
 }
 
@@ -314,22 +325,45 @@ Deno.serve(async (request: Request) => {
       serviceLimits: toWeeklyLimits(snapshot.serviceLimits),
     });
 
+    // Fixa: só turnos semanais recorrentes (member.availability).
+    // Dinâmica: sem padrão recorrente — só entra na busca se tiver turnos
+    // marcados para datas específicas (member.dynamicShifts), preenchidos
+    // hoje à mão no calendário do módulo Equipe. Sem nenhum turno marcado,
+    // a pessoa dinâmica fica de fora da busca (bloqueio conservador, igual
+    // ao que já valia antes de existir essa fonte — BT-106).
+    // Híbrida: as duas fontes juntas — é literalmente "mistura fixo e
+    // combinado".
     const members: EligibleMember[] = snapshot.teamMembers
-      .filter((member) => member.status === 'ACTIVE' && member.availability_mode !== 'DYNAMIC')
-      .map((member) => ({
-        id: member.id,
-        skillIds: member.skillIds,
-        skillQualifierCoverage: member.skillQualifiers.map((q) => ({
-          skillId: q.skill_id,
-          ...(q.qualifier_option_id ? { qualifierOptionId: q.qualifier_option_id } : {}),
-          ...(q.custom_value ? { customValue: q.custom_value } : {}),
-        })),
-        availableWindows: resolveOperatingWindows({
-          utcOffsetMinutes,
-          searchWindow,
-          operatingHours: toWeeklyHours(member.availability),
-        }),
-      }));
+      .filter((member) => member.status === 'ACTIVE')
+      .map((member) => {
+        const weeklyWindows =
+          member.availability_mode === 'DYNAMIC'
+            ? []
+            : resolveOperatingWindows({
+                utcOffsetMinutes,
+                searchWindow,
+                operatingHours: toWeeklyHours(member.availability),
+              });
+        const dynamicWindows =
+          member.availability_mode === 'FIXED'
+            ? []
+            : resolveDynamicShiftWindows({
+                utcOffsetMinutes,
+                searchWindow,
+                shifts: toDynamicShifts(member.dynamicShifts),
+              });
+
+        return {
+          id: member.id,
+          skillIds: member.skillIds,
+          skillQualifierCoverage: member.skillQualifiers.map((q) => ({
+            skillId: q.skill_id,
+            ...(q.qualifier_option_id ? { qualifierOptionId: q.qualifier_option_id } : {}),
+            ...(q.custom_value ? { customValue: q.custom_value } : {}),
+          })),
+          availableWindows: [...weeklyWindows, ...dynamicWindows].sort((left, right) => left.startMs - right.startMs),
+        };
+      });
 
     const resourceCapacityById = new Map<string, number>();
     const resources: EligibleResource[] = snapshot.resourceTypes.flatMap((resourceType) =>

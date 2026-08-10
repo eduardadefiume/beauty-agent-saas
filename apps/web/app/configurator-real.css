@@ -502,3 +502,78 @@ footer {
     display: grid;
   }
 }
+
+.dynamic-calendar {
+  border: 1px solid #e7e4dc;
+  border-radius: 12px;
+  background: #fbfaf6;
+  padding: 14px;
+  margin: 8px 0 16px;
+}
+.dynamic-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.dynamic-calendar-header strong {
+  min-width: 160px;
+  text-align: center;
+}
+.dynamic-calendar-header button {
+  padding: 4px 12px;
+  border-radius: 8px;
+}
+.dynamic-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.dynamic-calendar-weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding-bottom: 4px;
+}
+.dynamic-calendar-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.dynamic-calendar-cell:disabled {
+  cursor: not-allowed;
+}
+.dynamic-calendar-cell.empty {
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+.dynamic-calendar-cell.today {
+  border-color: var(--brand);
+  font-weight: 700;
+}
+.dynamic-calendar-cell.working {
+  background: #fff1c5;
+  color: #735a08;
+  font-weight: 700;
+  border-color: #e6c869;
+}
+.dynamic-calendar-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dynamic-calendar-date {
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 70px;
+}

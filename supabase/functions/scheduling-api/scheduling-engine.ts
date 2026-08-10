@@ -206,6 +206,47 @@ export function resolveOperatingWindows(input: {
   return windows.sort((left, right) => left.startMs - right.startMs);
 }
 
+export interface DynamicShift {
+  /** Data local no formato "AAAA-MM-DD" — não é um dia da semana recorrente. */
+  readonly shiftDateIso: string;
+  readonly startMinuteOfDay: number;
+  readonly endMinuteOfDay: number;
+}
+
+/**
+ * Resolve turnos de disponibilidade Dinâmica (datas específicas marcadas à
+ * mão no calendário do módulo Equipe — ex.: "trabalho sábado 15/08 das 7h às
+ * 18h", mas não todo sábado) em janelas absolutas UTC, clipadas à janela de
+ * busca. Ao contrário de `resolveOperatingWindows`, não é um padrão semanal
+ * recorrente — cada turno é uma data concreta.
+ */
+export function resolveDynamicShiftWindows(input: {
+  readonly utcOffsetMinutes: number;
+  readonly searchWindow: AbsoluteWindow;
+  readonly shifts: readonly DynamicShift[];
+}): readonly AbsoluteWindow[] {
+  const { utcOffsetMinutes, searchWindow, shifts } = input;
+  const offsetMs = utcOffsetMinutes * 60_000;
+  const windows: AbsoluteWindow[] = [];
+
+  for (const shift of shifts) {
+    const localMidnightUtcMs = Date.parse(`${shift.shiftDateIso}T00:00:00Z`) - offsetMs;
+    if (Number.isNaN(localMidnightUtcMs)) continue;
+    if (shift.endMinuteOfDay <= shift.startMinuteOfDay) continue;
+
+    const startMs = localMidnightUtcMs + shift.startMinuteOfDay * 60_000;
+    const endMs = localMidnightUtcMs + shift.endMinuteOfDay * 60_000;
+
+    const clippedStart = Math.max(startMs, searchWindow.startMs);
+    const clippedEnd = Math.min(endMs, searchWindow.endMs);
+    if (clippedStart < clippedEnd) {
+      windows.push({ startMs: clippedStart, endMs: clippedEnd });
+    }
+  }
+
+  return windows.sort((left, right) => left.startMs - right.startMs);
+}
+
 // ---------------------------------------------------------------------------
 // Etapa 2 do pipeline: busca de candidatos com backtracking limitado
 // ---------------------------------------------------------------------------
