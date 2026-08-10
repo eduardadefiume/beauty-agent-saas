@@ -173,7 +173,7 @@ describe('findAvailableSlots', () => {
       operatingWindows: [window],
       compiledPlan: plan,
       candidateGranularityMinutes: 30,
-      members: [{ id: 'member-1', skillIds: ['hair'], availableWindows: [window] }],
+      members: [{ id: 'member-1', skillIds: ['hair'], skillQualifierCoverage: [], availableWindows: [window] }],
       resources: [],
       existingMemberOccupancies: [],
       existingResourceOccupancies: [],
@@ -203,7 +203,7 @@ describe('findAvailableSlots', () => {
       operatingWindows: [window],
       compiledPlan: plan,
       candidateGranularityMinutes: 30,
-      members: [{ id: 'member-1', skillIds: ['nails'], availableWindows: [window] }],
+      members: [{ id: 'member-1', skillIds: ['nails'], skillQualifierCoverage: [], availableWindows: [window] }],
       resources: [],
       existingMemberOccupancies: [],
       existingResourceOccupancies: [],
@@ -235,7 +235,7 @@ describe('findAvailableSlots', () => {
       operatingWindows: [window],
       compiledPlan: plan,
       candidateGranularityMinutes: 30,
-      members: [{ id: 'member-1', skillIds: ['hair'], availableWindows: [window] }],
+      members: [{ id: 'member-1', skillIds: ['hair'], skillQualifierCoverage: [], availableWindows: [window] }],
       resources: [],
       existingMemberOccupancies: [{ subjectId: 'member-1', startMs: busyStart, endMs: busyEnd }],
       existingResourceOccupancies: [],
@@ -271,8 +271,8 @@ describe('findAvailableSlots', () => {
       compiledPlan: plan,
       candidateGranularityMinutes: 30,
       members: [
-        { id: 'member-1', skillIds: ['hair'], availableWindows: [window] },
-        { id: 'member-2', skillIds: ['hair'], availableWindows: [window] },
+        { id: 'member-1', skillIds: ['hair'], skillQualifierCoverage: [], availableWindows: [window] },
+        { id: 'member-2', skillIds: ['hair'], skillQualifierCoverage: [], availableWindows: [window] },
       ],
       resources: [{ id: 'chair-1', resourceTypeId: 'chair', capacity: 1 }],
       existingMemberOccupancies: [],
@@ -314,7 +314,7 @@ describe('findAvailableSlots', () => {
       operatingWindows: [window],
       compiledPlan: plan,
       candidateGranularityMinutes: 60,
-      members: [{ id: 'member-1', skillIds: ['hair'], availableWindows: [window] }],
+      members: [{ id: 'member-1', skillIds: ['hair'], skillQualifierCoverage: [], availableWindows: [window] }],
       resources: [{ id: 'chair-1', resourceTypeId: 'chair', capacity: 1 }],
       existingMemberOccupancies: [],
       existingResourceOccupancies: [],
@@ -350,7 +350,7 @@ describe('findAvailableSlots', () => {
       operatingWindows: [window],
       compiledPlan: plan,
       candidateGranularityMinutes: 30,
-      members: [{ id: 'member-1', skillIds: ['hair'], availableWindows: [window] }],
+      members: [{ id: 'member-1', skillIds: ['hair'], skillQualifierCoverage: [], availableWindows: [window] }],
       resources: [],
       existingMemberOccupancies: [],
       existingResourceOccupancies: [],
@@ -358,5 +358,99 @@ describe('findAvailableSlots', () => {
     });
 
     expect(result.candidates[0]!.startMs).toBeGreaterThanOrEqual(nowMs);
+  });
+
+  it('não escala quem tem a competência mas não cobre a variação exigida (ex.: Coloração:Vermelho)', () => {
+    const plan = compileServiceTimeline([
+      {
+        id: 'step-1',
+        name: 'Aplicação',
+        position: 1,
+        durationMinutes: 30,
+        kind: 'ACTIVE',
+        releasesMember: false,
+        skillRequirements: [{ skillId: 'coloracao', quantity: 1, qualifierOptionId: 'vermelho' }],
+        resourceRequirements: [],
+      },
+    ]);
+
+    const onlyCastanho = findAvailableSlots({
+      referenceNowMs: Date.parse('2026-08-10T00:00:00Z'),
+      operatingWindows: [window],
+      compiledPlan: plan,
+      candidateGranularityMinutes: 30,
+      members: [
+        {
+          id: 'member-1',
+          skillIds: ['coloracao'],
+          skillQualifierCoverage: [{ skillId: 'coloracao', qualifierOptionId: 'castanho' }],
+          availableWindows: [window],
+        },
+      ],
+      resources: [],
+      existingMemberOccupancies: [],
+      existingResourceOccupancies: [],
+    });
+    expect(onlyCastanho.candidates).toHaveLength(0);
+    expect(onlyCastanho.rejectionCounts.NO_QUALIFIED_MEMBER).toBeGreaterThan(0);
+
+    const coveringVermelho = findAvailableSlots({
+      referenceNowMs: Date.parse('2026-08-10T00:00:00Z'),
+      operatingWindows: [window],
+      compiledPlan: plan,
+      candidateGranularityMinutes: 30,
+      members: [
+        {
+          id: 'member-1',
+          skillIds: ['coloracao'],
+          skillQualifierCoverage: [
+            { skillId: 'coloracao', qualifierOptionId: 'castanho' },
+            { skillId: 'coloracao', qualifierOptionId: 'vermelho' },
+          ],
+          availableWindows: [window],
+        },
+      ],
+      resources: [],
+      existingMemberOccupancies: [],
+      existingResourceOccupancies: [],
+      maxCandidates: 1,
+    });
+    expect(coveringVermelho.candidates).toHaveLength(1);
+    expect(coveringVermelho.candidates[0]!.steps[0]).toMatchObject({ memberId: 'member-1' });
+  });
+
+  it('casa cobertura livre ("outro") por texto, sem diferenciar maiúsculas/acentuação de espaços', () => {
+    const plan = compileServiceTimeline([
+      {
+        id: 'step-1',
+        name: 'Aplicação',
+        position: 1,
+        durationMinutes: 30,
+        kind: 'ACTIVE',
+        releasesMember: false,
+        skillRequirements: [{ skillId: 'coloracao', quantity: 1, qualifierCustomValue: 'Arco-íris' }],
+        resourceRequirements: [],
+      },
+    ]);
+
+    const result = findAvailableSlots({
+      referenceNowMs: Date.parse('2026-08-10T00:00:00Z'),
+      operatingWindows: [window],
+      compiledPlan: plan,
+      candidateGranularityMinutes: 30,
+      members: [
+        {
+          id: 'member-1',
+          skillIds: ['coloracao'],
+          skillQualifierCoverage: [{ skillId: 'coloracao', customValue: '  arco-íris  ' }],
+          availableWindows: [window],
+        },
+      ],
+      resources: [],
+      existingMemberOccupancies: [],
+      existingResourceOccupancies: [],
+      maxCandidates: 1,
+    });
+    expect(result.candidates).toHaveLength(1);
   });
 });

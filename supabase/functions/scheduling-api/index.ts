@@ -84,6 +84,11 @@ function parseLocalTimeToMinutes(value: string): number {
   return hours * 60 + minutes;
 }
 
+interface SnapshotQualifier {
+  qualifier_option_id: string | null;
+  custom_value: string | null;
+}
+
 interface SnapshotStep {
   id: string;
   name: string;
@@ -91,7 +96,7 @@ interface SnapshotStep {
   duration_minutes: number;
   kind: 'ACTIVE' | 'PASSIVE';
   releases_member: boolean;
-  skillRequirements: { skill_id: string; quantity: number }[];
+  skillRequirements: { skill_id: string; quantity: number; qualifier: SnapshotQualifier | null }[];
   resourceRequirements: { resource_type_id: string; quantity: number; retain_until_service_end: boolean }[];
 }
 
@@ -104,6 +109,7 @@ interface Snapshot {
     status: string;
     availability_mode: 'FIXED' | 'HYBRID' | 'DYNAMIC';
     skillIds: string[];
+    skillQualifiers: { skill_id: string; qualifier_option_id: string | null; custom_value: string | null }[];
     availability: { weekday: number; starts_at: string; ends_at: string }[];
   }[];
   resourceTypes: {
@@ -130,6 +136,12 @@ function toPublishedSteps(steps: SnapshotStep[]): PublishedStep[] {
     skillRequirements: step.skillRequirements.map((requirement) => ({
       skillId: requirement.skill_id,
       quantity: requirement.quantity,
+      ...(requirement.qualifier?.qualifier_option_id
+        ? { qualifierOptionId: requirement.qualifier.qualifier_option_id }
+        : {}),
+      ...(requirement.qualifier?.custom_value
+        ? { qualifierCustomValue: requirement.qualifier.custom_value }
+        : {}),
     })),
     resourceRequirements: step.resourceRequirements.map((requirement) => ({
       resourceTypeId: requirement.resource_type_id,
@@ -307,6 +319,11 @@ Deno.serve(async (request: Request) => {
       .map((member) => ({
         id: member.id,
         skillIds: member.skillIds,
+        skillQualifierCoverage: member.skillQualifiers.map((q) => ({
+          skillId: q.skill_id,
+          ...(q.qualifier_option_id ? { qualifierOptionId: q.qualifier_option_id } : {}),
+          ...(q.custom_value ? { customValue: q.custom_value } : {}),
+        })),
         availableWindows: resolveOperatingWindows({
           utcOffsetMinutes,
           searchWindow,

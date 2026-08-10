@@ -31,6 +31,13 @@ export type StepKind = 'ACTIVE' | 'PASSIVE';
 export interface StepSkillRequirement {
   readonly skillId: string;
   readonly quantity: number;
+  /**
+   * Qual variação da competência esta etapa exige (ex.: skill "Coloração",
+   * opção "Vermelho") — ausentes os dois quando a competência não tem
+   * qualificador. No máximo um dos dois deve vir preenchido.
+   */
+  readonly qualifierOptionId?: string;
+  readonly qualifierCustomValue?: string;
 }
 
 export interface StepResourceRequirement {
@@ -197,9 +204,17 @@ export interface OccupancyRange {
   readonly endMs: number;
 }
 
+export interface SkillQualifierCoverage {
+  readonly skillId: string;
+  readonly qualifierOptionId?: string;
+  readonly customValue?: string;
+}
+
 export interface EligibleMember {
   readonly id: string;
   readonly skillIds: readonly string[];
+  /** Quais variações de cada competência esta pessoa cobre (ex.: Coloração -> Castanho/Preto e Vermelho). */
+  readonly skillQualifierCoverage: readonly SkillQualifierCoverage[];
   /** Janelas já resolvidas para UTC (turnos fixos/híbridos do dia). Dinâmicos sem calendário confirmado não devem ser incluídos pelo chamador (bloqueio conservador, BT-106). */
   readonly availableWindows: readonly AbsoluteWindow[];
 }
@@ -273,6 +288,35 @@ function isWithinAnyWindow(start: number, end: number, windows: readonly Absolut
   return windows.some((window) => start >= window.startMs && end <= window.endMs);
 }
 
+/**
+ * Um membro só cobre uma exigência de competência se tiver a skill E, quando
+ * a etapa exige uma variação específica (ex.: Coloração:Vermelho), cobrir
+ * exatamente essa variação — ter "Coloração" sem cobrir "Vermelho" não conta.
+ * É essa checagem que impede o motor de escalar alguém pra um caso que não
+ * sabe fazer só porque tem a competência de forma genérica.
+ */
+function memberCoversSkillRequirement(member: EligibleMember, requirement: StepSkillRequirement): boolean {
+  if (!member.skillIds.includes(requirement.skillId)) return false;
+
+  const needsQualifier =
+    requirement.qualifierOptionId !== undefined || requirement.qualifierCustomValue !== undefined;
+  if (!needsQualifier) return true;
+
+  return member.skillQualifierCoverage.some((coverage) => {
+    if (coverage.skillId !== requirement.skillId) return false;
+    if (requirement.qualifierOptionId !== undefined) {
+      return coverage.qualifierOptionId === requirement.qualifierOptionId;
+    }
+    if (requirement.qualifierCustomValue !== undefined) {
+      return (
+        coverage.customValue !== undefined &&
+        coverage.customValue.trim().toLowerCase() === requirement.qualifierCustomValue.trim().toLowerCase()
+      );
+    }
+    return false;
+  });
+}
+
 export function findAvailableSlots(input: FindAvailableSlotsInput): FindAvailableSlotsResult {
   const {
     referenceNowMs,
@@ -336,9 +380,8 @@ export function findAvailableSlots(input: FindAvailableSlotsInput): FindAvailabl
         let memberId: string | null = null;
 
         if (step.occupiesMember) {
-          const requiredSkillIds = step.skillRequirements.map((requirement) => requirement.skillId);
           const qualified = members.filter((member) =>
-            requiredSkillIds.every((skillId) => member.skillIds.includes(skillId))
+            step.skillRequirements.every((requirement) => memberCoversSkillRequirement(member, requirement))
           );
 
           if (qualified.length === 0) {
