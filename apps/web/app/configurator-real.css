@@ -143,6 +143,32 @@ legend {
   background: #d8f2e5;
   color: #124533;
 }
+.save-now {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 0;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.18);
+  color: #dbeee5;
+}
+.save-now:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+.save-now-pending {
+  background: #fff1c5;
+  color: #735a08;
+  animation: save-now-pulse 1.6s ease-in-out infinite;
+}
+.save-now-pending:disabled {
+  opacity: 1;
+}
+@keyframes save-now-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 241, 197, 0.6); }
+  50% { box-shadow: 0 0 0 5px rgba(255, 241, 197, 0); }
+}
 .account {
   text-align: right;
   color: #dbeee5;

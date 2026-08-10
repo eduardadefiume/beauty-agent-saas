@@ -280,9 +280,21 @@ export default function Configurator({ user }: { user: { displayName: string; em
   }, [tenantId]);
 
   function selectTenant(nextTenantId: string) {
+    if (dirty && !window.confirm('Você tem alterações não salvas nesta empresa. Trocar de empresa agora vai descartá-las. Trocar mesmo assim?')) {
+      return;
+    }
     setLoading(true);
     setTenantId(nextTenantId);
   }
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
+  }, [dirty]);
 
   function change(mutator: (draft: Config) => void) {
     setConfig((current) => {
@@ -363,6 +375,16 @@ export default function Configurator({ user }: { user: { displayName: string; em
             <b className={status === 'PUBLISHED' ? 'published' : ''}>
               {status === 'PUBLISHED' ? 'No ar' : 'Rascunho'}
             </b>
+            {editable && (
+              <button
+                className={`save-now ${dirty ? 'save-now-pending' : ''}`}
+                disabled={busy || !dirty}
+                onClick={() => void save()}
+                title="Salva o que você editou em qualquer módulo — não precisa ir em Publicar para isso."
+              >
+                {busy ? 'Salvando…' : dirty ? 'Salvar alterações' : 'Tudo salvo'}
+              </button>
+            )}
           </div>
           <div className="account">
             <strong>{user.displayName}</strong>
