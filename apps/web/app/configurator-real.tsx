@@ -65,6 +65,11 @@ type Service = {
   basePriceMinor: number | null;
   variations: Array<{ name: string; priceMinor: number | null }>;
   steps: Step[];
+  /** Exige teste de mechas antes do atendimento (config só — busca automática do teste ainda não existe). */
+  requiresStrandTest: boolean;
+  strandTestLeadDays: number;
+  strandTestDurationMinutes: number;
+  strandTestPreferredWeekdays: number[];
 };
 type Config = {
   unit: { name: string; timezone: string };
@@ -291,6 +296,14 @@ function normalize(data: Loaded): Config {
     services: rows(raw.services).map((item) => ({
       name: String(item.name),
       basePriceMinor: item.base_price_minor == null ? null : Number(item.base_price_minor),
+      requiresStrandTest: Boolean(item.requires_strand_test),
+      strandTestLeadDays: item.strand_test_lead_days == null ? 7 : Number(item.strand_test_lead_days),
+      strandTestDurationMinutes:
+        item.strand_test_duration_minutes == null ? 60 : Number(item.strand_test_duration_minutes),
+      strandTestPreferredWeekdays: (Array.isArray(item.strand_test_preferred_weekdays)
+        ? item.strand_test_preferred_weekdays
+        : [4, 5]
+      ).map((day) => Number(day)),
       variations: rows(item.variations).map((variation) => ({
         name: String(variation.name),
         priceMinor: variation.price_minor == null ? null : Number(variation.price_minor),
@@ -1610,6 +1623,10 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             basePriceMinor: null,
                             variations: [],
                             steps: [],
+                            requiresStrandTest: false,
+                            strandTestLeadDays: 7,
+                            strandTestDurationMinutes: 60,
+                            strandTestPreferredWeekdays: [4, 5],
                           })
                         )
                       }
@@ -1659,6 +1676,91 @@ export default function Configurator({ user }: { user: { displayName: string; em
                           />
                         </label>
                       </div>
+
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          disabled={!editable}
+                          checked={service.requiresStrandTest}
+                          onChange={(e) =>
+                            change((draft) => {
+                              const target = draft.services[serviceIndex];
+                              if (target) target.requiresStrandTest = e.target.checked;
+                            })
+                          }
+                        />
+                        Exige teste de mechas antes do atendimento
+                      </label>
+                      {service.requiresStrandTest && (
+                        <article className="nested">
+                          <p className="hint small">
+                            O teste ainda precisa ser marcado por você separadamente — o sistema só
+                            usa esses dados para lembrar a janela certa; a busca automática do
+                            horário do teste ainda não existe.
+                          </p>
+                          <div className="grid two">
+                            <label>
+                              Com quantos dias de antecedência
+                              <input
+                                type="number"
+                                min={1}
+                                max={30}
+                                disabled={!editable}
+                                value={service.strandTestLeadDays}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.services[serviceIndex];
+                                    if (target)
+                                      target.strandTestLeadDays = Math.max(1, Number(e.target.value) || 7);
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              Duração do teste (minutos)
+                              <input
+                                type="number"
+                                min={10}
+                                max={240}
+                                disabled={!editable}
+                                value={service.strandTestDurationMinutes}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.services[serviceIndex];
+                                    if (target)
+                                      target.strandTestDurationMinutes = Math.max(
+                                        10,
+                                        Number(e.target.value) || 60
+                                      );
+                                  })
+                                }
+                              />
+                            </label>
+                          </div>
+                          <fieldset>
+                            <legend>Dias preferidos para o teste</legend>
+                            {DAYS.map((day, dayIndex) => (
+                              <label className="check" key={day}>
+                                <input
+                                  type="checkbox"
+                                  disabled={!editable}
+                                  checked={service.strandTestPreferredWeekdays.includes(dayIndex)}
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target = draft.services[serviceIndex];
+                                      if (!target) return;
+                                      target.strandTestPreferredWeekdays = e.target.checked
+                                        ? [...target.strandTestPreferredWeekdays, dayIndex].sort()
+                                        : target.strandTestPreferredWeekdays.filter((d) => d !== dayIndex);
+                                    })
+                                  }
+                                />
+                                {day}
+                              </label>
+                            ))}
+                          </fieldset>
+                        </article>
+                      )}
 
                       <div className="title minor">
                         <h4>Variações (comprimento, volume, técnica…)</h4>

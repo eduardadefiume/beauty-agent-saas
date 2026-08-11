@@ -504,3 +504,52 @@ export function findAvailableSlots(input: FindAvailableSlotsInput): FindAvailabl
 
   return { candidates, attemptsMade, rejectionCounts };
 }
+
+// ---------------------------------------------------------------------------
+// Teste de mechas (strand test) — cálculo da janela, não o agendamento
+// ---------------------------------------------------------------------------
+
+export interface StrandTestConfig {
+  /** Quantos dias antes do atendimento principal a janela de busca abre. */
+  readonly leadDays: number;
+  readonly durationMinutes: number;
+  /** Dias da semana preferidos para o teste (ex.: [4, 5] = quinta/sexta). */
+  readonly preferredWeekdays: readonly number[];
+}
+
+export interface StrandTestWindow {
+  readonly searchWindow: AbsoluteWindow;
+  readonly preferredWeekdays: readonly number[];
+  readonly durationMinutes: number;
+}
+
+/**
+ * Calcula SÓ a janela de busca do teste de mechas a partir do horário do
+ * atendimento principal — de `leadDays` dias antes até a véspera dele (não
+ * inclui o próprio dia do atendimento). Ex.: atendimento marcado para um
+ * sábado com leadDays=7 -> janela do sábado anterior até a sexta-feira
+ * antes do atendimento.
+ *
+ * Não agenda nada sozinho: quem chama ainda precisa rodar uma busca
+ * separada (`findAvailableSlots`, com o serviço/etapa do teste) dentro
+ * dessa janela — essa função só resolve "onde procurar", não "o que
+ * escolher". `preferredWeekdays` fica disponível para quem for ordenar os
+ * candidatos encontrados (priorizar quinta/sexta, por exemplo), mas o motor
+ * de busca em si não prioriza dia da semana hoje.
+ */
+export function resolveStrandTestWindow(input: {
+  readonly mainAppointmentStartMs: number;
+  readonly config: StrandTestConfig;
+}): StrandTestWindow {
+  const { mainAppointmentStartMs, config } = input;
+  const dayMs = 86_400_000;
+
+  return {
+    searchWindow: {
+      startMs: mainAppointmentStartMs - config.leadDays * dayMs,
+      endMs: mainAppointmentStartMs - dayMs,
+    },
+    preferredWeekdays: config.preferredWeekdays,
+    durationMinutes: config.durationMinutes,
+  };
+}

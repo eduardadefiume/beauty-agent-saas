@@ -5,6 +5,7 @@ import {
   findAvailableSlots,
   resolveDynamicShiftWindows,
   resolveOperatingWindows,
+  resolveStrandTestWindow,
   SchedulingConfigurationError,
   type AbsoluteWindow,
   type PublishedStep,
@@ -491,5 +492,35 @@ describe('findAvailableSlots', () => {
       maxCandidates: 1,
     });
     expect(result.candidates).toHaveLength(1);
+  });
+});
+
+describe('resolveStrandTestWindow', () => {
+  it('resolves a window ending the day before the main appointment and starting leadDays before', () => {
+    // Sábado 2026-08-15 09:00 UTC-3 (12:00 UTC) — atendimento principal.
+    const mainAppointmentStartMs = Date.parse('2026-08-15T12:00:00Z');
+
+    const result = resolveStrandTestWindow({
+      mainAppointmentStartMs,
+      config: { leadDays: 7, durationMinutes: 60, preferredWeekdays: [4, 5] },
+    });
+
+    expect(result.searchWindow.endMs).toBe(Date.parse('2026-08-14T12:00:00Z'));
+    expect(result.searchWindow.startMs).toBe(Date.parse('2026-08-08T12:00:00Z'));
+    expect(result.durationMinutes).toBe(60);
+    expect(result.preferredWeekdays).toEqual([4, 5]);
+  });
+
+  it('never includes the main appointment day itself, regardless of leadDays', () => {
+    const mainAppointmentStartMs = Date.parse('2026-08-15T12:00:00Z');
+    const oneDayMs = 86_400_000;
+
+    const result = resolveStrandTestWindow({
+      mainAppointmentStartMs,
+      config: { leadDays: 3, durationMinutes: 45, preferredWeekdays: [] },
+    });
+
+    expect(result.searchWindow.endMs).toBeLessThanOrEqual(mainAppointmentStartMs - oneDayMs);
+    expect(result.searchWindow.startMs).toBeLessThan(result.searchWindow.endMs);
   });
 });
