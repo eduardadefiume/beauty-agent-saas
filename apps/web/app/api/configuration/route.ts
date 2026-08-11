@@ -2,7 +2,19 @@ import { createSupabaseServerClient } from '../../../lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-const ACTIONS = new Set(['list', 'load', 'save', 'publish']);
+// saveCalendarConnection não entra aqui de propósito: só a rota
+// /auth/google-calendar/callback pode chamar essa ação, porque ela carrega
+// o token de acesso — não é algo pra passar por um proxy genérico chamável
+// pelo navegador.
+const ACTIONS = new Set([
+  'list',
+  'load',
+  'save',
+  'publish',
+  'startNewDraft',
+  'listCalendarConnections',
+  'disconnectCalendarConnection',
+]);
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store',
@@ -54,6 +66,7 @@ export async function POST(request: Request): Promise<Response> {
       tenantId: input.tenantId,
       expectedRevision: input.expectedRevision,
       payload: input.payload,
+      connectionId: input.connectionId,
     }),
   });
 

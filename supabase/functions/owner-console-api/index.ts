@@ -18,6 +18,9 @@ const ACTION_RPC = {
   save: 'site_replace_configuration',
   publish: 'site_publish_configuration',
   startNewDraft: 'site_start_new_draft',
+  listCalendarConnections: 'site_list_calendar_connections',
+  saveCalendarConnection: 'site_save_calendar_connection',
+  disconnectCalendarConnection: 'site_disconnect_calendar_connection',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -132,6 +135,43 @@ Deno.serve(async (request: Request) => {
         ...common,
         target_tenant_id: tenantId,
         target_correlation_id: crypto.randomUUID(),
+      };
+      break;
+    case 'listCalendarConnections':
+      rpcBody = { ...common, target_tenant_id: tenantId };
+      break;
+    case 'saveCalendarConnection':
+      // Só chamada pela rota /auth/google-calendar/callback, server-to-server
+      // — o token nunca passa pelo navegador. Ver validação lá.
+      if (
+        typeof input.provider !== 'string' ||
+        typeof input.accessToken !== 'string'
+      ) {
+        return json(400, { error: 'INVALID_SAVE_CALENDAR_CONNECTION_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_provider: input.provider,
+        target_member_name: typeof input.memberName === 'string' ? input.memberName : null,
+        target_external_account_email:
+          typeof input.externalAccountEmail === 'string' ? input.externalAccountEmail : null,
+        target_calendar_id: typeof input.calendarId === 'string' ? input.calendarId : 'primary',
+        target_access_token: input.accessToken,
+        target_refresh_token: typeof input.refreshToken === 'string' ? input.refreshToken : null,
+        target_token_expires_at:
+          typeof input.tokenExpiresAt === 'string' ? input.tokenExpiresAt : null,
+        target_scope: typeof input.scope === 'string' ? input.scope : null,
+      };
+      break;
+    case 'disconnectCalendarConnection':
+      if (typeof input.connectionId !== 'string') {
+        return json(400, { error: 'INVALID_DISCONNECT_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_connection_id: input.connectionId,
       };
       break;
   }

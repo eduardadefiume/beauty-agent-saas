@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '../lib/supabase/browser';
 import SchedulingSimulator from './scheduling-simulator';
 import './configurator-real.css';
@@ -497,7 +498,19 @@ function DynamicShiftCalendar({
   );
 }
 
+type CalendarConnection = {
+  id: string;
+  provider: 'GOOGLE' | 'MICROSOFT';
+  memberName: string | null;
+  externalAccountEmail: string | null;
+  status: 'PENDING' | 'ACTIVE' | 'ERROR' | 'DISCONNECTED';
+  lastSyncedAt: string | null;
+  lastError: string | null;
+};
+
 export default function Configurator({ user }: { user: { displayName: string; email: string } }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [tenantId, setTenantId] = useState('');
   const [unitId, setUnitId] = useState('');
@@ -510,6 +523,20 @@ export default function Configurator({ user }: { user: { displayName: string; em
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [module, setModule] = useState<ModuleKey>('negocio');
+  const [calendarConnections, setCalendarConnections] = useState<CalendarConnection[]>([]);
+
+  useEffect(() => {
+    const calendarConnected = searchParams.get('calendarConnected');
+    const calendarError = searchParams.get('calendarError');
+    if (calendarConnected) {
+      setNotice('Google Agenda conectada com sucesso.');
+      router.replace('/');
+    } else if (calendarError) {
+      setNotice(`Não deu para conectar o Google Agenda (${calendarError}). Tenta de novo.`);
+      router.replace('/');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     void api({ action: 'list' })
@@ -540,6 +567,28 @@ export default function Configurator({ user }: { user: { displayName: string; em
       .catch((error) => setNotice(error instanceof Error ? error.message : 'Falha ao carregar.'))
       .finally(() => setLoading(false));
   }, [tenantId]);
+  useEffect(() => {
+    if (!tenantId) return;
+    void api({ action: 'listCalendarConnections', tenantId })
+      .then((raw) => setCalendarConnections(raw as CalendarConnection[]))
+      .catch(() => setCalendarConnections([]));
+  }, [tenantId]);
+
+  async function disconnectCalendar(connectionId: string) {
+    if (!window.confirm('Desconectar essa agenda? Os compromissos importados de lá param de bloquear horário.')) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await api({ action: 'disconnectCalendarConnection', tenantId, connectionId });
+      setCalendarConnections((current) => current.filter((entry) => entry.id !== connectionId));
+      setNotice('Agenda desconectada.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Falha ao desconectar.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function selectTenant(nextTenantId: string) {
     if (dirty && !window.confirm('Você tem alterações não salvas nesta empresa. Trocar de empresa agora vai descartá-las. Trocar mesmo assim?')) {
@@ -983,6 +1032,47 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       </label>
                     </article>
                   ))}
+
+                  <div className="title minor">
+                    <h3>Google Agenda</h3>
+                  </div>
+                  {calendarConnections.length === 0 ? (
+                    <article className="nested">
+                      <p className="hint">
+                        Conecte sua agenda do Google para bloquear automático os horários em que
+                        você já tem compromisso marcado por lá. Isso não mexe no expediente que
+                        você configurou aqui, só fecha em cima dele quando tiver algo no Google.
+                      </p>
+                      <a className="button primary" href={`/conectar-google-agenda?tenantId=${tenantId}`}>
+                        Conectar Google Agenda
+                      </a>
+                    </article>
+                  ) : (
+                    calendarConnections.map((connection) => (
+                      <article className="nested" key={connection.id}>
+                        <p>
+                          <strong>Google Agenda</strong>
+                          {connection.externalAccountEmail ? ` (${connection.externalAccountEmail})` : ''}
+                        </p>
+                        <p className="hint small">
+                          {connection.status === 'ACTIVE'
+                            ? 'Conectada. Os compromissos de lá bloqueiam horário automático.'
+                            : connection.status === 'ERROR'
+                              ? `Deu problema na sincronização: ${connection.lastError ?? 'motivo não informado'}.`
+                              : 'Desconectada.'}
+                        </p>
+                        {connection.status === 'ACTIVE' && (
+                          <button
+                            className="danger"
+                            disabled={busy}
+                            onClick={() => void disconnectCalendar(connection.id)}
+                          >
+                            Desconectar
+                          </button>
+                        )}
+                      </article>
+                    ))
+                  )}
                 </article>
               )}
 

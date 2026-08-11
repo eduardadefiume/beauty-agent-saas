@@ -37,6 +37,20 @@ button {
 button:hover:not(:disabled) {
   filter: brightness(0.96);
 }
+.button {
+  display: inline-block;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: #e5eee9;
+  color: var(--brand-dark);
+  cursor: pointer;
+  font-weight: 700;
+  text-decoration: none;
+}
+.button:hover {
+  filter: brightness(0.96);
+}
 button:disabled,
 input:disabled,
 select:disabled,
