@@ -4,6 +4,7 @@ import {
   findAvailableSlots,
   resolveDynamicShiftWindows,
   resolveOperatingWindows,
+  resolveStrandTestWindow,
   SchedulingConfigurationError,
   type AbsoluteWindow,
   type CandidateSlot,
@@ -132,6 +133,10 @@ interface Snapshot {
     bookable: boolean;
     status: string;
     steps: SnapshotStep[];
+    requires_strand_test: boolean;
+    strand_test_lead_days: number;
+    strand_test_duration_minutes: number;
+    strand_test_preferred_weekdays: number[];
   }[];
 }
 
@@ -211,6 +216,53 @@ function matchClientExceptions(
   return [];
 }
 
+// Fixa: só turnos semanais recorrentes (member.availability).
+// Dinâmica: sem padrão recorrente — só entra na busca se tiver turnos
+// marcados para datas específicas (member.dynamicShifts), preenchidos hoje
+// à mão no calendário do módulo Equipe. Sem nenhum turno marcado, a pessoa
+// dinâmica fica de fora da busca (bloqueio conservador, igual ao que já
+// valia antes de existir essa fonte — BT-106).
+// Híbrida: as duas fontes juntas — é literalmente "mistura fixo e
+// combinado". Compartilhada entre searchSlots e o agendamento automático
+// do teste de mechas — mesma regra de disponibilidade nos dois casos.
+function buildEligibleMembers(
+  snapshot: Snapshot,
+  utcOffsetMinutes: number,
+  searchWindow: AbsoluteWindow
+): EligibleMember[] {
+  return snapshot.teamMembers
+    .filter((member) => member.status === 'ACTIVE')
+    .map((member) => {
+      const weeklyWindows =
+        member.availability_mode === 'DYNAMIC'
+          ? []
+          : resolveOperatingWindows({
+              utcOffsetMinutes,
+              searchWindow,
+              operatingHours: toWeeklyHours(member.availability),
+            });
+      const dynamicWindows =
+        member.availability_mode === 'FIXED'
+          ? []
+          : resolveDynamicShiftWindows({
+              utcOffsetMinutes,
+              searchWindow,
+              shifts: toDynamicShifts(member.dynamicShifts),
+            });
+
+      return {
+        id: member.id,
+        skillIds: member.skillIds,
+        skillQualifierCoverage: member.skillQualifiers.map((q) => ({
+          skillId: q.skill_id,
+          ...(q.qualifier_option_id ? { qualifierOptionId: q.qualifier_option_id } : {}),
+          ...(q.custom_value ? { customValue: q.custom_value } : {}),
+        })),
+        availableWindows: [...weeklyWindows, ...dynamicWindows].sort((left, right) => left.startMs - right.startMs),
+      };
+    });
+}
+
 async function callRpc(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -245,6 +297,195 @@ async function callRpc(
   }
 
   return { ok: true, data: await response.json() };
+}
+
+type RpcResult = { ok: true; data: unknown } | { ok: false; status: number; error: string; code: string | null };
+type RpcCaller = (name: string, body: Record<string, unknown>) => Promise<RpcResult>;
+type StrandTestResult =
+  | { scheduled: true; startsAt: string; endsAt: string; memberName: string }
+  | { scheduled: false; reason: string };
+
+/**
+ * Melhor esforço: tenta achar e reservar automaticamente um horário de
+ * teste de mechas para o serviço recém-confirmado, se ele exigir. Nunca
+ * lança — qualquer motivo de falha vira `{ scheduled: false, reason }`.
+ * Devolve `null` quando o serviço nem exige teste (não aparece na resposta).
+ *
+ * Regras (decididas com a Duda em 2026-08-11):
+ * - qualquer profissional com a competência serve, não precisa ser quem fez
+ *   o atendimento principal;
+ * - não bloqueia nada: se não achar horário, o agendamento principal já foi
+ *   confirmado e continua confirmado — só avisa que o teste não foi
+ *   marcado sozinho;
+ * - ocupa uma cadeira (recurso), igual um mini-atendimento — mas em uma
+ *   tabela separada (app.strand_test_bookings) que a busca normal
+ *   (searchSlots) nunca enxerga, então um atendimento de verdade ainda pode
+ *   cair em cima do horário do teste depois.
+ */
+async function tryAutoScheduleStrandTest(
+  rpc: RpcCaller,
+  userEmail: string,
+  tenantId: string,
+  confirmed: { appointmentId: string; unitId: string; serviceId: string; startsAt: string; endsAt: string }
+): Promise<StrandTestResult | null> {
+  const configResult = await rpc('schedule_get_active_configuration', {
+    target_site_project_id: SITE_PROJECT_ID,
+    target_email: userEmail,
+    target_tenant_id: tenantId,
+    target_unit_id: confirmed.unitId,
+  });
+  if (!configResult.ok) return { scheduled: false, reason: 'CONFIG_UNAVAILABLE' };
+
+  const config = configResult.data as { timezone: string; snapshot: Snapshot };
+  const service = config.snapshot.services.find((entry) => entry.id === confirmed.serviceId);
+  if (!service || !service.requires_strand_test) return null;
+
+  // Simplificação deliberada: pega a primeira competência/tipo de recurso
+  // exigido entre as etapas ativas do serviço, em vez de pedir pra Duda
+  // escolher de novo — na prática, serviços de coloração têm uma
+  // competência principal (ex.: "Coloração") e um recurso (ex.: "Cadeira").
+  const activeSteps = service.steps.filter((step) => step.kind === 'ACTIVE');
+  const candidateSkillId = activeSteps.flatMap((step) => step.skillRequirements)[0]?.skill_id;
+  if (!candidateSkillId) return { scheduled: false, reason: 'NO_QUALIFYING_SKILL' };
+  const candidateResourceTypeId = activeSteps.flatMap((step) => step.resourceRequirements)[0]?.resource_type_id;
+
+  const mainAppointmentStartMs = Date.parse(confirmed.startsAt);
+  const strandWindow = resolveStrandTestWindow({
+    mainAppointmentStartMs,
+    config: {
+      leadDays: service.strand_test_lead_days,
+      durationMinutes: service.strand_test_duration_minutes,
+      preferredWeekdays: service.strand_test_preferred_weekdays,
+    },
+  });
+  if (strandWindow.searchWindow.endMs <= Date.now()) {
+    return { scheduled: false, reason: 'WINDOW_IN_PAST' };
+  }
+
+  const utcOffsetMinutes = resolveUtcOffsetMinutes(config.timezone, new Date(strandWindow.searchWindow.startMs));
+  const operatingWindows = resolveOperatingWindows({
+    utcOffsetMinutes,
+    searchWindow: strandWindow.searchWindow,
+    operatingHours: toWeeklyHours(config.snapshot.operatingHours),
+  });
+
+  let compiledPlan;
+  try {
+    compiledPlan = compileServiceTimeline([
+      {
+        id: 'strand-test',
+        name: 'Teste de mechas',
+        position: 1,
+        durationMinutes: strandWindow.durationMinutes,
+        kind: 'ACTIVE',
+        releasesMember: false,
+        skillRequirements: [{ skillId: candidateSkillId, quantity: 1 }],
+        resourceRequirements: candidateResourceTypeId
+          ? [{ resourceTypeId: candidateResourceTypeId, quantity: 1, retainUntilServiceEnd: false }]
+          : [],
+      },
+    ]);
+  } catch {
+    return { scheduled: false, reason: 'INVALID_STEP_CONFIG' };
+  }
+
+  const members = buildEligibleMembers(config.snapshot, utcOffsetMinutes, strandWindow.searchWindow);
+  const resources: EligibleResource[] = config.snapshot.resourceTypes.flatMap((resourceType) =>
+    resourceType.resources
+      .filter((resource) => resource.status === 'ACTIVE')
+      .map((resource) => ({ id: resource.id, resourceTypeId: resourceType.id, capacity: resource.capacity }))
+  );
+
+  // Duas fontes de ocupação, as duas só leitura: os compromissos REAIS da
+  // colorista (não marcar teste em cima de um atendimento real) e outros
+  // testes de mechas já marcados (não marcar dois testes em cima um do
+  // outro). Nenhuma delas é escrita aqui — só schedule_record_strand_test_booking grava.
+  const [realOccupanciesResult, strandOccupanciesResult] = await Promise.all([
+    rpc('schedule_list_occupancies', {
+      target_site_project_id: SITE_PROJECT_ID,
+      target_email: userEmail,
+      target_tenant_id: tenantId,
+      target_unit_id: confirmed.unitId,
+    }),
+    rpc('schedule_list_strand_test_occupancies', {
+      target_site_project_id: SITE_PROJECT_ID,
+      target_email: userEmail,
+      target_tenant_id: tenantId,
+      target_unit_id: confirmed.unitId,
+    }),
+  ]);
+  if (!realOccupanciesResult.ok || !strandOccupanciesResult.ok) {
+    return { scheduled: false, reason: 'OCCUPANCIES_UNAVAILABLE' };
+  }
+  const realOccupancies = realOccupanciesResult.data as {
+    memberOccupancies: { memberId: string; startMs: number; endMs: number }[];
+    resourceOccupancies: { resourceId: string; startMs: number; endMs: number }[];
+  };
+  const strandOccupancies = strandOccupanciesResult.data as {
+    memberOccupancies: { memberId: string; startMs: number; endMs: number }[];
+    resourceOccupancies: { resourceId: string; startMs: number; endMs: number }[];
+  };
+
+  const toRanges = (entries: { memberId?: string; resourceId?: string; startMs: number; endMs: number }[]) =>
+    entries.map((entry) => ({
+      subjectId: (entry.memberId ?? entry.resourceId) as string,
+      startMs: entry.startMs,
+      endMs: entry.endMs,
+    }));
+
+  const searchResult = findAvailableSlots({
+    referenceNowMs: Date.now(),
+    operatingWindows,
+    compiledPlan,
+    candidateGranularityMinutes: 15,
+    members,
+    resources,
+    existingMemberOccupancies: [
+      ...toRanges(realOccupancies.memberOccupancies),
+      ...toRanges(strandOccupancies.memberOccupancies),
+    ],
+    existingResourceOccupancies: [
+      ...toRanges(realOccupancies.resourceOccupancies),
+      ...toRanges(strandOccupancies.resourceOccupancies),
+    ],
+    maxCandidates: 1,
+  });
+
+  if (searchResult.candidates.length === 0) {
+    return { scheduled: false, reason: 'NO_SLOT_FOUND' };
+  }
+
+  const candidate = searchResult.candidates[0];
+  const step = candidate.steps[0];
+  const memberId = step.memberId;
+  if (!memberId) return { scheduled: false, reason: 'NO_SLOT_FOUND' };
+  const memberName = config.snapshot.teamMembers.find((member) => member.id === memberId)?.name ?? 'Profissional';
+  const resourceId = step.resourceAssignments[0]?.resourceId ?? null;
+
+  const recordResult = await rpc('schedule_record_strand_test_booking', {
+    target_site_project_id: SITE_PROJECT_ID,
+    target_email: userEmail,
+    target_tenant_id: tenantId,
+    target_unit_id: confirmed.unitId,
+    target_main_appointment_id: confirmed.appointmentId,
+    target_member_id: memberId,
+    target_member_name: memberName,
+    target_resource_id: resourceId,
+    target_starts_at: new Date(candidate.startMs).toISOString(),
+    target_ends_at: new Date(candidate.endMs).toISOString(),
+    target_correlation_id: crypto.randomUUID(),
+  });
+  if (!recordResult.ok) return { scheduled: false, reason: 'BOOKING_FAILED' };
+
+  const recorded = recordResult.data as { scheduled: boolean; reason?: string };
+  if (!recorded.scheduled) return { scheduled: false, reason: recorded.reason ?? 'STRAND_TEST_SLOT_TAKEN' };
+
+  return {
+    scheduled: true,
+    startsAt: new Date(candidate.startMs).toISOString(),
+    endsAt: new Date(candidate.endMs).toISOString(),
+    memberName,
+  };
 }
 
 Deno.serve(async (request: Request) => {
@@ -380,45 +621,7 @@ Deno.serve(async (request: Request) => {
       (left, right) => left.startMs - right.startMs
     );
 
-    // Fixa: só turnos semanais recorrentes (member.availability).
-    // Dinâmica: sem padrão recorrente — só entra na busca se tiver turnos
-    // marcados para datas específicas (member.dynamicShifts), preenchidos
-    // hoje à mão no calendário do módulo Equipe. Sem nenhum turno marcado,
-    // a pessoa dinâmica fica de fora da busca (bloqueio conservador, igual
-    // ao que já valia antes de existir essa fonte — BT-106).
-    // Híbrida: as duas fontes juntas — é literalmente "mistura fixo e
-    // combinado".
-    const members: EligibleMember[] = snapshot.teamMembers
-      .filter((member) => member.status === 'ACTIVE')
-      .map((member) => {
-        const weeklyWindows =
-          member.availability_mode === 'DYNAMIC'
-            ? []
-            : resolveOperatingWindows({
-                utcOffsetMinutes,
-                searchWindow,
-                operatingHours: toWeeklyHours(member.availability),
-              });
-        const dynamicWindows =
-          member.availability_mode === 'FIXED'
-            ? []
-            : resolveDynamicShiftWindows({
-                utcOffsetMinutes,
-                searchWindow,
-                shifts: toDynamicShifts(member.dynamicShifts),
-              });
-
-        return {
-          id: member.id,
-          skillIds: member.skillIds,
-          skillQualifierCoverage: member.skillQualifiers.map((q) => ({
-            skillId: q.skill_id,
-            ...(q.qualifier_option_id ? { qualifierOptionId: q.qualifier_option_id } : {}),
-            ...(q.custom_value ? { customValue: q.custom_value } : {}),
-          })),
-          availableWindows: [...weeklyWindows, ...dynamicWindows].sort((left, right) => left.startMs - right.startMs),
-        };
-      });
+    const members = buildEligibleMembers(snapshot, utcOffsetMinutes, searchWindow);
 
     const resourceCapacityById = new Map<string, number>();
     const resources: EligibleResource[] = snapshot.resourceTypes.flatMap((resourceType) =>
@@ -553,7 +756,23 @@ Deno.serve(async (request: Request) => {
       target_external_contact_ref: null,
     });
     if (!result.ok) return json(result.status, { error: result.error, code: result.code });
-    return json(200, { data: result.data });
+
+    const confirmed = result.data as {
+      appointmentId: string;
+      status: string;
+      unitId: string;
+      serviceId: string;
+      startsAt: string;
+      endsAt: string;
+    };
+
+    // Teste de mechas: melhor esforço, NUNCA derruba a confirmação do
+    // agendamento principal — qualquer falha aqui (config ausente, sem
+    // profissional qualificado, sem horário livre, corrida perdida) vira só
+    // um `strandTest.scheduled: false`, nunca um erro pra quem chamou.
+    const strandTest = await tryAutoScheduleStrandTest(rpc, userEmail, tenantId, confirmed).catch(() => null);
+
+    return json(200, { data: { ...confirmed, ...(strandTest ? { strandTest } : {}) } });
   }
 
   if (action === 'cancelHold') {

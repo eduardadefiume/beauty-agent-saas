@@ -22,7 +22,21 @@ type SearchResponse = {
   clientExceptionApplied?: boolean;
 };
 type HoldResponse = { holdId: string; status: string; expiresAt: string };
-type ConfirmResponse = { appointmentId: string; status: string };
+type StrandTestInfo =
+  | { scheduled: true; startsAt: string; endsAt: string; memberName: string }
+  | { scheduled: false; reason: string };
+type ConfirmResponse = { appointmentId: string; status: string; strandTest?: StrandTestInfo };
+
+const STRAND_TEST_REASON_LABEL: Record<string, string> = {
+  NO_QUALIFYING_SKILL: 'nenhuma etapa do serviço exige uma competência pra basear a busca',
+  WINDOW_IN_PAST: 'a janela de teste já passou (atendimento marcado com pouca antecedência)',
+  NO_SLOT_FOUND: 'ninguém qualificado estava livre na janela de teste',
+  STRAND_TEST_SLOT_TAKEN: 'outra reserva de teste bateu no mesmo horário primeiro',
+  BOOKING_FAILED: 'não foi possível gravar a reserva do teste',
+  CONFIG_UNAVAILABLE: 'não foi possível reler a configuração publicada',
+  OCCUPANCIES_UNAVAILABLE: 'não foi possível checar a agenda pra achar o teste',
+  INVALID_STEP_CONFIG: 'configuração do teste inválida',
+};
 
 const REJECTION_LABEL: Record<string, string> = {
   EXCEEDS_OPERATING_WINDOW: 'não cabe inteiro dentro do expediente',
@@ -84,7 +98,11 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
   const [activeHold, setActiveHold] = useState<{ holdId: string; expiresAt: string; candidate: Candidate } | null>(
     null
   );
-  const [confirmed, setConfirmed] = useState<{ appointmentId: string; candidate: Candidate } | null>(null);
+  const [confirmed, setConfirmed] = useState<{
+    appointmentId: string;
+    candidate: Candidate;
+    strandTest?: StrandTestInfo;
+  } | null>(null);
 
   useEffect(() => {
     if (!tenantId || !unitId) return;
@@ -176,7 +194,11 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
         holdId: activeHold.holdId,
         customerLabel: customerLabel.trim() || null,
       })) as ConfirmResponse;
-      setConfirmed({ appointmentId: data.appointmentId, candidate: activeHold.candidate });
+      setConfirmed({
+        appointmentId: data.appointmentId,
+        candidate: activeHold.candidate,
+        ...(data.strandTest ? { strandTest: data.strandTest } : {}),
+      });
       setActiveHold(null);
       setCandidates([]);
       setSearched(false);
@@ -322,6 +344,23 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
                 Isso já é um agendamento real no banco (só que de teste). Nenhuma outra reserva consegue
                 usar o mesmo profissional/recurso nesse horário enquanto ele existir.
               </p>
+              {confirmed.strandTest && (
+                <p className="hint small">
+                  {confirmed.strandTest.scheduled ? (
+                    <>
+                      <strong>Teste de mechas marcado automaticamente:</strong>{' '}
+                      {formatMoment(Date.parse(confirmed.strandTest.startsAt))} com{' '}
+                      {confirmed.strandTest.memberName}.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Teste de mechas não marcado sozinho:</strong>{' '}
+                      {STRAND_TEST_REASON_LABEL[confirmed.strandTest.reason] ?? confirmed.strandTest.reason} —
+                      marque manualmente se precisar.
+                    </>
+                  )}
+                </p>
+              )}
               <div className="actions">
                 <button className="danger" disabled={busy} onClick={() => void cancelAppointment()}>
                   Cancelar agendamento de teste
