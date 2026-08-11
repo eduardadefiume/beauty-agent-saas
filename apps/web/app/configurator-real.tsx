@@ -1694,9 +1694,10 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       {service.requiresStrandTest && (
                         <article className="nested">
                           <p className="hint small">
-                            O teste ainda precisa ser marcado por você separadamente — o sistema só
-                            usa esses dados para lembrar a janela certa; a busca automática do
-                            horário do teste ainda não existe.
+                            O sistema tenta marcar o teste sozinho quando o atendimento principal é
+                            confirmado (qualquer profissional com a competência serve, em qualquer
+                            cadeira livre). Se não achar horário na janela, o atendimento principal
+                            não trava — só avisa que o teste precisa ser marcado por você.
                           </p>
                           <div className="grid two">
                             <label>

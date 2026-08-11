@@ -296,7 +296,12 @@ async function callRpc(
     return { ok: false, status, error: failure.message ?? 'DATABASE_REQUEST_FAILED', code: failure.code ?? null };
   }
 
-  return { ok: true, data: await response.json() };
+  // RPCs que RETURNS void (ex.: schedule_cancel_hold, schedule_cancel_appointment)
+  // vêm com corpo vazio (204 ou 200 sem conteúdo) — response.json() estoura
+  // nesse caso. Bug real encontrado em teste: cancelAppointment quebrava com
+  // 500 sempre que era chamado, porque isso nunca tinha sido exercitado.
+  const rawBody = await response.text();
+  return { ok: true, data: rawBody ? JSON.parse(rawBody) : null };
 }
 
 type RpcResult = { ok: true; data: unknown } | { ok: false; status: number; error: string; code: string | null };
@@ -477,14 +482,27 @@ async function tryAutoScheduleStrandTest(
   });
   if (!recordResult.ok) return { scheduled: false, reason: 'BOOKING_FAILED' };
 
-  const recorded = recordResult.data as { scheduled: boolean; reason?: string };
-  if (!recorded.scheduled) return { scheduled: false, reason: recorded.reason ?? 'STRAND_TEST_SLOT_TAKEN' };
+  // A RPC devolve o que está DE FATO gravado — numa chamada repetida pro
+  // mesmo agendamento principal (retry idempotente), isso é a reserva
+  // original, não o candidato que acabamos de recalcular agora (que pode
+  // ser um horário diferente, já que os testes anteriores agora contam
+  // como ocupação). Nunca confiar em `candidate` para o valor devolvido.
+  const recorded = recordResult.data as {
+    scheduled: boolean;
+    reason?: string;
+    startsAt?: string;
+    endsAt?: string;
+    memberName?: string;
+  };
+  if (!recorded.scheduled || !recorded.startsAt || !recorded.endsAt) {
+    return { scheduled: false, reason: recorded.reason ?? 'STRAND_TEST_SLOT_TAKEN' };
+  }
 
   return {
     scheduled: true,
-    startsAt: new Date(candidate.startMs).toISOString(),
-    endsAt: new Date(candidate.endMs).toISOString(),
-    memberName,
+    startsAt: recorded.startsAt,
+    endsAt: recorded.endsAt,
+    memberName: recorded.memberName ?? memberName,
   };
 }
 
