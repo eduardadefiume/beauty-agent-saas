@@ -34,8 +34,8 @@ type Member = {
 };
 /**
  * Janela extra de horário válida só para uma cliente específica (reconhecida
- * por telefone ou, na falta dele, pelo nome) — soma ao expediente normal em
- * vez de substituí-lo. Hoje cadastrada à mão; quando o WhatsApp estiver
+ * por telefone ou, na falta dele, pelo nome), que soma ao expediente normal
+ * em vez de substituí-lo. Hoje cadastrada à mão; quando o WhatsApp estiver
  * conectado, a ideia é a lista de contatos alimentar clientPhoneDigits em
  * vez de reinventar o modelo.
  */
@@ -66,15 +66,22 @@ type Service = {
   basePriceMinor: number | null;
   variations: Array<{ name: string; priceMinor: number | null }>;
   steps: Step[];
-  /** Exige teste de mechas antes do atendimento (config só — busca automática do teste ainda não existe). */
+  /** Exige teste de mechas antes do atendimento; o sistema tenta marcar o teste sozinho na janela configurada. */
   requiresStrandTest: boolean;
   strandTestLeadDays: number;
   strandTestDurationMinutes: number;
   strandTestPreferredWeekdays: number[];
 };
+type CancellationChargeType = 'FULL_PRICE' | 'FIXED_AMOUNT' | 'PERCENTAGE';
 type Config = {
   unit: { name: string; timezone: string };
   finalMessageTemplate: string;
+  /** Cobrança configurável quando a cliente falta ou cancela em cima da hora. O dono decide se cobra e quanto. */
+  cancellationPolicyEnabled: boolean;
+  cancellationWindowHours: number;
+  cancellationChargeType: CancellationChargeType | null;
+  cancellationChargeAmountMinor: number | null;
+  cancellationChargePercentage: number | null;
   operatingHours: Array<Slot & { latestEndTime: string }>;
   clientExceptions: ClientException[];
   skills: Skill[];
@@ -94,6 +101,11 @@ const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const EMPTY: Config = {
   unit: { name: 'Unidade principal', timezone: 'America/Sao_Paulo' },
   finalMessageTemplate: '',
+  cancellationPolicyEnabled: false,
+  cancellationWindowHours: 24,
+  cancellationChargeType: null,
+  cancellationChargeAmountMinor: null,
+  cancellationChargePercentage: null,
   operatingHours: [],
   clientExceptions: [],
   skills: [],
@@ -138,13 +150,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
   { key: 'servicos', label: 'Serviços', ready: true },
   { key: 'agenda', label: 'Agenda', ready: true },
   { key: 'recursos', label: 'Recursos', ready: true },
-  {
-    key: 'politicas',
-    label: 'Políticas de sinal',
-    ready: false,
-    soonNote:
-      'Suspenso por decisão sua nesta fase do piloto: William e Jack não cobram sinal. Ativamos aqui quando isso mudar.',
-  },
+  { key: 'politicas', label: 'Política de cancelamento', ready: true },
   {
     key: 'conhecimento',
     label: 'Conhecimento (fotos)',
@@ -157,7 +163,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
     label: 'Comunicação',
     ready: false,
     soonNote:
-      'Modelos de mensagem por evento (confirmação, sinal, remarcação, lembrete, ausência) ainda não têm cadastro próprio — hoje só existe a mensagem final única, em Negócio.',
+      'Modelos de mensagem por evento (confirmação, sinal, remarcação, lembrete, ausência) ainda não têm cadastro próprio. Hoje só existe a mensagem final única, em Negócio.',
   },
   {
     key: 'whatsapp',
@@ -171,7 +177,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
     label: 'Agente (fala com você)',
     ready: false,
     soonNote:
-      'O módulo para você conversar direto com a IA — avisar atraso, remanejar clientes, consultar agenda — ainda não foi modelado.',
+      'O módulo para você conversar direto com a IA (avisar atraso, remanejar clientes, consultar agenda) ainda não foi modelado.',
   },
   {
     key: 'clientes',
@@ -185,7 +191,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
     label: 'Promoções',
     ready: false,
     soonNote:
-      'Segmentação e campanhas ainda não foram modeladas — são a última prioridade do plano, depois do motor de agenda estar validado.',
+      'Segmentação e campanhas ainda não foram modeladas. São a última prioridade do plano, depois do motor de agenda estar validado.',
   },
   { key: 'simulacao', label: 'Simulação', ready: true },
   { key: 'publicar', label: 'Publicar', ready: true },
@@ -242,6 +248,14 @@ function normalize(data: Loaded): Config {
   return {
     unit: { name: data.unit.name, timezone: data.unit.timezone },
     finalMessageTemplate: String(raw.finalMessageTemplate ?? ''),
+    cancellationPolicyEnabled: Boolean(raw.cancellationPolicyEnabled),
+    cancellationWindowHours:
+      raw.cancellationWindowHours == null ? 24 : Number(raw.cancellationWindowHours),
+    cancellationChargeType: (raw.cancellationChargeType as CancellationChargeType | null) ?? null,
+    cancellationChargeAmountMinor:
+      raw.cancellationChargeAmountMinor == null ? null : Number(raw.cancellationChargeAmountMinor),
+    cancellationChargePercentage:
+      raw.cancellationChargePercentage == null ? null : Number(raw.cancellationChargePercentage),
     operatingHours: rows(raw.operatingHours).map((item) => ({
       weekday: Number(item.weekday),
       startsAt: clock(item.starts_at),
@@ -362,10 +376,42 @@ function formatDatePtBr(dateIso: string): string {
   return `${day}/${month}/${year}`;
 }
 
+function formatMoneyFromMinor(minor: number | null): string {
+  if (minor == null) return '';
+  return (minor / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+/**
+ * Texto da política de cancelamento, gerado a partir da configuração do
+ * dono. Não é digitado à mão: data, horário e essa cláusula entram
+ * automático na mensagem que a cliente recebe ao marcar.
+ */
+function buildCancellationClause(config: Config): string {
+  if (!config.cancellationPolicyEnabled) return '';
+  const hours = config.cancellationWindowHours;
+  let chargeText = 'o valor do procedimento';
+  if (config.cancellationChargeType === 'FIXED_AMOUNT' && config.cancellationChargeAmountMinor != null) {
+    chargeText = formatMoneyFromMinor(config.cancellationChargeAmountMinor);
+  } else if (config.cancellationChargeType === 'PERCENTAGE' && config.cancellationChargePercentage != null) {
+    chargeText = `${config.cancellationChargePercentage}% do valor do procedimento`;
+  } else if (config.cancellationChargeType === 'FULL_PRICE') {
+    chargeText = 'o valor cheio do procedimento';
+  }
+  return `Se precisar cancelar, avise com pelo menos ${hours}h de antecedência. Faltas ou cancelamentos em cima da hora têm cobrança de ${chargeText}.`;
+}
+
+/** Prévia do que a cliente recebe: data e horário do exemplo entram automático, igual acontece de verdade quando o horário é marcado. */
+function buildFinalMessagePreview(config: Config): string {
+  const base = config.finalMessageTemplate.trim();
+  const dateLine = 'Seu horário está confirmado para quinta-feira, 14/08 às 15:00.';
+  const clause = buildCancellationClause(config);
+  return [dateLine, base, clause].filter(Boolean).join('\n\n');
+}
+
 /**
  * Calendário de disponibilidade Dinâmica: em vez da pessoa preencher uma
  * faixa semanal recorrente, marca dia a dia (mês a mês) quando ela vai
- * trabalhar — igual ao pedido da Duda: "geralmente deixo de outra cor
+ * trabalhar, igual ao pedido da Duda: "geralmente deixo de outra cor
  * (amarelo)". Cada dia marcado vira um turno em app.member_dynamic_shifts,
  * que o motor de agenda usa para pessoas em modo Dinâmica/Híbrida.
  */
@@ -456,7 +502,7 @@ function DynamicShiftCalendar({
               onClick={() => (shift ? onRemoveShift(cell.dateIso) : onAddShift(cell.dateIso))}
               title={
                 shift
-                  ? `${formatDatePtBr(cell.dateIso)}: vai trabalhar das ${shift.startsAt} às ${shift.endsAt} — clique para desmarcar`
+                  ? `${formatDatePtBr(cell.dateIso)}: vai trabalhar das ${shift.startsAt} às ${shift.endsAt}, clique para desmarcar`
                   : `Marcar ${formatDatePtBr(cell.dateIso)} como dia de trabalho`
               }
             >
@@ -467,7 +513,7 @@ function DynamicShiftCalendar({
       </div>
       {sortedShifts.length > 0 && (
         <div className="dynamic-calendar-list">
-          <p className="hint small">Dias marcados em amarelo — ajuste o horário de cada um:</p>
+          <p className="hint small">Dias marcados em amarelo: ajuste o horário de cada um.</p>
           {sortedShifts.map((shift) => (
             <div className="row slot" key={shift.shiftDate}>
               <span className="dynamic-calendar-date">{formatDatePtBr(shift.shiftDate)}</span>
@@ -524,6 +570,23 @@ export default function Configurator({ user }: { user: { displayName: string; em
   const [notice, setNotice] = useState('');
   const [module, setModule] = useState<ModuleKey>('negocio');
   const [calendarConnections, setCalendarConnections] = useState<CalendarConnection[]>([]);
+  const [expandedSkills, setExpandedSkills] = useState<Set<number>>(new Set());
+  const [expandedMembers, setExpandedMembers] = useState<Set<number>>(new Set());
+  const [expandedResourceTypes, setExpandedResourceTypes] = useState<Set<number>>(new Set());
+  const [expandedServices, setExpandedServices] = useState<Set<number>>(new Set());
+  const [expandedExceptions, setExpandedExceptions] = useState<Set<number>>(new Set());
+
+  function toggleExpanded(
+    setFn: (updater: (current: Set<number>) => Set<number>) => void,
+    index: number
+  ) {
+    setFn((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
 
   useEffect(() => {
     const calendarConnected = searchParams.get('calendarConnected');
@@ -662,7 +725,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
       setReadiness(loaded.readiness);
       setUnitId(loaded.unit.id);
       setDirty(false);
-      setNotice('Rascunho novo aberto com os dados publicados — pode editar de novo.');
+      setNotice('Rascunho novo aberto com os dados publicados, pode editar de novo.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Falha ao abrir novo rascunho.');
     } finally {
@@ -708,7 +771,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                 className={`save-now ${dirty ? 'save-now-pending' : ''}`}
                 disabled={busy || !dirty}
                 onClick={() => void save()}
-                title="Salva o que você editou em qualquer módulo — não precisa ir em Publicar para isso."
+                title="Salva o que você editou em qualquer módulo, não precisa ir em Publicar para isso."
               >
                 {busy ? 'Salvando…' : dirty ? 'Salvar alterações' : 'Tudo salvo'}
               </button>
@@ -798,6 +861,118 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       }
                     />
                   </label>
+                  <p className="hint small">
+                    Data e horário do atendimento entram sozinhos, não precisa digitar. Se a
+                    política de cancelamento estiver ativa (aba Política de cancelamento), o
+                    aviso sobre falta e cancelamento em cima da hora também entra sozinho, depois
+                    do que você escrever aqui.
+                  </p>
+                  <div className="preview-box">
+                    <span className="preview-label">É assim que a cliente recebe:</span>
+                    <p>{buildFinalMessagePreview(config)}</p>
+                  </div>
+                </article>
+              )}
+
+              {module === 'politicas' && (
+                <article className="card">
+                  <h2>Política de cancelamento</h2>
+                  <p className="hint">
+                    Configure se falta ou cancelamento em cima da hora tem cobrança, e quanto. Fica
+                    a seu critério: nenhuma cobrança acontece de verdade ainda, isso é só o aviso
+                    que a cliente recebe ao marcar.
+                  </p>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      disabled={!editable}
+                      checked={config.cancellationPolicyEnabled}
+                      onChange={(e) =>
+                        change((draft) => {
+                          draft.cancellationPolicyEnabled = e.target.checked;
+                        })
+                      }
+                    />
+                    Cobrar por falta ou cancelamento em cima da hora
+                  </label>
+                  {config.cancellationPolicyEnabled && (
+                    <>
+                      <div className="grid two">
+                        <label>
+                          Cancelamento grátis até quantas horas antes
+                          <input
+                            type="number"
+                            min={1}
+                            max={168}
+                            disabled={!editable}
+                            value={config.cancellationWindowHours}
+                            onChange={(e) =>
+                              change((draft) => {
+                                draft.cancellationWindowHours = Number(e.target.value) || 24;
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          O que cobrar
+                          <select
+                            disabled={!editable}
+                            value={config.cancellationChargeType ?? ''}
+                            onChange={(e) =>
+                              change((draft) => {
+                                draft.cancellationChargeType = (e.target.value ||
+                                  null) as CancellationChargeType | null;
+                              })
+                            }
+                          >
+                            <option value="">Escolha</option>
+                            <option value="FULL_PRICE">Valor cheio do procedimento</option>
+                            <option value="FIXED_AMOUNT">Valor fixo</option>
+                            <option value="PERCENTAGE">Porcentagem do procedimento</option>
+                          </select>
+                        </label>
+                      </div>
+                      {config.cancellationChargeType === 'FIXED_AMOUNT' && (
+                        <label>
+                          Valor fixo (R$, em centavos)
+                          <input
+                            type="number"
+                            min={0}
+                            disabled={!editable}
+                            value={config.cancellationChargeAmountMinor ?? ''}
+                            onChange={(e) =>
+                              change((draft) => {
+                                draft.cancellationChargeAmountMinor =
+                                  e.target.value === '' ? null : Number(e.target.value);
+                              })
+                            }
+                          />
+                        </label>
+                      )}
+                      {config.cancellationChargeType === 'PERCENTAGE' && (
+                        <label>
+                          Porcentagem do procedimento
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            disabled={!editable}
+                            value={config.cancellationChargePercentage ?? ''}
+                            onChange={(e) =>
+                              change((draft) => {
+                                draft.cancellationChargePercentage =
+                                  e.target.value === '' ? null : Number(e.target.value);
+                              })
+                            }
+                          />
+                        </label>
+                      )}
+                      <div className="preview-box">
+                        <span className="preview-label">Aviso que entra na mensagem:</span>
+                        <p>{buildCancellationClause(config) || 'Escolha o que cobrar para ver o aviso.'}</p>
+                      </div>
+                    </>
+                  )}
                 </article>
               )}
 
@@ -902,7 +1077,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     <h3>Exceções por cliente</h3>
                     <button
                       disabled={!editable}
-                      onClick={() =>
+                      onClick={() => {
+                        const newIndex = config.clientExceptions.length;
                         change((draft) =>
                           draft.clientExceptions.push({
                             clientName: '',
@@ -912,15 +1088,16 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             endsAt: '12:00',
                             note: '',
                           })
-                        )
-                      }
+                        );
+                        setExpandedExceptions((current) => new Set(current).add(newIndex));
+                      }}
                     >
                       Adicionar exceção
                     </button>
                   </div>
                   <p className="hint">
                     Alguma cliente só consegue vir fora do expediente normal (ex.: só sábado de
-                    manhã, só depois das 19h numa terça)? Cadastre aqui — vale só para ela, o
+                    manhã, só depois das 19h numa terça)? Cadastre aqui, vale só para ela. O
                     resto da clientela continua vendo o expediente normal. Hoje o telefone é
                     digitado à mão; quando o WhatsApp estiver conectado, dá pra puxar da lista de
                     contatos.
@@ -928,8 +1105,35 @@ export default function Configurator({ user }: { user: { displayName: string; em
                   {config.clientExceptions.length === 0 && (
                     <p className="empty">Nenhuma exceção cadastrada ainda.</p>
                   )}
-                  {config.clientExceptions.map((exception, index) => (
-                    <article className="nested" key={index}>
+                  {config.clientExceptions.map((exception, index) => {
+                    const isOpen = expandedExceptions.has(index);
+                    return (
+                    <article className="nested item-card" key={index}>
+                      <div className="item-summary">
+                        <div className="item-summary-text">
+                          <strong>{exception.clientName || 'Nova exceção'}</strong>
+                          <span className="item-badge">
+                            {DAYS[exception.weekday]} {exception.startsAt}–{exception.endsAt}
+                          </span>
+                        </div>
+                        <div className="item-summary-actions">
+                          <button
+                            className="ghost"
+                            onClick={() => toggleExpanded(setExpandedExceptions, index)}
+                          >
+                            {isOpen ? 'Fechar' : 'Detalhes'}
+                          </button>
+                          <button
+                            className="danger ghost"
+                            disabled={!editable}
+                            onClick={() => change((draft) => draft.clientExceptions.splice(index, 1))}
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      </div>
+                      {isOpen && (
+                      <div className="item-details">
                       <div className="grid two">
                         <label>
                           Nome da cliente
@@ -1006,15 +1210,6 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             }
                           />
                         </label>
-                        <button
-                          className="danger"
-                          disabled={!editable}
-                          onClick={() =>
-                            change((draft) => draft.clientExceptions.splice(index, 1))
-                          }
-                        >
-                          Remover
-                        </button>
                       </div>
                       <label>
                         Nota (opcional, só pra você lembrar o motivo)
@@ -1030,8 +1225,20 @@ export default function Configurator({ user }: { user: { displayName: string; em
                           }
                         />
                       </label>
+                      <div className="item-save-row">
+                        <button
+                          className="primary"
+                          disabled={!editable || busy || !dirty}
+                          onClick={() => void save()}
+                        >
+                          {busy ? 'Salvando…' : 'Salvar exceção'}
+                        </button>
+                      </div>
+                      </div>
+                      )}
                     </article>
-                  ))}
+                    );
+                  })}
 
                   <div className="title minor">
                     <h3>Google Agenda</h3>
@@ -1089,7 +1296,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     <h3>Competências</h3>
                     <button
                       disabled={!editable}
-                      onClick={() =>
+                      onClick={() => {
+                        const newIndex = config.skills.length;
                         change((draft) =>
                           draft.skills.push({
                             name: '',
@@ -1097,150 +1305,184 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             qualifierAllowCustom: false,
                             qualifierOptions: [],
                           })
-                        )
-                      }
+                        );
+                        setExpandedSkills((current) => new Set(current).add(newIndex));
+                      }}
                     >
                       Adicionar competência
                     </button>
                   </div>
-                  <p className="hint small">
-                    Se a competência tem variações que nem toda a equipe cobre — ex.: nem toda
-                    colorista faz tom vermelho, o Gloss Express muda o tempo de ação conforme o
-                    tom — marque &ldquo;Tem variação&rdquo; e cadastre as opções. Assim o agente só
-                    marca quem realmente sabe fazer aquele caso específico, não qualquer coisa da
-                    competência.
-                  </p>
                   {config.skills.length === 0 && (
                     <p className="empty">Nenhuma competência cadastrada ainda.</p>
                   )}
-                  {config.skills.map((skill, index) => (
-                    <article className="nested" key={index}>
-                      <div className="grid two">
-                        <label>
-                          Competência
-                          <input
-                            disabled={!editable}
-                            placeholder="Ex.: Coloração"
-                            value={skill.name}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.skills[index];
-                                if (target) target.name = e.target.value;
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="check">
-                          <input
-                            type="checkbox"
-                            disabled={!editable}
-                            checked={Boolean(skill.qualifierLabel)}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.skills[index];
-                                if (!target) return;
-                                target.qualifierLabel = e.target.checked
-                                  ? target.qualifierLabel || 'Tipo'
-                                  : '';
-                                if (!e.target.checked) {
-                                  target.qualifierOptions = [];
-                                  target.qualifierAllowCustom = false;
-                                }
-                              })
-                            }
-                          />
-                          Tem variação (ex.: tom, tipo)
-                        </label>
-                      </div>
-                      {skill.qualifierLabel && (
-                        <article className="nested">
-                          <label>
-                            Nome da pergunta
-                            <input
-                              disabled={!editable}
-                              placeholder="Ex.: Tom, Tipo de corte"
-                              value={skill.qualifierLabel}
-                              onChange={(e) =>
-                                change((draft) => {
-                                  const target = draft.skills[index];
-                                  if (target) target.qualifierLabel = e.target.value;
-                                })
-                              }
-                            />
-                          </label>
-                          <div className="title minor">
-                            <h5>Opções</h5>
+                  {config.skills.map((skill, index) => {
+                    const isOpen = expandedSkills.has(index);
+                    return (
+                      <article className="nested item-card" key={index}>
+                        <div className="item-summary">
+                          <div className="item-summary-text">
+                            <strong>{skill.name || 'Nova competência'}</strong>
+                            {skill.qualifierLabel && (
+                              <span className="item-badge">{skill.qualifierLabel}</span>
+                            )}
+                          </div>
+                          <div className="item-summary-actions">
                             <button
-                              disabled={!editable}
-                              onClick={() =>
-                                change((draft) => draft.skills[index]?.qualifierOptions.push(''))
-                              }
+                              className="ghost"
+                              onClick={() => toggleExpanded(setExpandedSkills, index)}
                             >
-                              Adicionar opção
+                              {isOpen ? 'Fechar' : 'Detalhes'}
+                            </button>
+                            <button
+                              className="danger ghost"
+                              disabled={!editable}
+                              onClick={() => change((draft) => draft.skills.splice(index, 1))}
+                            >
+                              Remover
                             </button>
                           </div>
-                          {skill.qualifierOptions.length === 0 && (
-                            <p className="empty small">
-                              Nenhuma opção ainda — ex.: &ldquo;Castanho/Preto&rdquo;,
-                              &ldquo;Vermelho&rdquo;.
+                        </div>
+                        {isOpen && (
+                          <div className="item-details">
+                            <div className="grid two">
+                              <label>
+                                Competência
+                                <input
+                                  disabled={!editable}
+                                  placeholder="Ex.: Coloração"
+                                  value={skill.name}
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target = draft.skills[index];
+                                      if (target) target.name = e.target.value;
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label className="check">
+                                <input
+                                  type="checkbox"
+                                  disabled={!editable}
+                                  checked={Boolean(skill.qualifierLabel)}
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target = draft.skills[index];
+                                      if (!target) return;
+                                      target.qualifierLabel = e.target.checked
+                                        ? target.qualifierLabel || 'Tipo'
+                                        : '';
+                                      if (!e.target.checked) {
+                                        target.qualifierOptions = [];
+                                        target.qualifierAllowCustom = false;
+                                      }
+                                    })
+                                  }
+                                />
+                                Tem variação (ex.: tom, tipo)
+                              </label>
+                            </div>
+                            <p className="hint small">
+                              Se a competência tem variações que nem toda a equipe cobre (ex.: nem
+                              toda colorista faz tom vermelho, o Gloss Express muda o tempo de
+                              ação conforme o tom), marque &ldquo;Tem variação&rdquo; e cadastre as
+                              opções. Assim o agente só marca quem realmente sabe fazer aquele caso
+                              específico, não qualquer coisa da competência.
                             </p>
-                          )}
-                          {skill.qualifierOptions.map((option, optionIndex) => (
-                            <div className="row" key={optionIndex}>
-                              <input
-                                disabled={!editable}
-                                placeholder="Ex.: Castanho/Preto"
-                                value={option}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target = draft.skills[index];
-                                    if (target) target.qualifierOptions[optionIndex] = e.target.value;
-                                  })
-                                }
-                              />
+                            {skill.qualifierLabel && (
+                              <article className="nested">
+                                <label>
+                                  Nome da pergunta
+                                  <input
+                                    disabled={!editable}
+                                    placeholder="Ex.: Tom, Tipo de corte"
+                                    value={skill.qualifierLabel}
+                                    onChange={(e) =>
+                                      change((draft) => {
+                                        const target = draft.skills[index];
+                                        if (target) target.qualifierLabel = e.target.value;
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <div className="title minor">
+                                  <h5>Opções</h5>
+                                  <button
+                                    disabled={!editable}
+                                    onClick={() =>
+                                      change((draft) => draft.skills[index]?.qualifierOptions.push(''))
+                                    }
+                                  >
+                                    Adicionar opção
+                                  </button>
+                                </div>
+                                {skill.qualifierOptions.length === 0 && (
+                                  <p className="empty small">
+                                    Nenhuma opção ainda, ex.: &ldquo;Castanho/Preto&rdquo;,
+                                    &ldquo;Vermelho&rdquo;.
+                                  </p>
+                                )}
+                                {skill.qualifierOptions.map((option, optionIndex) => (
+                                  <div className="row" key={optionIndex}>
+                                    <input
+                                      disabled={!editable}
+                                      placeholder="Ex.: Castanho/Preto"
+                                      value={option}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target = draft.skills[index];
+                                          if (target) target.qualifierOptions[optionIndex] = e.target.value;
+                                        })
+                                      }
+                                    />
+                                    <button
+                                      className="danger"
+                                      disabled={!editable}
+                                      onClick={() =>
+                                        change((draft) => draft.skills[index]?.qualifierOptions.splice(optionIndex, 1))
+                                      }
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
+                                <label className="check">
+                                  <input
+                                    type="checkbox"
+                                    disabled={!editable}
+                                    checked={skill.qualifierAllowCustom}
+                                    onChange={(e) =>
+                                      change((draft) => {
+                                        const target = draft.skills[index];
+                                        if (target) target.qualifierAllowCustom = e.target.checked;
+                                      })
+                                    }
+                                  />
+                                  Permitir &ldquo;Outro&rdquo; (a pessoa escreve qual)
+                                </label>
+                              </article>
+                            )}
+                            <div className="item-save-row">
                               <button
-                                className="danger"
-                                disabled={!editable}
-                                onClick={() =>
-                                  change((draft) => draft.skills[index]?.qualifierOptions.splice(optionIndex, 1))
-                                }
+                                className="primary"
+                                disabled={!editable || busy || !dirty}
+                                onClick={() => void save()}
                               >
-                                ×
+                                {busy ? 'Salvando…' : 'Salvar competência'}
                               </button>
                             </div>
-                          ))}
-                          <label className="check">
-                            <input
-                              type="checkbox"
-                              disabled={!editable}
-                              checked={skill.qualifierAllowCustom}
-                              onChange={(e) =>
-                                change((draft) => {
-                                  const target = draft.skills[index];
-                                  if (target) target.qualifierAllowCustom = e.target.checked;
-                                })
-                              }
-                            />
-                            Permitir &ldquo;Outro&rdquo; (a pessoa escreve qual)
-                          </label>
-                        </article>
-                      )}
-                      <button
-                        className="danger ghost"
-                        disabled={!editable}
-                        onClick={() => change((draft) => draft.skills.splice(index, 1))}
-                      >
-                        Remover {skill.name || 'esta competência'}
-                      </button>
-                    </article>
-                  ))}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
 
                   <div className="title minor">
                     <h3>Profissionais</h3>
                     {config.teamMembers.length > 0 && (
                       <button
                         disabled={!editable}
-                        onClick={() =>
+                        onClick={() => {
+                          const newIndex = config.teamMembers.length;
                           change((draft) =>
                             draft.teamMembers.push({
                               name: '',
@@ -1250,8 +1492,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                               availability: [],
                               dynamicShifts: [],
                             })
-                          )
-                        }
+                          );
+                          setExpandedMembers((current) => new Set(current).add(newIndex));
+                        }}
                       >
                         Adicionar pessoa
                       </button>
@@ -1265,7 +1508,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       <div className="row">
                         <button
                           disabled={!editable}
-                          onClick={() =>
+                          onClick={() => {
                             change((draft) =>
                               draft.teamMembers.push({
                                 name: '',
@@ -1275,15 +1518,16 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                 availability: [],
                                 dynamicShifts: [],
                               })
-                            )
-                          }
+                            );
+                            setExpandedMembers((current) => new Set(current).add(0));
+                          }}
                         >
                           Trabalho sozinha(o)
                         </button>
                         <button
                           className="ghost"
                           disabled={!editable}
-                          onClick={() =>
+                          onClick={() => {
                             change((draft) =>
                               draft.teamMembers.push({
                                 name: '',
@@ -1293,27 +1537,61 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                 availability: [],
                                 dynamicShifts: [],
                               })
-                            )
-                          }
+                            );
+                            setExpandedMembers((current) => new Set(current).add(0));
+                          }}
                         >
                           Tenho equipe
                         </button>
                       </div>
                       <p className="hint small">
                         Escolhendo qualquer uma das opções, cadastre-se (ou cadastre a primeira
-                        pessoa) abaixo — dá pra adicionar mais gente a qualquer momento, mesmo
+                        pessoa) abaixo. Dá pra adicionar mais gente a qualquer momento, mesmo
                         depois de marcar &ldquo;sozinha(o)&rdquo;.
                       </p>
                     </article>
                   )}
                   {config.teamMembers.length === 1 && (
                     <p className="hint small">
-                      Você trabalha sozinha(o) por enquanto — pode adicionar mais gente na equipe
+                      Você trabalha sozinha(o) por enquanto. Pode adicionar mais gente na equipe
                       quando quiser.
                     </p>
                   )}
-                  {config.teamMembers.map((member, memberIndex) => (
-                    <article className="nested" key={memberIndex}>
+                  {config.teamMembers.map((member, memberIndex) => {
+                    const isOpen = expandedMembers.has(memberIndex);
+                    const modeLabel =
+                      member.availabilityMode === 'DYNAMIC'
+                        ? 'Dinâmica'
+                        : member.availabilityMode === 'HYBRID'
+                          ? 'Híbrida'
+                          : 'Fixa';
+                    return (
+                      <article className="nested item-card" key={memberIndex}>
+                        <div className="item-summary">
+                          <div className="item-summary-text">
+                            <strong>{member.name || 'Nova pessoa'}</strong>
+                            <span className="item-badge">{modeLabel}</span>
+                          </div>
+                          <div className="item-summary-actions">
+                            <button
+                              className="ghost"
+                              onClick={() => toggleExpanded(setExpandedMembers, memberIndex)}
+                            >
+                              {isOpen ? 'Fechar' : 'Detalhes'}
+                            </button>
+                            <button
+                              className="danger ghost"
+                              disabled={!editable}
+                              onClick={() =>
+                                change((draft) => draft.teamMembers.splice(memberIndex, 1))
+                              }
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        </div>
+                        {isOpen && (
+                          <div className="item-details">
                       <div className="grid two">
                         <label>
                           Nome
@@ -1342,9 +1620,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                               })
                             }
                           >
-                            <option value="FIXED">Fixa — mesma agenda toda semana</option>
-                            <option value="HYBRID">Híbrida — mistura fixo e combinado</option>
-                            <option value="DYNAMIC">Dinâmica — só entra quando confirmar</option>
+                            <option value="FIXED">Fixa (mesma agenda toda semana)</option>
+                            <option value="HYBRID">Híbrida (mistura fixo e combinado)</option>
+                            <option value="DYNAMIC">Dinâmica (só entra quando confirmar)</option>
                           </select>
                         </label>
                       </div>
@@ -1388,7 +1666,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             return (
                               <article className="nested" key={skill.name}>
                                 <strong>
-                                  {skill.name} — {skill.qualifierLabel}
+                                  {skill.name}: {skill.qualifierLabel}
                                 </strong>
                                 <p className="hint small">
                                   Marque quais {skill.qualifierLabel.toLowerCase()} esta pessoa
@@ -1560,8 +1838,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       {member.availabilityMode !== 'FIXED' && (
                         <>
                           <p className="hint small">
-                            Clique nos dias em que {member.name || 'esta pessoa'} vai trabalhar —
-                            eles ficam marcados em amarelo, igual você já faz na sua agenda.
+                            Clique nos dias em que {member.name || 'esta pessoa'} vai trabalhar.
+                            Eles ficam marcados em amarelo, igual você já faz na sua agenda.
                           </p>
                           <DynamicShiftCalendar
                             shifts={member.dynamicShifts}
@@ -1598,15 +1876,20 @@ export default function Configurator({ user }: { user: { displayName: string; em
                           />
                         </>
                       )}
-                      <button
-                        className="danger ghost"
-                        disabled={!editable}
-                        onClick={() => change((draft) => draft.teamMembers.splice(memberIndex, 1))}
-                      >
-                        Remover {member.name || 'esta pessoa'}
-                      </button>
-                    </article>
-                  ))}
+                            <div className="item-save-row">
+                              <button
+                                className="primary"
+                                disabled={!editable || busy || !dirty}
+                                onClick={() => void save()}
+                              >
+                                {busy ? 'Salvando…' : 'Salvar profissional'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
                 </article>
               )}
 
@@ -1616,9 +1899,11 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     <h2>Recursos</h2>
                     <button
                       disabled={!editable}
-                      onClick={() =>
-                        change((draft) => draft.resourceTypes.push({ name: '', resources: [] }))
-                      }
+                      onClick={() => {
+                        const newIndex = config.resourceTypes.length;
+                        change((draft) => draft.resourceTypes.push({ name: '', resources: [] }));
+                        setExpandedResourceTypes((current) => new Set(current).add(newIndex));
+                      }}
                     >
                       Adicionar tipo
                     </button>
@@ -1630,90 +1915,124 @@ export default function Configurator({ user }: { user: { displayName: string; em
                   {config.resourceTypes.length === 0 && (
                     <p className="empty">Nenhum recurso cadastrado ainda.</p>
                   )}
-                  {config.resourceTypes.map((type, typeIndex) => (
-                    <article className="nested" key={typeIndex}>
-                      <label>
-                        Tipo de recurso
-                        <input
-                          disabled={!editable}
-                          value={type.name}
-                          placeholder="Ex.: Cadeira"
-                          onChange={(e) =>
-                            change((draft) => {
-                              const target = draft.resourceTypes[typeIndex];
-                              if (target) target.name = e.target.value;
-                            })
-                          }
-                        />
-                      </label>
-                      <div className="title minor">
-                        <h4>Itens disponíveis</h4>
-                        <button
-                          disabled={!editable}
-                          onClick={() =>
-                            change((draft) =>
-                              draft.resourceTypes[typeIndex]?.resources.push({
-                                name: '',
-                                capacity: 1,
-                              })
-                            )
-                          }
-                        >
-                          Adicionar item
-                        </button>
-                      </div>
-                      {type.resources.map((resource, resourceIndex) => (
-                        <div className="row resource" key={resourceIndex}>
-                          <input
-                            disabled={!editable}
-                            value={resource.name}
-                            placeholder="Nome"
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target =
-                                  draft.resourceTypes[typeIndex]?.resources[resourceIndex];
-                                if (target) target.name = e.target.value;
-                              })
-                            }
-                          />
-                          <label className="inline">
-                            <span>Capacidade</span>
-                            <input
-                              type="number"
-                              min={1}
+                  {config.resourceTypes.map((type, typeIndex) => {
+                    const isOpen = expandedResourceTypes.has(typeIndex);
+                    return (
+                      <article className="nested item-card" key={typeIndex}>
+                        <div className="item-summary">
+                          <div className="item-summary-text">
+                            <strong>{type.name || 'Novo tipo de recurso'}</strong>
+                            <span className="item-badge">
+                              {type.resources.length} {type.resources.length === 1 ? 'item' : 'itens'}
+                            </span>
+                          </div>
+                          <div className="item-summary-actions">
+                            <button
+                              className="ghost"
+                              onClick={() => toggleExpanded(setExpandedResourceTypes, typeIndex)}
+                            >
+                              {isOpen ? 'Fechar' : 'Detalhes'}
+                            </button>
+                            <button
+                              className="danger ghost"
                               disabled={!editable}
-                              value={resource.capacity}
-                              onChange={(e) =>
-                                change((draft) => {
-                                  const target =
-                                    draft.resourceTypes[typeIndex]?.resources[resourceIndex];
-                                  if (target) target.capacity = Number(e.target.value);
-                                })
+                              onClick={() =>
+                                change((draft) => draft.resourceTypes.splice(typeIndex, 1))
                               }
-                            />
-                          </label>
-                          <button
-                            className="danger"
-                            disabled={!editable}
-                            onClick={() =>
-                              change((draft) =>
-                                draft.resourceTypes[typeIndex]?.resources.splice(resourceIndex, 1)
-                              )
-                            }
-                          >
-                            Remover
-                          </button>
+                            >
+                              Remover
+                            </button>
+                          </div>
                         </div>
-                      ))}
-                      <button
-                        className="danger ghost"
-                        disabled={!editable}
-                        onClick={() => change((draft) => draft.resourceTypes.splice(typeIndex, 1))}
-                      >
-                        Remover tipo
-                      </button>
-                    </article>
-                  ))}
+                        {isOpen && (
+                          <div className="item-details">
+                            <label>
+                              Tipo de recurso
+                              <input
+                                disabled={!editable}
+                                value={type.name}
+                                placeholder="Ex.: Cadeira"
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.resourceTypes[typeIndex];
+                                    if (target) target.name = e.target.value;
+                                  })
+                                }
+                              />
+                            </label>
+                            <div className="title minor">
+                              <h4>Itens disponíveis</h4>
+                              <button
+                                disabled={!editable}
+                                onClick={() =>
+                                  change((draft) =>
+                                    draft.resourceTypes[typeIndex]?.resources.push({
+                                      name: '',
+                                      capacity: 1,
+                                    })
+                                  )
+                                }
+                              >
+                                Adicionar item
+                              </button>
+                            </div>
+                            {type.resources.map((resource, resourceIndex) => (
+                              <div className="row resource" key={resourceIndex}>
+                                <input
+                                  disabled={!editable}
+                                  value={resource.name}
+                                  placeholder="Nome"
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target =
+                                        draft.resourceTypes[typeIndex]?.resources[resourceIndex];
+                                      if (target) target.name = e.target.value;
+                                    })
+                                  }
+                                />
+                                <label className="inline">
+                                  <span>Capacidade</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    disabled={!editable}
+                                    value={resource.capacity}
+                                    onChange={(e) =>
+                                      change((draft) => {
+                                        const target =
+                                          draft.resourceTypes[typeIndex]?.resources[resourceIndex];
+                                        if (target) target.capacity = Number(e.target.value);
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <button
+                                  className="danger"
+                                  disabled={!editable}
+                                  onClick={() =>
+                                    change((draft) =>
+                                      draft.resourceTypes[typeIndex]?.resources.splice(resourceIndex, 1)
+                                    )
+                                  }
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            ))}
+                            <div className="item-save-row">
+                              <button
+                                className="primary"
+                                disabled={!editable || busy || !dirty}
+                                onClick={() => void save()}
+                              >
+                                {busy ? 'Salvando…' : 'Salvar tipo de recurso'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
                 </article>
               )}
 
@@ -1723,7 +2042,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     <h2>Serviços</h2>
                     <button
                       disabled={!editable}
-                      onClick={() =>
+                      onClick={() => {
+                        const newIndex = config.services.length;
                         change((draft) =>
                           draft.services.push({
                             name: '',
@@ -1735,8 +2055,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             strandTestDurationMinutes: 60,
                             strandTestPreferredWeekdays: [4, 5],
                           })
-                        )
-                      }
+                        );
+                        setExpandedServices((current) => new Set(current).add(newIndex));
+                      }}
                     >
                       Adicionar serviço
                     </button>
@@ -1748,8 +2069,38 @@ export default function Configurator({ user }: { user: { displayName: string; em
                   {config.services.length === 0 && (
                     <p className="empty">Nenhum serviço cadastrado ainda.</p>
                   )}
-                  {config.services.map((service, serviceIndex) => (
-                    <article className="nested" key={serviceIndex}>
+                  {config.services.map((service, serviceIndex) => {
+                    const isOpen = expandedServices.has(serviceIndex);
+                    return (
+                    <article className="nested item-card" key={serviceIndex}>
+                      <div className="item-summary">
+                        <div className="item-summary-text">
+                          <strong>{service.name || 'Novo serviço'}</strong>
+                          {service.basePriceMinor != null && (
+                            <span className="item-badge">{formatMoneyFromMinor(service.basePriceMinor)}</span>
+                          )}
+                          <span className="item-badge">
+                            {service.steps.length} {service.steps.length === 1 ? 'etapa' : 'etapas'}
+                          </span>
+                        </div>
+                        <div className="item-summary-actions">
+                          <button
+                            className="ghost"
+                            onClick={() => toggleExpanded(setExpandedServices, serviceIndex)}
+                          >
+                            {isOpen ? 'Fechar' : 'Detalhes'}
+                          </button>
+                          <button
+                            className="danger ghost"
+                            disabled={!editable}
+                            onClick={() => change((draft) => draft.services.splice(serviceIndex, 1))}
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      </div>
+                      {isOpen && (
+                      <div className="item-details">
                       <div className="grid two">
                         <label>
                           Serviço
@@ -1804,7 +2155,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             O sistema tenta marcar o teste sozinho quando o atendimento principal é
                             confirmado (qualquer profissional com a competência serve, em qualquer
                             cadeira livre). Se não achar horário na janela, o atendimento principal
-                            não trava — só avisa que o teste precisa ser marcado por você.
+                            não trava, só avisa que o teste precisa ser marcado por você.
                           </p>
                           <div className="grid two">
                             <label>
@@ -2001,8 +2352,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                   })
                                 }
                               >
-                                <option value="ACTIVE">Ativa — ocupa o profissional</option>
-                                <option value="PASSIVE">Passiva — ex.: pausa/espera</option>
+                                <option value="ACTIVE">Ativa (ocupa o profissional)</option>
+                                <option value="PASSIVE">Passiva (ex.: pausa/espera)</option>
                               </select>
                             </label>
                           </div>
@@ -2043,7 +2394,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                 return (
                                   <div className="row slot" key={skill.name}>
                                     <span>
-                                      {skill.name} — {skill.qualifierLabel}
+                                      {skill.name}: {skill.qualifierLabel}
                                     </span>
                                     <select
                                       disabled={!editable}
@@ -2204,15 +2555,20 @@ export default function Configurator({ user }: { user: { displayName: string; em
                           </button>
                         </div>
                       ))}
-                      <button
-                        className="danger ghost"
-                        disabled={!editable}
-                        onClick={() => change((draft) => draft.services.splice(serviceIndex, 1))}
-                      >
-                        Remover {service.name || 'este serviço'}
-                      </button>
+                      <div className="item-save-row">
+                        <button
+                          className="primary"
+                          disabled={!editable || busy || !dirty}
+                          onClick={() => void save()}
+                        >
+                          {busy ? 'Salvando…' : 'Salvar serviço'}
+                        </button>
+                      </div>
+                      </div>
+                      )}
                     </article>
-                  ))}
+                    );
+                  })}
                 </article>
               )}
 
@@ -2233,14 +2589,14 @@ export default function Configurator({ user }: { user: { displayName: string; em
                   {editable ? (
                     <p className="hint">
                       Publicar congela esta configuração como a versão vigente do atendimento.
-                      Depois de publicada, ela vira somente-leitura — clique em &ldquo;Editar de
+                      Depois de publicada, ela vira somente-leitura. Clique em &ldquo;Editar de
                       novo&rdquo; aqui mesmo pra abrir um rascunho novo com esses dados, sem perder
                       nada.
                     </p>
                   ) : (
                     <p className="hint">
                       Esta configuração está publicada e valendo para o atendimento agora. Pra
-                      mudar qualquer coisa, abra um rascunho novo — ele começa com tudo que está
+                      mudar qualquer coisa, abra um rascunho novo. Ele começa com tudo que está
                       publicado, você só edita por cima.
                     </p>
                   )}

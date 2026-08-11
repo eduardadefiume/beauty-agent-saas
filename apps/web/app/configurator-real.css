@@ -315,6 +315,27 @@ legend {
   line-height: 1.6;
   margin: 0;
 }
+.preview-box {
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+  background: var(--paper);
+}
+.preview-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.preview-box p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
 
 .title {
   display: flex;
@@ -384,6 +405,49 @@ legend {
   border: 1px solid #e7e4dc;
   border-radius: 13px;
   background: #fbfaf6;
+}
+.item-card {
+  padding: 0;
+  overflow: hidden;
+}
+.item-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+}
+.item-summary-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.item-summary-text strong {
+  font-size: 14px;
+}
+.item-badge {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+.item-summary-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.item-details {
+  padding: 4px 16px 18px;
+  border-top: 1px solid #e7e4dc;
+}
+.item-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 .step {
   margin: 12px 0;
@@ -521,46 +585,49 @@ footer {
   border: 1px solid #e7e4dc;
   border-radius: 12px;
   background: #fbfaf6;
-  padding: 14px;
+  padding: 10px;
   margin: 8px 0 16px;
+  max-width: 280px;
 }
 .dynamic-calendar-header {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  margin-bottom: 10px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 .dynamic-calendar-header strong {
-  min-width: 160px;
+  min-width: 120px;
   text-align: center;
+  font-size: 13px;
 }
 .dynamic-calendar-header button {
-  padding: 4px 12px;
+  padding: 2px 9px;
   border-radius: 8px;
+  font-size: 12px;
 }
 .dynamic-calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 3px;
 }
 .dynamic-calendar-weekday {
   text-align: center;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   color: var(--muted);
-  padding-bottom: 4px;
+  padding-bottom: 3px;
 }
 .dynamic-calendar-cell {
   aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid transparent;
   background: white;
   color: var(--ink);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
 }
 .dynamic-calendar-cell:disabled {
   cursor: not-allowed;

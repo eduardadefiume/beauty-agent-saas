@@ -175,7 +175,7 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
       setActiveHold({ holdId: data.holdId, expiresAt: data.expiresAt, candidate });
       setNotice('Horário reservado provisoriamente. Confirme em até 10 minutos ou ele libera sozinho.');
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Não foi possível reservar — provavelmente alguém levou esse horário primeiro.');
+      setNotice(error instanceof Error ? error.message : 'Não foi possível reservar, provavelmente alguém levou esse horário primeiro.');
       void search();
     } finally {
       setBusy(false);
@@ -202,7 +202,7 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
       setActiveHold(null);
       setCandidates([]);
       setSearched(false);
-      setNotice('Agendamento confirmado de verdade no motor — apareceria assim para a cliente.');
+      setNotice('Agendamento confirmado de verdade no motor. Apareceria assim para a cliente.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Não foi possível confirmar.');
     } finally {
@@ -245,18 +245,18 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
     <article className="card">
       <h2>Simulação</h2>
       <p className="hint">
-        Este painel usa o <strong>motor de agenda de verdade</strong> — o mesmo que, mais adiante, o
+        Este painel usa o <strong>motor de agenda de verdade</strong>, o mesmo que, mais adiante, o
         WhatsApp vai chamar para marcar horários com suas clientes. Nada aqui é encenado: ao reservar e
         confirmar, um agendamento real é criado no banco (você pode cancelar depois, é só um teste). Serve
         para você conferir, antes de ligar o WhatsApp, se os horários que o sistema está oferecendo fazem
-        sentido — batem com o expediente, a equipe e os recursos que você cadastrou.
+        sentido, batendo com o expediente, a equipe e os recursos que você cadastrou.
       </p>
       <p className="hint">
         <strong>Como usar:</strong> escolha um serviço publicado, clique em <em>Buscar horários</em> e veja
         as opções que o motor encontrou. Clique em <em>Reservar</em> num horário para travá-lo por 10
         minutos (como se uma cliente estivesse decidindo), depois em <em>Confirmar</em> para virar um
         agendamento de verdade, ou em <em>Cancelar</em> para liberar. Se dois testes tentarem o mesmo
-        horário com o mesmo profissional, o segundo é bloqueado automaticamente — é essa trava que impede
+        horário com o mesmo profissional, o segundo é bloqueado automaticamente: é essa trava que impede
         cliente duplicada no futuro.
       </p>
 
@@ -296,21 +296,21 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
           </div>
           <p className="hint small">
             Preenchendo esse campo, a busca também considera as exceções de horário cadastradas
-            em <strong>Agenda</strong> para essa cliente (nome exato ou telefone) — testa se o
+            em <strong>Agenda</strong> para essa cliente (nome exato ou telefone). Testa se o
             sistema realmente abre o horário extra só para ela.
           </p>
           {searched && !activeHold && !confirmed && clientIdentifier.trim() && (
             <p className="hint small">
               {clientExceptionApplied
-                ? 'Encontrou uma exceção cadastrada para essa cliente — os horários acima já incluem a janela extra dela.'
-                : 'Nenhuma exceção cadastrada para esse nome/telefone — os horários acima são só o expediente normal.'}
+                ? 'Encontrou uma exceção cadastrada para essa cliente, os horários acima já incluem a janela extra dela.'
+                : 'Nenhuma exceção cadastrada para esse nome/telefone, os horários acima são só o expediente normal.'}
             </p>
           )}
 
           {activeHold && (
             <div className="nested">
               <div className="title minor">
-                <h4>Horário reservado (teste) — {formatMoment(activeHold.candidate.startMs)}</h4>
+                <h4>Horário reservado (teste): {formatMoment(activeHold.candidate.startMs)}</h4>
               </div>
               <p className="hint small">
                 Expira sozinho às {new Date(activeHold.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} se ninguém confirmar.
@@ -338,7 +338,7 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
           {confirmed && (
             <div className="nested">
               <div className="title minor">
-                <h4>Agendamento confirmado — {formatMoment(confirmed.candidate.startMs)}</h4>
+                <h4>Agendamento confirmado: {formatMoment(confirmed.candidate.startMs)}</h4>
               </div>
               <p className="hint small">
                 Isso já é um agendamento real no banco (só que de teste). Nenhuma outra reserva consegue
@@ -355,8 +355,8 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
                   ) : (
                     <>
                       <strong>Teste de mechas não marcado sozinho:</strong>{' '}
-                      {STRAND_TEST_REASON_LABEL[confirmed.strandTest.reason] ?? confirmed.strandTest.reason} —
-                      marque manualmente se precisar.
+                      {STRAND_TEST_REASON_LABEL[confirmed.strandTest.reason] ?? confirmed.strandTest.reason}.
+                      Marque manualmente se precisar.
                     </>
                   )}
                 </p>

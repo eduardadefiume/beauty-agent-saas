@@ -55,14 +55,14 @@ export default function CadastroPage() {
   function validate(): string | null {
     if (form.fullName.trim().length < 2) return 'Digite seu nome completo.';
     if (!form.birthDate) return 'Digite sua data de nascimento.';
-    if (!isValidPhone(form.phone)) return 'Telefone inválido — inclua o DDD, ex.: (16) 99999-8888.';
-    if (!isValidCpf(form.cpf)) return 'CPF inválido — confira os números digitados.';
+    if (!isValidPhone(form.phone)) return 'Telefone inválido, inclua o DDD, ex.: (16) 99999-8888.';
+    if (!isValidCpf(form.cpf)) return 'CPF inválido, confira os números digitados.';
     if (!isLikelyEmail(form.email)) return 'E-mail inválido.';
     if (!isValidPassword(form.password)) return 'A senha precisa ter ao menos 8 caracteres.';
     if (form.password !== form.passwordConfirm) return 'As senhas digitadas são diferentes.';
     if (form.addressStreet.trim().length < 3) return 'Digite a rua do seu endereço.';
     if (form.addressNeighborhood.trim().length < 2) return 'Digite o bairro.';
-    if (!isValidPostalCode(form.addressPostalCode)) return 'CEP inválido — precisa ter 8 números.';
+    if (!isValidPostalCode(form.addressPostalCode)) return 'CEP inválido, precisa ter 8 números.';
     if (form.establishmentName.trim().length < 2) return 'Digite o nome do seu estabelecimento.';
     return null;
   }
@@ -103,7 +103,7 @@ export default function CadastroPage() {
           <h1>Quase lá</h1>
           <p>
             Enviamos um e-mail de confirmação para <strong>{form.email}</strong>. Abra o e-mail e
-            clique no link para confirmar — depois disso você já pode entrar com seu e-mail (ou
+            clique no link para confirmar. Depois disso você já pode entrar com seu e-mail (ou
             CPF) e a senha que você criou.
           </p>
           <Link className="cadastro-back" href="/login">
@@ -121,7 +121,7 @@ export default function CadastroPage() {
         <h1>Criar minha conta</h1>
         <p className="cadastro-hint">
           Este cadastro é para você, dona ou dono do salão/studio, usar o configurador. Seus
-          clientes finais não precisam se cadastrar em lugar nenhum — eles continuam marcando
+          clientes finais não precisam se cadastrar em lugar nenhum. Eles continuam marcando
           horário pelo WhatsApp.
         </p>
 

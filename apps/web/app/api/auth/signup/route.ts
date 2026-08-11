@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
   const problems: string[] = [];
   if (fullName.length < 2) problems.push('Nome completo é obrigatório.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) problems.push('Data de nascimento inválida.');
-  if (!isValidPhone(phone)) problems.push('Telefone inválido — use DDD + número.');
+  if (!isValidPhone(phone)) problems.push('Telefone inválido, use DDD + número.');
   if (!isValidCpf(cpf)) problems.push('CPF inválido.');
   if (!isLikelyEmail(email)) problems.push('E-mail inválido.');
   if (!isValidPassword(password)) problems.push('Senha precisa ter ao menos 8 caracteres.');
