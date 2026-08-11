@@ -19,6 +19,7 @@ type SearchResponse = {
   candidates: Candidate[];
   rejectionCounts: Record<string, number>;
   attemptsMade: number;
+  clientExceptionApplied?: boolean;
 };
 type HoldResponse = { holdId: string; status: string; expiresAt: string };
 type ConfirmResponse = { appointmentId: string; status: string };
@@ -78,6 +79,8 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
   const [searched, setSearched] = useState(false);
   const [notice, setNotice] = useState('');
   const [customerLabel, setCustomerLabel] = useState('');
+  const [clientIdentifier, setClientIdentifier] = useState('');
+  const [clientExceptionApplied, setClientExceptionApplied] = useState(false);
   const [activeHold, setActiveHold] = useState<{ holdId: string; expiresAt: string; candidate: Candidate } | null>(
     null
   );
@@ -110,6 +113,9 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
     setNotice('');
     setCandidates([]);
     setSearched(false);
+    setClientExceptionApplied(false);
+    const identifier = clientIdentifier.trim();
+    const identifierIsPhone = /^[0-9()\-\s+]{6,}$/.test(identifier);
     try {
       const data = (await callScheduling({
         action: 'searchSlots',
@@ -118,10 +124,13 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
         serviceId,
         searchFrom: new Date().toISOString(),
         searchDays: 14,
+        ...(identifier && identifierIsPhone ? { clientPhoneDigits: identifier.replace(/\D/g, '') } : {}),
+        ...(identifier && !identifierIsPhone ? { clientName: identifier } : {}),
       })) as SearchResponse;
       setConfigurationVersionId(data.configurationVersionId);
       setCandidates(data.candidates);
       setRejectionCounts(data.rejectionCounts);
+      setClientExceptionApplied(Boolean(data.clientExceptionApplied));
       setSearched(true);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Falha ao buscar horários.');
@@ -249,12 +258,32 @@ export default function SchedulingSimulator({ tenantId, unitId }: { tenantId: st
                 ))}
               </select>
             </label>
-            <span />
+            <label>
+              Nome ou telefone da cliente (opcional)
+              <input
+                type="text"
+                placeholder="Ex.: Maria ou 11987654321"
+                value={clientIdentifier}
+                onChange={(event) => setClientIdentifier(event.target.value)}
+              />
+            </label>
             <span />
             <button className="primary" disabled={searching || busy} onClick={() => void search()}>
               {searching ? 'Buscando…' : 'Buscar horários'}
             </button>
           </div>
+          <p className="hint small">
+            Preenchendo esse campo, a busca também considera as exceções de horário cadastradas
+            em <strong>Agenda</strong> para essa cliente (nome exato ou telefone) — testa se o
+            sistema realmente abre o horário extra só para ela.
+          </p>
+          {searched && !activeHold && !confirmed && clientIdentifier.trim() && (
+            <p className="hint small">
+              {clientExceptionApplied
+                ? 'Encontrou uma exceção cadastrada para essa cliente — os horários acima já incluem a janela extra dela.'
+                : 'Nenhuma exceção cadastrada para esse nome/telefone — os horários acima são só o expediente normal.'}
+            </p>
+          )}
 
           {activeHold && (
             <div className="nested">

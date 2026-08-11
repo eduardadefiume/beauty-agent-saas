@@ -105,6 +105,13 @@ interface SnapshotStep {
 interface Snapshot {
   operatingHours: { weekday: number; starts_at: string; ends_at: string }[];
   serviceLimits: { weekday: number; latest_end_time: string }[];
+  clientExceptions: {
+    client_name: string;
+    client_phone_digits: string | null;
+    weekday: number;
+    starts_at: string;
+    ends_at: string;
+  }[];
   teamMembers: {
     id: string;
     name: string;
@@ -175,6 +182,33 @@ function toDynamicShifts(entries: { shift_date: string; starts_at: string; ends_
     startMinuteOfDay: parseLocalTimeToMinutes(entry.starts_at),
     endMinuteOfDay: parseLocalTimeToMinutes(entry.ends_at),
   }));
+}
+
+function onlyDigits(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+// Exceção de horário por cliente: soma ao expediente normal (nunca
+// substitui) só para quem a busca identificar — por telefone (normalizado,
+// prioridade) ou, na falta dele, pelo nome exato (case/espaço-insensível).
+// Quem busca sem identificar a cliente não vê nenhuma exceção.
+function matchClientExceptions(
+  exceptions: Snapshot['clientExceptions'],
+  clientPhoneDigits: string | null,
+  clientName: string | null
+): Snapshot['clientExceptions'] {
+  if (clientPhoneDigits) {
+    const normalizedPhone = onlyDigits(clientPhoneDigits);
+    const byPhone = exceptions.filter(
+      (entry) => entry.client_phone_digits && onlyDigits(entry.client_phone_digits) === normalizedPhone
+    );
+    if (byPhone.length > 0) return byPhone;
+  }
+  if (clientName) {
+    const normalizedName = clientName.trim().toLowerCase();
+    return exceptions.filter((entry) => entry.client_name.trim().toLowerCase() === normalizedName);
+  }
+  return [];
 }
 
 async function callRpc(
@@ -273,6 +307,10 @@ Deno.serve(async (request: Request) => {
     const variationId = typeof input.variationId === 'string' ? input.variationId : null;
     const searchFromIso = input.searchFrom;
     const searchDays = Number.isInteger(input.searchDays) ? (input.searchDays as number) : 7;
+    // Identifica a cliente para enxergar exceções de horário cadastradas para
+    // ela (BT-15) — opcional; sem isso, a busca só vê o expediente normal.
+    const clientPhoneDigits = typeof input.clientPhoneDigits === 'string' ? input.clientPhoneDigits : null;
+    const clientName = typeof input.clientName === 'string' ? input.clientName : null;
 
     if (typeof serviceId !== 'string' || typeof searchFromIso !== 'string') {
       return json(400, { error: 'INVALID_SEARCH_REQUEST' });
@@ -318,12 +356,29 @@ Deno.serve(async (request: Request) => {
 
     const utcOffsetMinutes = resolveUtcOffsetMinutes(config.timezone, new Date(searchFromMs));
 
-    const operatingWindows = resolveOperatingWindows({
+    const baseOperatingWindows = resolveOperatingWindows({
       utcOffsetMinutes,
       searchWindow,
       operatingHours: toWeeklyHours(snapshot.operatingHours),
       serviceLimits: toWeeklyLimits(snapshot.serviceLimits),
     });
+
+    // Exceção de horário por cliente: soma janelas extras (fora do
+    // expediente normal, sem o teto de unit_service_limits) só quando a
+    // busca identificou a cliente e ela tem exceção cadastrada.
+    const matchedExceptions = matchClientExceptions(snapshot.clientExceptions, clientPhoneDigits, clientName);
+    const exceptionWindows =
+      matchedExceptions.length === 0
+        ? []
+        : resolveOperatingWindows({
+            utcOffsetMinutes,
+            searchWindow,
+            operatingHours: toWeeklyHours(matchedExceptions),
+          });
+
+    const operatingWindows = [...baseOperatingWindows, ...exceptionWindows].sort(
+      (left, right) => left.startMs - right.startMs
+    );
 
     // Fixa: só turnos semanais recorrentes (member.availability).
     // Dinâmica: sem padrão recorrente — só entra na busca se tiver turnos
@@ -440,6 +495,7 @@ Deno.serve(async (request: Request) => {
         candidates,
         rejectionCounts: searchResult.rejectionCounts,
         attemptsMade: searchResult.attemptsMade,
+        clientExceptionApplied: matchedExceptions.length > 0,
       },
     });
   }

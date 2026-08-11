@@ -31,6 +31,21 @@ type Member = {
   availability: Slot[];
   dynamicShifts: DynamicShift[];
 };
+/**
+ * Janela extra de horário válida só para uma cliente específica (reconhecida
+ * por telefone ou, na falta dele, pelo nome) — soma ao expediente normal em
+ * vez de substituí-lo. Hoje cadastrada à mão; quando o WhatsApp estiver
+ * conectado, a ideia é a lista de contatos alimentar clientPhoneDigits em
+ * vez de reinventar o modelo.
+ */
+type ClientException = {
+  clientName: string;
+  clientPhoneDigits: string;
+  weekday: number;
+  startsAt: string;
+  endsAt: string;
+  note: string;
+};
 type ResourceType = { name: string; resources: Array<{ name: string; capacity: number }> };
 type Step = {
   name: string;
@@ -55,6 +70,7 @@ type Config = {
   unit: { name: string; timezone: string };
   finalMessageTemplate: string;
   operatingHours: Array<Slot & { latestEndTime: string }>;
+  clientExceptions: ClientException[];
   skills: Skill[];
   teamMembers: Member[];
   resourceTypes: ResourceType[];
@@ -73,6 +89,7 @@ const EMPTY: Config = {
   unit: { name: 'Unidade principal', timezone: 'America/Sao_Paulo' },
   finalMessageTemplate: '',
   operatingHours: [],
+  clientExceptions: [],
   skills: [],
   teamMembers: [],
   resourceTypes: [],
@@ -224,6 +241,14 @@ function normalize(data: Loaded): Config {
       startsAt: clock(item.starts_at),
       endsAt: clock(item.ends_at, '18:00'),
       latestEndTime: limits.get(Number(item.weekday)) ?? clock(item.ends_at, '18:00'),
+    })),
+    clientExceptions: rows(raw.clientExceptions).map((item) => ({
+      clientName: String(item.client_name ?? ''),
+      clientPhoneDigits: item.client_phone_digits ? String(item.client_phone_digits) : '',
+      weekday: Number(item.weekday),
+      startsAt: clock(item.starts_at),
+      endsAt: clock(item.ends_at, '18:00'),
+      note: item.note ? String(item.note) : '',
     })),
     skills: skills.map((item) => ({
       name: String(item.name),
@@ -792,6 +817,141 @@ export default function Configurator({ user }: { user: { displayName: string; em
                         Remover
                       </button>
                     </div>
+                  ))}
+
+                  <div className="title minor">
+                    <h3>Exceções por cliente</h3>
+                    <button
+                      disabled={!editable}
+                      onClick={() =>
+                        change((draft) =>
+                          draft.clientExceptions.push({
+                            clientName: '',
+                            clientPhoneDigits: '',
+                            weekday: 6,
+                            startsAt: '08:00',
+                            endsAt: '12:00',
+                            note: '',
+                          })
+                        )
+                      }
+                    >
+                      Adicionar exceção
+                    </button>
+                  </div>
+                  <p className="hint">
+                    Alguma cliente só consegue vir fora do expediente normal (ex.: só sábado de
+                    manhã, só depois das 19h numa terça)? Cadastre aqui — vale só para ela, o
+                    resto da clientela continua vendo o expediente normal. Hoje o telefone é
+                    digitado à mão; quando o WhatsApp estiver conectado, dá pra puxar da lista de
+                    contatos.
+                  </p>
+                  {config.clientExceptions.length === 0 && (
+                    <p className="empty">Nenhuma exceção cadastrada ainda.</p>
+                  )}
+                  {config.clientExceptions.map((exception, index) => (
+                    <article className="nested" key={index}>
+                      <div className="grid two">
+                        <label>
+                          Nome da cliente
+                          <input
+                            disabled={!editable}
+                            value={exception.clientName}
+                            placeholder="Ex.: Maria Silva"
+                            onChange={(e) =>
+                              change((draft) => {
+                                const target = draft.clientExceptions[index];
+                                if (target) target.clientName = e.target.value;
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Telefone (opcional, com DDD)
+                          <input
+                            disabled={!editable}
+                            value={exception.clientPhoneDigits}
+                            placeholder="Ex.: 11987654321"
+                            onChange={(e) =>
+                              change((draft) => {
+                                const target = draft.clientExceptions[index];
+                                if (target)
+                                  target.clientPhoneDigits = e.target.value.replace(/\D/g, '');
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="row hour">
+                        <select
+                          disabled={!editable}
+                          value={exception.weekday}
+                          onChange={(e) =>
+                            change((draft) => {
+                              const target = draft.clientExceptions[index];
+                              if (target) target.weekday = Number(e.target.value);
+                            })
+                          }
+                        >
+                          {DAYS.map((day, dayIndex) => (
+                            <option value={dayIndex} key={day}>
+                              {day}
+                            </option>
+                          ))}
+                        </select>
+                        <label className="inline">
+                          <span>De</span>
+                          <input
+                            type="time"
+                            disabled={!editable}
+                            value={exception.startsAt}
+                            onChange={(e) =>
+                              change((draft) => {
+                                const target = draft.clientExceptions[index];
+                                if (target) target.startsAt = e.target.value;
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="inline">
+                          <span>Até</span>
+                          <input
+                            type="time"
+                            disabled={!editable}
+                            value={exception.endsAt}
+                            onChange={(e) =>
+                              change((draft) => {
+                                const target = draft.clientExceptions[index];
+                                if (target) target.endsAt = e.target.value;
+                              })
+                            }
+                          />
+                        </label>
+                        <button
+                          className="danger"
+                          disabled={!editable}
+                          onClick={() =>
+                            change((draft) => draft.clientExceptions.splice(index, 1))
+                          }
+                        >
+                          Remover
+                        </button>
+                      </div>
+                      <label>
+                        Nota (opcional, só pra você lembrar o motivo)
+                        <input
+                          disabled={!editable}
+                          value={exception.note}
+                          placeholder="Ex.: mora longe, só consegue vir de manhã cedo"
+                          onChange={(e) =>
+                            change((draft) => {
+                              const target = draft.clientExceptions[index];
+                              if (target) target.note = e.target.value;
+                            })
+                          }
+                        />
+                      </label>
+                    </article>
                   ))}
                 </article>
               )}
