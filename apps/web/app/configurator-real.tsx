@@ -957,28 +957,79 @@ export default function Configurator({ user }: { user: { displayName: string; em
 
                   <div className="title minor">
                     <h3>Profissionais</h3>
-                    <button
-                      disabled={!editable}
-                      onClick={() =>
-                        change((draft) =>
-                          draft.teamMembers.push({
-                            name: '',
-                            availabilityMode: 'FIXED',
-                            skillNames: [],
-                            skillQualifiers: [],
-                            availability: [],
-                            dynamicShifts: [],
-                          })
-                        )
-                      }
-                    >
-                      Adicionar pessoa
-                    </button>
+                    {config.teamMembers.length > 0 && (
+                      <button
+                        disabled={!editable}
+                        onClick={() =>
+                          change((draft) =>
+                            draft.teamMembers.push({
+                              name: '',
+                              availabilityMode: 'FIXED',
+                              skillNames: [],
+                              skillQualifiers: [],
+                              availability: [],
+                              dynamicShifts: [],
+                            })
+                          )
+                        }
+                      >
+                        Adicionar pessoa
+                      </button>
+                    )}
                   </div>
                   {config.teamMembers.length === 0 && (
-                    <p className="empty">
-                      Nenhum profissional cadastrado ainda. Se você trabalha sozinha, cadastre só
-                      você aqui — o resto do módulo funciona igual.
+                    <article className="nested solo-question">
+                      <p>
+                        <strong>Você tem equipe ou trabalha sozinha(o) nesse negócio?</strong>
+                      </p>
+                      <div className="row">
+                        <button
+                          disabled={!editable}
+                          onClick={() =>
+                            change((draft) =>
+                              draft.teamMembers.push({
+                                name: '',
+                                availabilityMode: 'FIXED',
+                                skillNames: [],
+                                skillQualifiers: [],
+                                availability: [],
+                                dynamicShifts: [],
+                              })
+                            )
+                          }
+                        >
+                          Trabalho sozinha(o)
+                        </button>
+                        <button
+                          className="ghost"
+                          disabled={!editable}
+                          onClick={() =>
+                            change((draft) =>
+                              draft.teamMembers.push({
+                                name: '',
+                                availabilityMode: 'FIXED',
+                                skillNames: [],
+                                skillQualifiers: [],
+                                availability: [],
+                                dynamicShifts: [],
+                              })
+                            )
+                          }
+                        >
+                          Tenho equipe
+                        </button>
+                      </div>
+                      <p className="hint small">
+                        Escolhendo qualquer uma das opções, cadastre-se (ou cadastre a primeira
+                        pessoa) abaixo — dá pra adicionar mais gente a qualquer momento, mesmo
+                        depois de marcar &ldquo;sozinha(o)&rdquo;.
+                      </p>
+                    </article>
+                  )}
+                  {config.teamMembers.length === 1 && (
+                    <p className="hint small">
+                      Você trabalha sozinha(o) por enquanto — pode adicionar mais gente na equipe
+                      quando quiser.
                     </p>
                   )}
                   {config.teamMembers.map((member, memberIndex) => (

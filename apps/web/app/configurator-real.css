@@ -577,3 +577,10 @@ footer {
   font-weight: 600;
   min-width: 70px;
 }
+
+.solo-question .row {
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  justify-content: start;
+  gap: 12px;
+}
