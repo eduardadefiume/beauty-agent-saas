@@ -603,6 +603,23 @@ export default function Configurator({ user }: { user: { displayName: string; em
       setBusy(false);
     }
   }
+  async function startNewDraft() {
+    setBusy(true);
+    try {
+      const loaded = (await api({ action: 'startNewDraft', tenantId })) as Loaded;
+      setConfig(normalize(loaded));
+      setRevision(loaded.draft.revision);
+      setStatus(loaded.draft.status);
+      setReadiness(loaded.readiness);
+      setUnitId(loaded.unit.id);
+      setDirty(false);
+      setNotice('Rascunho novo aberto com os dados publicados — pode editar de novo.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Falha ao abrir novo rascunho.');
+    } finally {
+      setBusy(false);
+    }
+  }
   async function signOut() {
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signOut();
@@ -2123,39 +2140,57 @@ export default function Configurator({ user }: { user: { displayName: string; em
               {module === 'publicar' && (
                 <article className="card publish">
                   <h2>Publicar</h2>
-                  <p className="hint">
-                    Publicar congela esta configuração como a versão vigente do atendimento. Depois
-                    de publicada, ela não pode mais ser editada — só uma nova versão substitui a
-                    anterior.
-                  </p>
-                  {readiness.length ? (
-                    <ul>
-                      {readiness.map((item, index) => (
-                        <li key={`${item.code}-${index}`}>{ISSUE[item.code] ?? item.code}</li>
-                      ))}
-                    </ul>
+                  {editable ? (
+                    <p className="hint">
+                      Publicar congela esta configuração como a versão vigente do atendimento.
+                      Depois de publicada, ela vira somente-leitura — clique em &ldquo;Editar de
+                      novo&rdquo; aqui mesmo pra abrir um rascunho novo com esses dados, sem perder
+                      nada.
+                    </p>
                   ) : (
-                    <p className="ready">Tudo pronto para publicar.</p>
+                    <p className="hint">
+                      Esta configuração está publicada e valendo para o atendimento agora. Pra
+                      mudar qualquer coisa, abra um rascunho novo — ele começa com tudo que está
+                      publicado, você só edita por cima.
+                    </p>
                   )}
+                  {editable &&
+                    (readiness.length ? (
+                      <ul>
+                        {readiness.map((item, index) => (
+                          <li key={`${item.code}-${index}`}>{ISSUE[item.code] ?? item.code}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="ready">Tudo pronto para publicar.</p>
+                    ))}
                   <p className="scope">
                     Sinal de pagamento está desativado nesta fase. Google Agenda e WhatsApp para
                     clientes reais serão liberados depois dos testes do motor de disponibilidade.
                   </p>
                   <div className="actions">
-                    <button
-                      className="secondary"
-                      disabled={!editable || busy || !dirty}
-                      onClick={() => void save()}
-                    >
-                      {busy ? 'Processando…' : 'Salvar alterações'}
-                    </button>
-                    <button
-                      className="primary"
-                      disabled={!editable || busy || dirty || readiness.length > 0}
-                      onClick={() => void publish()}
-                    >
-                      Publicar versão
-                    </button>
+                    {editable ? (
+                      <>
+                        <button
+                          className="secondary"
+                          disabled={busy || !dirty}
+                          onClick={() => void save()}
+                        >
+                          {busy ? 'Processando…' : 'Salvar alterações'}
+                        </button>
+                        <button
+                          className="primary"
+                          disabled={busy || dirty || readiness.length > 0}
+                          onClick={() => void publish()}
+                        >
+                          Publicar versão
+                        </button>
+                      </>
+                    ) : (
+                      <button className="primary" disabled={busy} onClick={() => void startNewDraft()}>
+                        {busy ? 'Abrindo…' : 'Editar de novo'}
+                      </button>
+                    )}
                   </div>
                 </article>
               )}

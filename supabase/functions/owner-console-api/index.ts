@@ -17,6 +17,7 @@ const ACTION_RPC = {
   load: 'site_load_configuration',
   save: 'site_replace_configuration',
   publish: 'site_publish_configuration',
+  startNewDraft: 'site_start_new_draft',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -38,9 +39,7 @@ function emailFromVerifiedJwt(authorizationHeader: string | null): string | null
   try {
     const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(atob(base64)) as { email?: unknown };
-    return typeof payload.email === 'string' &&
-      payload.email.length > 0 &&
-      payload.email.length <= 320
+    return typeof payload.email === 'string' && payload.email.length > 0 && payload.email.length <= 320
       ? payload.email
       : null;
   } catch {
@@ -122,6 +121,16 @@ Deno.serve(async (request: Request) => {
         ...common,
         target_tenant_id: tenantId,
         expected_revision: input.expectedRevision,
+        target_correlation_id: crypto.randomUUID(),
+      };
+      break;
+    case 'startNewDraft':
+      // Depois de publicar, a configuração fica congelada — esta ação clona
+      // o último publicado para um rascunho novo editável (ou devolve o
+      // rascunho já aberto, se já existir um; idempotente na própria RPC).
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
         target_correlation_id: crypto.randomUUID(),
       };
       break;
