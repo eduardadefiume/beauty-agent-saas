@@ -1592,6 +1592,13 @@ export default function Configurator({ user }: { user: { displayName: string; em
                         </div>
                         {isOpen && (
                           <div className="item-details">
+                      <div
+                        className={
+                          'member-detail-grid' +
+                          (member.availabilityMode !== 'FIXED' ? ' has-calendar' : '')
+                        }
+                      >
+                      <div className="member-detail-main">
                       <div className="grid two">
                         <label>
                           Nome
@@ -1830,13 +1837,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
                           ))}
                         </>
                       )}
+                      </div>
                       {member.availabilityMode !== 'FIXED' && (
-                        <div className="title minor">
-                          <h4>Calendário de disponibilidade Dinâmica</h4>
-                        </div>
-                      )}
-                      {member.availabilityMode !== 'FIXED' && (
-                        <>
+                        <div className="member-detail-calendar">
+                          <div className="title minor">
+                            <h4>Calendário de disponibilidade Dinâmica</h4>
+                          </div>
                           <p className="hint small">
                             Clique nos dias em que {member.name || 'esta pessoa'} vai trabalhar.
                             Eles ficam marcados em amarelo, igual você já faz na sua agenda.
@@ -1874,8 +1880,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                               })
                             }
                           />
-                        </>
+                        </div>
                       )}
+                      </div>
                             <div className="item-save-row">
                               <button
                                 className="primary"
