@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../../lib/supabase/server';
+import { canonicalSiteUrl } from '../../../../lib/site-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,10 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.redirect(new URL('/?calendarError=NOT_CONFIGURED', request.url));
   }
 
-  const redirectUri = new URL('/auth/google-calendar/callback', request.url).toString();
+  // Fixo no domínio de produção, não na origem da requisição: precisa bater
+  // exatamente com o redirect_uri cadastrado no Google, e isso muda a cada
+  // deploy de preview da Vercel (veja lib/site-url.ts).
+  const redirectUri = new URL('/auth/google-calendar/callback', canonicalSiteUrl()).toString();
 
   try {
     const tokenResponse = await fetch(TOKEN_URL, {

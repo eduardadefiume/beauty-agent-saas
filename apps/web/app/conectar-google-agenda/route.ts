@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../lib/supabase/server';
+import { canonicalSiteUrl } from '../../lib/site-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,9 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.redirect(new URL('/?calendarError=NOT_CONFIGURED', request.url));
   }
 
-  const redirectUri = new URL('/auth/google-calendar/callback', request.url).toString();
+  // Fixo no domínio de produção: precisa bater exatamente com o
+  // redirect_uri cadastrado no Google (veja lib/site-url.ts).
+  const redirectUri = new URL('/auth/google-calendar/callback', canonicalSiteUrl()).toString();
 
   const authUrl = new URL(GOOGLE_OAUTH_URL);
   authUrl.searchParams.set('client_id', clientId);

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { createSupabaseBrowserClient } from '../../lib/supabase/browser';
 import { isValidPassword } from '../../lib/validation';
+import PasswordField from '../components/PasswordField';
 import '../login/login.css';
 
 export default function RedefinirSenhaPage() {
@@ -71,27 +72,21 @@ export default function RedefinirSenhaPage() {
           </>
         ) : (
           <form onSubmit={submit}>
-            <label>
-              Nova senha
-              <input
-                type="password"
-                required
-                autoFocus
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Mínimo 8 caracteres"
-              />
-            </label>
-            <label>
-              Confirmar nova senha
-              <input
-                type="password"
-                required
-                value={passwordConfirm}
-                onChange={(event) => setPasswordConfirm(event.target.value)}
-                placeholder="Digite a senha de novo"
-              />
-            </label>
+            <PasswordField
+              label="Nova senha"
+              required
+              autoFocus
+              value={password}
+              onChange={setPassword}
+              placeholder="Mínimo 8 caracteres"
+            />
+            <PasswordField
+              label="Confirmar nova senha"
+              required
+              value={passwordConfirm}
+              onChange={setPasswordConfirm}
+              placeholder="Digite a senha de novo"
+            />
             <button type="submit" disabled={busy}>
               {busy ? 'Salvando…' : 'Salvar nova senha'}
             </button>

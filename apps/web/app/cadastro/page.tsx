@@ -12,6 +12,7 @@ import {
   isValidPhone,
   isValidPostalCode,
 } from '../../lib/validation';
+import PasswordField from '../components/PasswordField';
 import './cadastro.css';
 
 type FormState = {
@@ -242,26 +243,20 @@ export default function CadastroPage() {
         <div className="cadastro-section">
           <h2>Senha de acesso</h2>
           <div className="cadastro-grid two">
-            <label>
-              Senha
-              <input
-                type="password"
-                required
-                value={form.password}
-                onChange={(event) => set('password', event.target.value)}
-                placeholder="Mínimo 8 caracteres"
-              />
-            </label>
-            <label>
-              Confirmar senha
-              <input
-                type="password"
-                required
-                value={form.passwordConfirm}
-                onChange={(event) => set('passwordConfirm', event.target.value)}
-                placeholder="Digite a senha de novo"
-              />
-            </label>
+            <PasswordField
+              label="Senha"
+              required
+              value={form.password}
+              onChange={(value) => set('password', value)}
+              placeholder="Mínimo 8 caracteres"
+            />
+            <PasswordField
+              label="Confirmar senha"
+              required
+              value={form.passwordConfirm}
+              onChange={(value) => set('passwordConfirm', value)}
+              placeholder="Digite a senha de novo"
+            />
           </div>
         </div>
 

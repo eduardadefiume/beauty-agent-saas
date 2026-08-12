@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { createSupabaseBrowserClient } from '../../lib/supabase/browser';
+import PasswordField from '../components/PasswordField';
 import './login.css';
 
 export default function LoginPage() {
@@ -77,16 +78,13 @@ export default function LoginPage() {
             placeholder="Ex.: voce@seuemail.com ou 111.444.777-35"
           />
         </label>
-        <label>
-          Senha
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Sua senha"
-          />
-        </label>
+        <PasswordField
+          label="Senha"
+          required
+          value={password}
+          onChange={setPassword}
+          placeholder="Sua senha"
+        />
         <button type="submit" disabled={busy || !identifier || !password}>
           {busy ? 'Entrando…' : 'Entrar'}
         </button>
