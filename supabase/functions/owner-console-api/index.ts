@@ -21,6 +21,9 @@ const ACTION_RPC = {
   listCalendarConnections: 'site_list_calendar_connections',
   saveCalendarConnection: 'site_save_calendar_connection',
   disconnectCalendarConnection: 'site_disconnect_calendar_connection',
+  listCalendarShifts: 'site_list_calendar_shifts',
+  listCalendarConnectionsForSync: 'site_list_calendar_connections_for_sync',
+  recordCalendarShiftSync: 'site_record_calendar_shift_sync',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -172,6 +175,37 @@ Deno.serve(async (request: Request) => {
         ...common,
         target_tenant_id: tenantId,
         target_connection_id: input.connectionId,
+      };
+      break;
+    case 'listCalendarShifts':
+      rpcBody = { ...common, target_tenant_id: tenantId };
+      break;
+    case 'listCalendarConnectionsForSync':
+      // Devolve token de acesso/atualização — só a rota /api/calendar-sync
+      // chama esta ação, nunca o proxy genérico usado pelo navegador
+      // (/api/configuration não inclui isso no ACTIONS dela).
+      rpcBody = { ...common, target_tenant_id: tenantId };
+      break;
+    case 'recordCalendarShiftSync':
+      if (
+        typeof input.connectionId !== 'string' ||
+        typeof input.windowStart !== 'string' ||
+        typeof input.windowEnd !== 'string' ||
+        !Array.isArray(input.events)
+      ) {
+        return json(400, { error: 'INVALID_RECORD_SYNC_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_connection_id: input.connectionId,
+        target_window_start: input.windowStart,
+        target_window_end: input.windowEnd,
+        target_events: input.events,
+        target_new_access_token: typeof input.newAccessToken === 'string' ? input.newAccessToken : null,
+        target_new_token_expires_at:
+          typeof input.newTokenExpiresAt === 'string' ? input.newTokenExpiresAt : null,
+        target_error: typeof input.syncError === 'string' ? input.syncError : null,
       };
       break;
   }

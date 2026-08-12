@@ -2,10 +2,11 @@ import { createSupabaseServerClient } from '../../../lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-// saveCalendarConnection não entra aqui de propósito: só a rota
-// /auth/google-calendar/callback pode chamar essa ação, porque ela carrega
-// o token de acesso — não é algo pra passar por um proxy genérico chamável
-// pelo navegador.
+// saveCalendarConnection, listCalendarConnectionsForSync e
+// recordCalendarShiftSync não entram aqui de propósito: carregam ou
+// recebem token de acesso, só as rotas /auth/google-calendar/callback e
+// /api/calendar-sync podem chamar essas ações, nunca um proxy genérico
+// chamável pelo navegador.
 const ACTIONS = new Set([
   'list',
   'load',
@@ -14,6 +15,7 @@ const ACTIONS = new Set([
   'startNewDraft',
   'listCalendarConnections',
   'disconnectCalendarConnection',
+  'listCalendarShifts',
 ]);
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',

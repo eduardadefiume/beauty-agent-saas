@@ -665,11 +665,31 @@ Deno.serve(async (request: Request) => {
       resourceOccupancies: { resourceId: string; startMs: number; endMs: number }[];
     };
 
-    const existingMemberOccupancies: OccupancyRange[] = occupancies.memberOccupancies.map((entry) => ({
-      subjectId: entry.memberId,
-      startMs: entry.startMs,
-      endMs: entry.endMs,
-    }));
+    // Compromissos do Google/Outlook: bloqueiam a agenda inteira da
+    // unidade (não existe ainda escolha de "essa conexão é de qual
+    // profissional" na tela de conectar). Falha em buscar isso não pode
+    // travar a busca de horário — se o Google estiver fora do ar, o
+    // motor só ignora o bloqueio extra dessa vez.
+    const calendarShiftsResult = await rpc('schedule_list_calendar_shifts', {
+      target_site_project_id: SITE_PROJECT_ID,
+      target_email: userEmail,
+      target_tenant_id: tenantId,
+      target_unit_id: unitId,
+    });
+    const calendarShifts = calendarShiftsResult.ok
+      ? (calendarShiftsResult.data as { startMs: number; endMs: number }[])
+      : [];
+
+    const existingMemberOccupancies: OccupancyRange[] = [
+      ...occupancies.memberOccupancies.map((entry) => ({
+        subjectId: entry.memberId,
+        startMs: entry.startMs,
+        endMs: entry.endMs,
+      })),
+      ...calendarShifts.flatMap((shift) =>
+        members.map((member) => ({ subjectId: member.id, startMs: shift.startMs, endMs: shift.endMs }))
+      ),
+    ];
     const existingResourceOccupancies: OccupancyRange[] = occupancies.resourceOccupancies.map((entry) => ({
       subjectId: entry.resourceId,
       startMs: entry.startMs,

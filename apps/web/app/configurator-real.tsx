@@ -554,6 +554,131 @@ type CalendarConnection = {
   lastError: string | null;
 };
 
+/** Compromisso já sincronizado do Google/Outlook, pronto pra desenhar na tela. */
+type CalendarShift = {
+  id: string;
+  connectionId: string;
+  memberName: string | null;
+  title: string | null;
+  startsAt: string;
+  endsAt: string;
+};
+
+const WEEK_VIEW_START_HOUR = 6;
+const WEEK_VIEW_END_HOUR = 22;
+const HOUR_ROW_HEIGHT_PX = 44;
+
+function startOfWeek(reference: Date): Date {
+  const result = new Date(reference);
+  result.setHours(0, 0, 0, 0);
+  result.setDate(result.getDate() - result.getDay());
+  return result;
+}
+
+function addDays(reference: Date, days: number): Date {
+  return new Date(reference.getTime() + days * 86_400_000);
+}
+
+function toDateIso(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function formatWeekdayShort(date: Date): string {
+  return WEEKDAY_LETTERS[date.getDay()] as string;
+}
+
+function minutesSinceMidnight(iso: string): number {
+  const date = new Date(iso);
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+/**
+ * Visualização de agenda em semana, no espírito da própria interface do
+ * Google Agenda: colunas por dia, blocos de horário posicionados pela hora
+ * real do evento. Só mostra o que já foi sincronizado (CalendarShift) —
+ * não é a agenda de atendimentos do salão, é o que veio de fora bloqueando
+ * horário em cima dela.
+ */
+function GoogleAgendaWeekView({ shifts }: { shifts: CalendarShift[] }) {
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  const hourRows = useMemo(
+    () => Array.from({ length: WEEK_VIEW_END_HOUR - WEEK_VIEW_START_HOUR }, (_, i) => WEEK_VIEW_START_HOUR + i),
+    []
+  );
+  const trackHeight = (WEEK_VIEW_END_HOUR - WEEK_VIEW_START_HOUR) * HOUR_ROW_HEIGHT_PX;
+  const totalMinutes = (WEEK_VIEW_END_HOUR - WEEK_VIEW_START_HOUR) * 60;
+
+  function shiftsForDay(day: Date): CalendarShift[] {
+    const dayStartMs = day.getTime();
+    const dayEndMs = dayStartMs + 86_400_000;
+    return shifts.filter((shift) => {
+      const startMs = Date.parse(shift.startsAt);
+      return startMs >= dayStartMs && startMs < dayEndMs;
+    });
+  }
+
+  function blockStyle(shift: CalendarShift): { top: string; height: string } {
+    const startMinute = Math.max(0, minutesSinceMidnight(shift.startsAt) - WEEK_VIEW_START_HOUR * 60);
+    const endMinute = Math.min(
+      totalMinutes,
+      minutesSinceMidnight(shift.endsAt) - WEEK_VIEW_START_HOUR * 60 || totalMinutes
+    );
+    const top = (startMinute / totalMinutes) * 100;
+    const height = Math.max(2.5, ((endMinute - startMinute) / totalMinutes) * 100);
+    return { top: `${top}%`, height: `${height}%` };
+  }
+
+  return (
+    <div className="week-calendar">
+      <div className="week-calendar-header">
+        <button type="button" className="ghost" onClick={() => setWeekStart((current) => addDays(current, -7))}>
+          ‹
+        </button>
+        <strong>
+          {formatDatePtBr(toDateIso(days[0] as Date))} – {formatDatePtBr(toDateIso(days[6] as Date))}
+        </strong>
+        <button type="button" className="ghost" onClick={() => setWeekStart((current) => addDays(current, 7))}>
+          ›
+        </button>
+      </div>
+      <div className="week-calendar-grid">
+        <div className="week-calendar-gutter">
+          {hourRows.map((hour) => (
+            <div className="week-calendar-hour" key={hour} style={{ height: HOUR_ROW_HEIGHT_PX }}>
+              {hour}h
+            </div>
+          ))}
+        </div>
+        {days.map((day) => {
+          const dayShifts = shiftsForDay(day);
+          const isToday = toDateIso(day) === toDateIso(new Date());
+          return (
+            <div className="week-calendar-day" key={toDateIso(day)}>
+              <div className={'week-calendar-daylabel' + (isToday ? ' today' : '')}>
+                {formatWeekdayShort(day)} {day.getDate()}
+              </div>
+              <div className="week-calendar-track" style={{ height: trackHeight }}>
+                {hourRows.map((hour, index) => (
+                  <div className="week-calendar-gridline" key={hour} style={{ top: `${(index / hourRows.length) * 100}%` }} />
+                ))}
+                {dayShifts.map((shift) => (
+                  <div className="week-calendar-event" style={blockStyle(shift)} key={shift.id} title={shift.title ?? 'Ocupado'}>
+                    <span className="week-calendar-event-time">
+                      {new Date(shift.startsAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="week-calendar-event-title">{shift.title || 'Ocupado'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Configurator({ user }: { user: { displayName: string; email: string } }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -570,6 +695,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
   const [notice, setNotice] = useState('');
   const [module, setModule] = useState<ModuleKey>('negocio');
   const [calendarConnections, setCalendarConnections] = useState<CalendarConnection[]>([]);
+  const [calendarShifts, setCalendarShifts] = useState<CalendarShift[]>([]);
+  const [syncingCalendar, setSyncingCalendar] = useState(false);
   const [expandedSkills, setExpandedSkills] = useState<Set<number>>(new Set());
   const [expandedMembers, setExpandedMembers] = useState<Set<number>>(new Set());
   const [expandedResourceTypes, setExpandedResourceTypes] = useState<Set<number>>(new Set());
@@ -635,6 +762,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
     void api({ action: 'listCalendarConnections', tenantId })
       .then((raw) => setCalendarConnections(raw as CalendarConnection[]))
       .catch(() => setCalendarConnections([]));
+    void api({ action: 'listCalendarShifts', tenantId })
+      .then((raw) => setCalendarShifts(raw as CalendarShift[]))
+      .catch(() => setCalendarShifts([]));
   }, [tenantId]);
 
   async function disconnectCalendar(connectionId: string) {
@@ -645,11 +775,46 @@ export default function Configurator({ user }: { user: { displayName: string; em
     try {
       await api({ action: 'disconnectCalendarConnection', tenantId, connectionId });
       setCalendarConnections((current) => current.filter((entry) => entry.id !== connectionId));
+      setCalendarShifts((current) => current.filter((shift) => shift.connectionId !== connectionId));
       setNotice('Agenda desconectada.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Falha ao desconectar.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function syncCalendar() {
+    setSyncingCalendar(true);
+    try {
+      const response = await fetch('/api/calendar-sync', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tenantId }),
+      });
+      const body = (await response.json()) as {
+        data?: { results: Array<{ ok: boolean; eventsSynced?: number; error?: string }> };
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error ?? 'Falha ao sincronizar.');
+
+      const [shiftsRaw, connectionsRaw] = await Promise.all([
+        api({ action: 'listCalendarShifts', tenantId }),
+        api({ action: 'listCalendarConnections', tenantId }),
+      ]);
+      setCalendarShifts(shiftsRaw as CalendarShift[]);
+      setCalendarConnections(connectionsRaw as CalendarConnection[]);
+
+      const failed = body.data?.results.find((entry) => !entry.ok);
+      setNotice(
+        failed
+          ? `Sincronização deu problema: ${failed.error ?? 'motivo não informado'}.`
+          : 'Google Agenda sincronizada.'
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Falha ao sincronizar.');
+    } finally {
+      setSyncingCalendar(false);
     }
   }
 
@@ -1255,30 +1420,53 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       </a>
                     </article>
                   ) : (
-                    calendarConnections.map((connection) => (
-                      <article className="nested" key={connection.id}>
-                        <p>
-                          <strong>Google Agenda</strong>
-                          {connection.externalAccountEmail ? ` (${connection.externalAccountEmail})` : ''}
-                        </p>
-                        <p className="hint small">
-                          {connection.status === 'ACTIVE'
-                            ? 'Conectada. Os compromissos de lá bloqueiam horário automático.'
-                            : connection.status === 'ERROR'
-                              ? `Deu problema na sincronização: ${connection.lastError ?? 'motivo não informado'}.`
-                              : 'Desconectada.'}
-                        </p>
-                        {connection.status === 'ACTIVE' && (
-                          <button
-                            className="danger"
-                            disabled={busy}
-                            onClick={() => void disconnectCalendar(connection.id)}
-                          >
-                            Desconectar
-                          </button>
-                        )}
-                      </article>
-                    ))
+                    <>
+                      {calendarConnections.map((connection) => (
+                        <article className="nested" key={connection.id}>
+                          <div className="item-summary" style={{ padding: 0 }}>
+                            <div className="item-summary-text">
+                              <strong>Google Agenda</strong>
+                              {connection.externalAccountEmail && (
+                                <span className="item-badge">{connection.externalAccountEmail}</span>
+                              )}
+                            </div>
+                            <div className="item-summary-actions">
+                              <button
+                                className="secondary"
+                                disabled={syncingCalendar}
+                                onClick={() => void syncCalendar()}
+                              >
+                                {syncingCalendar ? 'Sincronizando…' : 'Sincronizar agora'}
+                              </button>
+                              {connection.status === 'ACTIVE' && (
+                                <button
+                                  className="danger"
+                                  disabled={busy}
+                                  onClick={() => void disconnectCalendar(connection.id)}
+                                >
+                                  Desconectar
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="hint small">
+                            {connection.status === 'ACTIVE'
+                              ? connection.lastSyncedAt
+                                ? `Última sincronização: ${new Date(connection.lastSyncedAt).toLocaleString('pt-BR')}.`
+                                : 'Conectada, ainda não sincronizada. Clique em "Sincronizar agora".'
+                              : connection.status === 'ERROR'
+                                ? `Deu problema na sincronização: ${connection.lastError ?? 'motivo não informado'}.`
+                                : 'Desconectada.'}
+                          </p>
+                        </article>
+                      ))}
+                      <p className="hint small">
+                        Isto aqui é como se fosse a agenda do Google de verdade, só que só leitura:
+                        mostra os compromissos já sincronizados, que o motor de agenda usa pra
+                        fechar horário automático.
+                      </p>
+                      <GoogleAgendaWeekView shifts={calendarShifts} />
+                    </>
                   )}
                 </article>
               )}
