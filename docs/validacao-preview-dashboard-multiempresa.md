@@ -63,3 +63,23 @@ O Preview do ajuste visual `83ac80b` está disponível em `https://web-qw65gb7a3
 ## Validação autenticada pela proprietária
 
 Em 13/08/2026, após autenticação no Preview `83ac80b`, a proprietária confirmou que o fluxo funcionou. O configurador exibiu a entrada para operação e a navegação para o dashboard foi concluída. Esta é uma validação manual do caminho autenticado; não equivale a promoção de produção.
+
+## Candidata de produção autorizada
+
+Em 13/08/2026, a proprietária autorizou promover a versão validada. A candidata é o deployment Preview do commit `83ac80b` (`fix(configurator): make operational dashboard entry explicit`) na branch `feature/saas-com-dashboard-completo`. As configurações Git e Build da Vercel confirmam o repositório conectado e a raiz `apps/web`, mas não oferecem nesta interface uma edição explícita de Production Branch; a promoção será realizada a partir das ações do deployment candidato, preservando o domínio próprio já associado ao projeto.
+
+A ação **Promote to Production** foi confirmada no painel Vercel. O painel informou que gerará um novo deployment com as variáveis de Produção e o associará a `web-six-gamma-56.vercel.app` e `https://eddigital.ia.br`. A operação ainda estava em processamento no último estado observado.
+
+O deployment de Produção foi concluído com status **Ready**, ambiente **Production**, duração de 46 segundos e commit de origem `83ac80b`. O painel passou a listar `https://eddigital.ia.br` entre os domínios associados à versão publicada. Falta somente a verificação externa de resposta do domínio.
+
+## Validação externa de Produção
+
+Em 13/08/2026, `https://eddigital.ia.br/` respondeu o aplicativo publicado e redirecionou corretamente para `/login` sem uma sessão autenticada. A página apresentou o título **Configurador do seu negócio** e as ações de autenticação e cadastro; nenhuma URL `manus.space` foi usada no fluxo público.
+
+| Evidência | Resultado |
+|---|---|
+| Versão de Produção | Commit `83ac80b` da branch `feature/saas-com-dashboard-completo` |
+| URL pública de clientes | `https://eddigital.ia.br/` |
+| Entrada sem sessão | Redirecionamento seguro para `/login` |
+| Configurador público após login | Raiz `/` |
+| Operação do tenant após login | Botão **Abrir operação →** para `/dashboard?tenantId=<tenant-autorizado>` |

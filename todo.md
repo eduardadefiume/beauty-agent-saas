@@ -40,4 +40,6 @@
 - [x] Fazer a rota de contexto do dashboard usar o gateway `owner-console-api` autorizado, em vez de chamar RPC restrito com o token de sessão.
 - [x] Configurar o endpoint do gateway no ambiente Preview da Vercel para restaurar o carregamento de workspaces do configurador e dashboard.
 - [x] Corrigir a ausência de entrada visível e funcional do configurador autenticado para o dashboard operacional do tenant.
+- [x] Promover a branch `feature/saas-com-dashboard-completo` para Produção na Vercel, conforme autorização da proprietária.
+- [x] Validar que `https://eddigital.ia.br/` entrega o configurador e o fluxo operacional multiempresa após a promoção.
 - [x] Tornar a entrada para a operação um controle explícito e destacado no configurador autenticado, sem depender de link discreto no cabeçalho.
