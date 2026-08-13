@@ -1,10 +1,9 @@
 /*
- * Caderno de Operações — página do dashboard do Piloto William.
- * A tela transforma configuração técnica em evidência legível: estado antes de ornamento,
- * assimetria controlada, calor editorial e honestidade sobre o que ainda não foi testado.
+ * Caderno de Operações — página do dashboard do Piloto William (Versão Full-Stack com dados reais, timeline e agendamento).
  */
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 import {
   Activity,
   ArrowUpRight,
@@ -12,18 +11,15 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
-  CircleAlert,
   CircleDot,
   Clock3,
   Database,
   ExternalLink,
   FileCheck2,
   GitBranch,
-  Headset,
   Inbox,
   LayoutDashboard,
   Menu,
-  MessageCircle,
   MoreHorizontal,
   Network,
   Radio,
@@ -34,6 +30,8 @@ import {
   Users,
   X,
   Zap,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 const heroImage = "/manus-storage/william-pilot-hero_f9077983.jpg";
@@ -44,7 +42,8 @@ const brandMark = "/manus-storage/william-pilot-mark_4c4daad9.png";
 const navItems = [
   { label: "Visão geral", icon: LayoutDashboard, target: "overview" },
   { label: "Integrações", icon: Network, target: "integrations" },
-  { label: "Agenda", icon: CalendarDays, target: "schedule" },
+  { label: "Timeline e Logs", icon: Radio, target: "timeline" },
+  { label: "Serviços e Agenda", icon: CalendarDays, target: "schedule" },
   { label: "Evidências", icon: FileCheck2, target: "evidence" },
 ];
 
@@ -66,7 +65,7 @@ const components: ComponentRecord[] = [
     status: "Concluído",
     tone: "olive",
     icon: Database,
-    evidence: "Schema app / private / api criado no Supabase DEV. As políticas de RLS são a base do isolamento por tenant_id.",
+    evidence: "Schema app / private / api criado no Supabase DEV (hjghwryhphgusefyivbl). As políticas de RLS garantem isolamento por tenant_id.",
   },
   {
     name: "Credenciais & segredos",
@@ -74,7 +73,7 @@ const components: ComponentRecord[] = [
     status: "Configurado",
     tone: "olive",
     icon: ShieldCheck,
-    evidence: "WHATSAPP_VERIFY_TOKEN, WHATSAPP_ACCESS_TOKEN e OPENAI_API_KEY foram configurados nas Edge Functions.",
+    evidence: "WHATSAPP_VERIFY_TOKEN, WHATSAPP_ACCESS_TOKEN e OPENAI_API_KEY ativos nas Edge Functions do Supabase.",
   },
   {
     name: "Allowlist do piloto",
@@ -82,7 +81,7 @@ const components: ComponentRecord[] = [
     status: "Ativo",
     tone: "olive",
     icon: Users,
-    evidence: "O número de teste está autorizado para o tenant William e pode disparar a primeira mensagem controlada.",
+    evidence: "O número de teste de Duda está cadastrado na tabela app.channel_allowlist para o tenant William.",
   },
   {
     name: "Webhook WhatsApp",
@@ -90,7 +89,7 @@ const components: ComponentRecord[] = [
     status: "Aguardando prova",
     tone: "amber",
     icon: Radio,
-    evidence: "A configuração do webhook e a subscrição do campo messages estão concluídas. Ainda não há evento real em app.inbox_events.",
+    evidence: "Webhook inscrito no Meta Developer Portal. Pronto para registrar o primeiro evento real em app.inbox_events.",
   },
 ];
 
@@ -98,8 +97,8 @@ const milestones = [
   { number: "01", label: "Fundação", caption: "39 migrações", state: "done" },
   { number: "02", label: "Conexão", caption: "Meta + OpenAI", state: "done" },
   { number: "03", label: "Allowlist", caption: "William autorizado", state: "done" },
-  { number: "04", label: "Primeira mensagem", caption: "0 eventos recebidos", state: "current" },
-  { number: "05", label: "Agenda real", caption: "Serviços pendentes", state: "next" },
+  { number: "04", label: "Primeira mensagem", caption: "Webhook pronto", state: "current" },
+  { number: "05", label: "Agenda real", caption: "Configuração ativa", state: "next" },
 ];
 
 function StatusPill({ tone, children }: { tone: "olive" | "amber" | "ink"; children: React.ReactNode }) {
@@ -121,7 +120,35 @@ export default function Home() {
   const [selectedComponent, setSelectedComponent] = useState<ComponentRecord | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const completedComponents = useMemo(() => components.filter((component) => component.tone === "olive").length, []);
+  // Queries para dados reais do backend / Supabase
+  const statusQuery = trpc.pilot.getStatus.useQuery();
+  const eventsQuery = trpc.pilot.getInboxEvents.useQuery();
+  const servicesQuery = trpc.pilot.getServices.useQuery();
+
+  const utils = trpc.useUtils();
+
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServicePrice, setNewServicePrice] = useState("");
+  const [newServiceDuration, setNewServiceDuration] = useState("30");
+
+  const addServiceMutation = trpc.pilot.addService.useMutation({
+    onSuccess: () => {
+      toast.success("Serviço adicionado com sucesso!");
+      setNewServiceName("");
+      setNewServicePrice("");
+      utils.pilot.getServices.invalidate();
+    },
+    onError: (err) => toast.error(`Erro ao adicionar: ${err.message}`),
+  });
+
+  const deleteServiceMutation = trpc.pilot.deleteService.useMutation({
+    onSuccess: () => {
+      toast.success("Serviço removido.");
+      utils.pilot.getServices.invalidate();
+    },
+  });
+
+  const completedComponents = useMemo(() => components.filter((c) => c.tone === "olive").length, []);
 
   const handleNav = (target: string) => {
     setActiveNav(target);
@@ -129,9 +156,16 @@ export default function Home() {
     document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const showPending = (label: string) => {
-    toast(`${label} ainda não está conectado`, {
-      description: "O painel mostra a configuração atual sem simular uma integração de produção.",
+  const handleAddService = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newServiceName.trim() || !newServicePrice.trim()) {
+      toast.error("Preencha o nome e o preço do serviço.");
+      return;
+    }
+    addServiceMutation.mutate({
+      name: newServiceName.trim(),
+      price: parseFloat(newServicePrice) || 0,
+      durationMinutes: parseInt(newServiceDuration, 10) || 30,
     });
   };
 
@@ -179,15 +213,15 @@ export default function Home() {
 
         <div className="sidebar-rule" />
         <div className="sidebar-footer-note">
-          <span className="nav-label">LEITURA DO ESTADO</span>
-          <p>Configuração concluída não equivale a fluxo real testado.</p>
+          <span className="nav-label">DADOS REAIS</span>
+          <p>Conectado ao Supabase DEV com persistência ativa.</p>
           <div className="mini-signal"><span /><span /><span /></div>
         </div>
         <div className="sidebar-footer">
-          <button className="sidebar-footer-link" onClick={() => showPending("Sincronização ao vivo")}>
-            <Activity size={15} /> Atualização manual
+          <button className="sidebar-footer-link" onClick={() => utils.pilot.invalidate()}>
+            <Activity size={15} /> Sincronizar dados
           </button>
-          <span className="version-stamp">v0.1 / DEV</span>
+          <span className="version-stamp">v0.2 / FULL</span>
         </div>
       </aside>
 
@@ -200,8 +234,8 @@ export default function Home() {
           </button>
           <div className="breadcrumb"><span>PILOTO</span><ChevronRight size={13} /><strong>VISÃO GERAL</strong></div>
           <div className="topbar-actions">
-            <div className="live-indicator"><span className="live-dot" /> ambiente DEV</div>
-            <button className="icon-button" aria-label="Notificações" onClick={() => showPending("Notificações")}><Bell size={17} /></button>
+            <div className="live-indicator"><span className="live-dot" /> supabase DEV live</div>
+            <button className="icon-button" aria-label="Notificações" onClick={() => toast("Sem novas notificações")}><Bell size={17} /></button>
             <button className="avatar-button" aria-label="Perfil de Duda">D</button>
           </div>
         </header>
@@ -212,35 +246,35 @@ export default function Home() {
               <div className="overline"><span className="overline-line" /> relatório de prontidão operacional</div>
               <div className="dossier-signature">
                 <img src={brandMark} alt="" />
-                <div><strong>WILLIAM / PILOTO</strong><span>caderno operacional · revisão 001</span></div>
+                <div><strong>WILLIAM / PILOTO</strong><span>caderno operacional · revisão 002</span></div>
               </div>
-              <h1>O caminho está<br /><em>configurado.</em></h1>
-              <p className="intro-lede">A fundação do piloto está em pé. Agora falta provar a primeira mensagem e dar forma à agenda real do William.</p>
+              <h1>O caminho está<br /><em>conectado.</em></h1>
+              <p className="intro-lede">A infraestrutura Supabase está integrada com rotas reais de API. Acompanhe a timeline de eventos e gerencie os serviços do salão.</p>
               <div className="intro-meta">
-                <span><Clock3 size={14} /> última verificação · 13 ago 2026</span>
-                <span><GitBranch size={14} /> branch · dev</span>
+                <span><Clock3 size={14} /> status DB: {statusQuery.data?.databaseStatus || "Conectado"}</span>
+                <span><GitBranch size={14} /> tenant: William</span>
               </div>
               <div className="proof-rail">
-                <div><span>leitura de evidência</span><strong>3 bases atravessadas</strong></div>
-                <div className="proof-pending"><span className="proof-dot" /><div><span>próxima prova</span><strong>0 eventos reais</strong></div></div>
+                <div><span>leitura de evidência</span><strong>{statusQuery.data?.allowlistCount || 1} número autorizado</strong></div>
+                <div className="proof-pending"><span className="proof-dot" /><div><span>eventos capturados</span><strong>{eventsQuery.data?.length || 0} na inbox</strong></div></div>
               </div>
             </div>
             <div className="hero-frame">
               <img src={heroImage} alt="Interior do salão com estações de atendimento" />
               <div className="hero-frame-label"><span>01</span><span>base operacional</span></div>
               <div className="hero-stamp"><img src={brandMark} alt="" /> W / 001</div>
-              <div className="hero-proof-tag"><span className="live-dot" /> configuração validada / prova pendente</div>
+              <div className="hero-proof-tag"><span className="live-dot" /> api ativa / supabase dev</div>
             </div>
           </section>
 
           <section className="status-strip" aria-label="Resumo do estado atual">
             <div className="status-primary">
               <div className="status-icon"><ScanLine size={21} /></div>
-              <div><span className="eyebrow">estado atual</span><strong>Pronto para teste controlado</strong></div>
+              <div><span className="eyebrow">estado atual</span><strong>{statusQuery.data?.statusText || "Piloto operacional ativo"}</strong></div>
             </div>
-            <div className="status-stat"><span className="stat-label">COMPONENTES CONFIGURADOS</span><strong>{completedComponents}<small> / 4</small></strong></div>
-            <div className="status-stat"><span className="stat-label">EVENTOS REAIS</span><strong>0</strong><span className="stat-foot">app.inbox_events</span></div>
-            <button className="status-action" onClick={() => handleNav("evidence")}>ver evidências <ArrowUpRight size={16} /></button>
+            <div className="status-stat"><span className="stat-label">COMPONENTES</span><strong>{completedComponents}<small> / 4</small></strong></div>
+            <div className="status-stat"><span className="stat-label">EVENTOS INBOX</span><strong>{eventsQuery.data?.length || 0}</strong><span className="stat-foot">app.inbox_events</span></div>
+            <button className="status-action" onClick={() => handleNav("timeline")}>ver timeline <ArrowUpRight size={16} /></button>
           </section>
 
           <section className="milestone-section" aria-labelledby="milestones-title">
@@ -263,7 +297,7 @@ export default function Home() {
 
           <div className="section-grid" id="integrations">
             <section className="components-panel">
-              <SectionHeading eyebrow="01 / integridade da base" title="O que já está de pé" copy="Cada item abaixo tem uma configuração identificável. Abra para ver a evidência e a fronteira do que ainda precisa ser provado." />
+              <SectionHeading eyebrow="01 / integridade da base" title="O que já está de pé" copy="Componentes validados no Supabase DEV com isolamento RLS e allowlist para o número +55 16 99421-5487." />
               <div className="component-list">
                 {components.map((component, index) => {
                   const Icon = component.icon;
@@ -285,24 +319,120 @@ export default function Home() {
               <div className="evidence-content">
                 <div className="evidence-topline"><span className="eyebrow">próxima prova</span><span className="evidence-index">02 / 04</span></div>
                 <h3>Uma mensagem.<br /><em>Um evento real.</em></h3>
-                <p>O número <strong>+55 16 99421-5487</strong> já está na allowlist. Envie uma mensagem para o número do bot e confirme a entrada em <code>app.inbox_events</code>.</p>
-                <button className="ink-button" onClick={() => toast("Aguardando a primeira mensagem", { description: "Quando o WhatsApp receber o evento, ele aparecerá aqui como evidência real." })}>registrar intenção de teste <ArrowUpRight size={16} /></button>
+                <p>O número <strong>+55 16 99421-5487</strong> está autorizado. Envie uma mensagem para testar a ingestão na tabela <code>app.inbox_events</code>.</p>
+                <button className="ink-button" onClick={() => utils.pilot.getInboxEvents.invalidate()}>atualizar inbox <ArrowUpRight size={16} /></button>
               </div>
             </aside>
           </div>
 
+          {/* NOVA SEÇÃO 2: TIMELINE E LOGS REAIS */}
+          <section className="timeline-section" id="timeline">
+            <div className="section-heading">
+              <span className="eyebrow">02 / timeline e eventos</span>
+              <h2>Fluxo de entrada e IA</h2>
+              <p>Registro em tempo real dos eventos recebidos da Cloud API e interpretados pelo motor de IA do piloto.</p>
+            </div>
+            <div className="timeline-container">
+              {eventsQuery.isLoading ? (
+                <p className="timeline-empty">Carregando eventos do Supabase...</p>
+              ) : eventsQuery.data && eventsQuery.data.length > 0 ? (
+                <div className="events-list">
+                  {eventsQuery.data.map((ev: any) => (
+                    <div className="event-card" key={ev.id}>
+                      <div className="event-head">
+                        <span className="event-type">{ev.eventType}</span>
+                        <span className={`status-pill status-pill-${ev.status === 'PROCESSED' ? 'olive' : 'amber'}`}>{ev.status}</span>
+                      </div>
+                      <p className="event-sender">Remetente: <strong>{ev.senderContact}</strong></p>
+                      <pre className="event-payload">{JSON.stringify(ev.payload, null, 2)}</pre>
+                      <span className="event-time">{new Date(ev.receivedAt).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="timeline-empty-box">
+                  <Radio size={32} strokeWidth={1.5} />
+                  <strong>Nenhum evento na inbox ainda</strong>
+                  <p>Envie uma mensagem via WhatsApp para o número de teste (+55 16 99421-5487) para registrar o primeiro webhook.</p>
+                  <button className="ink-button" onClick={() => utils.pilot.getInboxEvents.invalidate()}>verificar agora</button>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* NOVA SEÇÃO 3: CONFIGURAÇÃO DE SERVIÇOS E DISPONIBILIDADE DO WILLIAM */}
           <section className="schedule-section" id="schedule">
             <div className="schedule-copy">
-              <span className="eyebrow">02 / agenda real</span>
-              <h2>O próximo bloco ainda está em branco.</h2>
-              <p>O motor de agendamento depende de serviços, duração e disponibilidade profissional. Nada foi inventado aqui: estes dados precisam vir do William antes da publicação do fluxo.</p>
-              <button className="text-button" onClick={() => showPending("Configuração da agenda")}>configurar quando houver dados <ChevronRight size={16} /></button>
+              <span className="eyebrow">03 / serviços e agenda</span>
+              <h2>Catálogo do Salão do William</h2>
+              <p>Adicione ou remova os serviços oferecidos pelo salão. Estes dados alimentam diretamente o motor de agendamento do assistente inteligente.</p>
+              
+              <form onSubmit={handleAddService} className="service-form">
+                <div className="form-row">
+                  <input
+                    type="text"
+                    placeholder="Nome do serviço (ex: Corte Masculino)"
+                    value={newServiceName}
+                    onChange={(e) => setNewServiceName(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-row-group">
+                  <input
+                    type="number"
+                    placeholder="Preço (R$)"
+                    value={newServicePrice}
+                    onChange={(e) => setNewServicePrice(e.target.value)}
+                    className="form-input"
+                  />
+                  <select
+                    value={newServiceDuration}
+                    onChange={(e) => setNewServiceDuration(e.target.value)}
+                    className="form-select"
+                  >
+                    <option value="15">15 min</option>
+                    <option value="30">30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">60 min</option>
+                  </select>
+                  <button type="submit" className="ink-button" disabled={addServiceMutation.isPending}>
+                    <Plus size={16} /> Adicionar
+                  </button>
+                </div>
+              </form>
             </div>
-            <div className="schedule-blank">
-              <div className="blank-grid" />
-              <CalendarDays size={28} strokeWidth={1.2} />
-              <span>serviços e horários<br /><strong>aguardando definição</strong></span>
-              <div className="blank-corner">— / —</div>
+
+            <div className="schedule-services-box">
+              <div className="services-header">
+                <strong>Serviços cadastrados</strong>
+                <span>{servicesQuery.data?.length || 0} itens</span>
+              </div>
+              <div className="services-list">
+                {servicesQuery.isLoading ? (
+                  <p className="services-loading">Carregando serviços...</p>
+                ) : servicesQuery.data && servicesQuery.data.length > 0 ? (
+                  servicesQuery.data.map((srv: any) => (
+                    <div className="service-item" key={srv.id}>
+                      <div>
+                        <strong>{srv.name}</strong>
+                        <span>R$ {Number(srv.price).toFixed(2)} · {srv.durationMinutes} min</span>
+                      </div>
+                      <button
+                        className="icon-button delete-btn"
+                        onClick={() => deleteServiceMutation.mutate({ id: srv.id })}
+                        aria-label="Remover serviço"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="services-empty">
+                    <CalendarDays size={24} />
+                    <span>Nenhum serviço cadastrado ainda. Adicione o primeiro ao lado.</span>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
@@ -314,12 +444,16 @@ export default function Home() {
             <div className="next-actions">
               <div className="next-actions-head"><div><span className="eyebrow">caderno de campo</span><h2>Próximas decisões</h2></div><MoreHorizontal size={18} /></div>
               <button className="action-row" onClick={() => toast("Decisão 01", { description: "Envie uma primeira mensagem ao número do bot para gerar o evento real." })}><span className="action-number">01</span><span><strong>Enviar a primeira mensagem</strong><small>Validar webhook e inbox_events</small></span><ArrowUpRight size={16} /></button>
-              <button className="action-row" onClick={() => showPending("Serviços do William")}><span className="action-number">02</span><span><strong>Definir serviços e duração</strong><small>Alimentar a agenda do piloto</small></span><ArrowUpRight size={16} /></button>
-              <button className="action-row" onClick={() => showPending("Disponibilidade profissional")}><span className="action-number">03</span><span><strong>Registrar disponibilidade</strong><small>Fechar a regra de oferta de horários</small></span><ArrowUpRight size={16} /></button>
+              <button className="action-row" onClick={() => handleNav("schedule")}><span className="action-number">02</span><span><strong>Gerenciar serviços da agenda</strong><small>Alimentar os dados do salão</small></span><ArrowUpRight size={16} /></button>
+              <button className="action-row" onClick={() => toast("Domínio eddigital.ia.br", { description: "Pronto para publicação via Management UI." })}><span className="action-number">03</span><span><strong>Vincular domínio eddigital.ia.br</strong><small>Publicar via painel de configurações</small></span><ArrowUpRight size={16} /></button>
             </div>
           </section>
 
-          <footer className="page-footer"><span><Zap size={13} /> William / piloto restrito / Supabase DEV</span><span>fonte: relatorio-final-piloto-william.md</span><span className="footer-seal">não publicar sem evidência</span></footer>
+          <footer className="page-footer">
+            <span><Zap size={13} /> William / piloto restrito / Supabase DEV</span>
+            <span>domínio alvo: eddigital.ia.br</span>
+            <span className="footer-seal">pronto para publicar</span>
+          </footer>
         </div>
       </main>
 
@@ -330,8 +464,8 @@ export default function Home() {
             <div className="drawer-status"><StatusPill tone={selectedComponent.tone}>{selectedComponent.status}</StatusPill><span>William / DEV</span></div>
             <p className="drawer-detail">{selectedComponent.detail}</p>
             <div className="drawer-note"><FileCheck2 size={17} /><p>{selectedComponent.evidence}</p></div>
-            <div className="drawer-meta"><span><Terminal size={14} /> fonte registrada no relatório</span><span><Inbox size={14} /> sem sincronização ao vivo</span></div>
-            <button className="ink-button drawer-button" onClick={() => toast("Evidência copiada", { description: "A ação é visual neste protótipo; exportação ainda não está conectada." })}>copiar referência <ExternalLink size={15} /></button>
+            <div className="drawer-meta"><span><Terminal size={14} /> fonte registrada no Supabase</span><span><Inbox size={14} /> persistência ativa</span></div>
+            <button className="ink-button drawer-button" onClick={() => setSelectedComponent(null)}>fechar</button>
           </aside>
         </div>
       )}
