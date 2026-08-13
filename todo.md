@@ -11,3 +11,4 @@
 - [x] Validar build, typecheck e testes com a nova interface visual.
 - [x] Publicar no preview e obter aprovação antes de qualquer alteração de produção.
 - [x] Regenerar o pnpm-lock.yaml e publicar a sincronização exigida pelo Vercel.
+- [x] Corrigir o carregamento de estilos do dashboard no preview Vercel e validar a referência visual aprovada localmente.
