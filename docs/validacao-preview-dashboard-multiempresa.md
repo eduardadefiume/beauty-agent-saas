@@ -57,3 +57,9 @@ O aviso de compatibilidade do `pnpm` com a versão local do Node é pré-existen
 O commit `61aa22b` acionou automaticamente o deployment Preview imutável `https://web-7kelgqjn2-ed-digital.vercel.app`. Nas primeiras verificações, o provedor informou **Deployment is building**; portanto, nenhuma conclusão funcional foi extraída antes do término do build.
 
 Após o build, a sessão autenticada no mesmo Preview exibiu o configurador, com o link `Operação` efetivamente presente e apontando para `/dashboard?tenantId=4b2a8e37-1716-41c4-9201-eefce890638d`. O link está visualmente pequeno, no canto superior direito, e a tela permaneceu no estado `Carregando os dados da sua empresa…`. A navegação existe, mas não é suficientemente visível para a operação diária; o próximo ajuste dará a ela destaque explícito e testará o destino.
+
+O Preview do ajuste visual `83ac80b` está disponível em `https://web-qw65gb7a3-ed-digital.vercel.app`. Ele concluiu o build, mas exige nova autenticação por usar um domínio imutável diferente do Preview anterior.
+
+## Validação autenticada pela proprietária
+
+Em 13/08/2026, após autenticação no Preview `83ac80b`, a proprietária confirmou que o fluxo funcionou. O configurador exibiu a entrada para operação e a navegação para o dashboard foi concluída. Esta é uma validação manual do caminho autenticado; não equivale a promoção de produção.
