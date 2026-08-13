@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { selectTenantWorkspace, type TenantWorkspace } from './dashboard-tenant-context';
+import {
+  parseTenantWorkspaces,
+  selectTenantWorkspace,
+  type TenantWorkspace,
+} from './dashboard-tenant-context';
 
 const workspaces: TenantWorkspace[] = [
   {
@@ -27,8 +31,13 @@ describe('selectTenantWorkspace', () => {
     expect(selectTenantWorkspace(workspaces, 'tenant-b')?.tenantName).toBe('Salao B');
   });
 
-  it('não usa nome, slug ou dados de outro tenant como fallback', () => {
-    expect(selectTenantWorkspace(workspaces, 'tenant-inexistente')?.tenantId).toBe('tenant-a');
+  it('não usa dados de outro tenant como fallback quando há tenant explícito', () => {
+    expect(selectTenantWorkspace(workspaces, 'tenant-inexistente')).toBeNull();
     expect(selectTenantWorkspace([], 'tenant-a')).toBeNull();
+  });
+
+  it('aceita somente registros de workspace completos retornados pelo gateway', () => {
+    const items = parseTenantWorkspaces([...workspaces, { tenantId: 'incompleto', tenantName: 'Sem unidade' }]);
+    expect(items).toEqual(workspaces);
   });
 });
