@@ -51,3 +51,9 @@ Em 13/08/2026, após adaptar a rota `/api/dashboard-context` ao gateway autoriza
 | Build de produção | Aprovado |
 
 O aviso de compatibilidade do `pnpm` com a versão local do Node é pré-existente e não bloqueou nenhuma verificação.
+
+## Novo Preview da correção
+
+O commit `61aa22b` acionou automaticamente o deployment Preview imutável `https://web-7kelgqjn2-ed-digital.vercel.app`. Nas primeiras verificações, o provedor informou **Deployment is building**; portanto, nenhuma conclusão funcional foi extraída antes do término do build.
+
+Após o build, a sessão autenticada no mesmo Preview exibiu o configurador, com o link `Operação` efetivamente presente e apontando para `/dashboard?tenantId=4b2a8e37-1716-41c4-9201-eefce890638d`. O link está visualmente pequeno, no canto superior direito, e a tela permaneceu no estado `Carregando os dados da sua empresa…`. A navegação existe, mas não é suficientemente visível para a operação diária; o próximo ajuste dará a ela destaque explícito e testará o destino.

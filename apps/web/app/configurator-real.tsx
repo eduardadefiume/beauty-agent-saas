@@ -943,9 +943,17 @@ export default function Configurator({ user }: { user: { displayName: string; em
           </div>
           <div className="account">
             <strong>{user.displayName}</strong>
-            <a className="linklike" href={`/dashboard?tenantId=${encodeURIComponent(tenantId)}`}>
-              Operação
-            </a>
+            {tenantId ? (
+              <a
+                className="operation-cta"
+                href={`/dashboard?tenantId=${encodeURIComponent(tenantId)}`}
+                aria-label="Abrir painel operacional do negócio selecionado"
+              >
+                Abrir operação <span aria-hidden="true">→</span>
+              </a>
+            ) : (
+              <span className="operation-pending">Preparando operação…</span>
+            )}
             <button className="linklike" onClick={() => void signOut()}>
               Sair
             </button>

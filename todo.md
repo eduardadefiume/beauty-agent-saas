@@ -39,3 +39,5 @@
 - [ ] Corrigir o fluxo autenticado que ainda entrega o dashboard legado em vez do dashboard multiempresa do deployment atual.
 - [x] Fazer a rota de contexto do dashboard usar o gateway `owner-console-api` autorizado, em vez de chamar RPC restrito com o token de sessão.
 - [x] Configurar o endpoint do gateway no ambiente Preview da Vercel para restaurar o carregamento de workspaces do configurador e dashboard.
+- [ ] Corrigir a ausência de entrada visível e funcional do configurador autenticado para o dashboard operacional do tenant.
+- [x] Tornar a entrada para a operação um controle explícito e destacado no configurador autenticado, sem depender de link discreto no cabeçalho.

@@ -202,6 +202,40 @@ legend {
   font-size: 12px;
   text-decoration: underline;
 }
+.account .operation-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 241, 197, 0.9);
+  border-radius: 10px;
+  background: #fff1c5;
+  color: #245840;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: transform 160ms var(--ease-out, ease-out), background 160ms var(--ease-out, ease-out);
+}
+.account .operation-cta:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+}
+.account .operation-cta:active {
+  transform: scale(0.97);
+}
+.account .operation-cta:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 3px;
+}
+.account .operation-pending {
+  display: inline-block;
+  margin-top: 8px;
+  color: #dbeee5;
+  font-size: 12px;
+  font-weight: 800;
+}
 
 .notice {
   margin: 16px 0;
