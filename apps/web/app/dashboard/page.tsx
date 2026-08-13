@@ -27,10 +27,27 @@ import {
   Users,
   X,
   Zap,
-  Plus,
-  Trash2,
 } from "lucide-react";
 import styles from "./dashboard.module.css";
+
+type TenantWorkspace = {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  unitId: string;
+  unitName: string;
+  timezone: string;
+  status: string;
+};
+
+type InboxEventRecord = {
+  id: string;
+  eventType: string;
+  status: 'PROCESSED' | 'PENDING' | 'FAILED';
+  senderContact: string;
+  payload: unknown;
+  receivedAt: string;
+};
 
 const heroImage = "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=1200";
 const textureImage = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800";
@@ -58,43 +75,43 @@ type ComponentRecord = {
 const components: ComponentRecord[] = [
   {
     name: "Banco de dados & RLS",
-    detail: "39 migrações aplicadas · isolamento ativo",
-    status: "Concluído",
+    detail: "Isolamento por tenant no modelo operacional",
+    status: "Em validação",
     tone: "olive",
     icon: Database,
-    evidence: "Schema app / private / api criado no Supabase DEV (hjghwryhphgusefyivbl). As políticas de RLS garantem isolamento por tenant_id.",
+    evidence: "A operação deve carregar somente o tenant autorizado pela sessão. A prova final depende dos testes negativos de RLS no Supabase.",
   },
   {
     name: "Credenciais & segredos",
-    detail: "Meta Cloud API + OpenAI configurados",
-    status: "Configurado",
-    tone: "olive",
+    detail: "Canais externos são configurados por negócio",
+    status: "Pendente de canal",
+    tone: "amber",
     icon: ShieldCheck,
-    evidence: "WHATSAPP_VERIFY_TOKEN, WHATSAPP_ACCESS_TOKEN e OPENAI_API_KEY ativos nas Edge Functions do Supabase.",
+    evidence: "Nenhuma credencial é compartilhada entre tenants. A conexão WhatsApp só pode ser exibida após a vinculação do canal do próprio negócio.",
   },
   {
-    name: "Allowlist do piloto",
-    detail: "+55 16 99421-5487 · status ACTIVE",
-    status: "Ativo",
-    tone: "olive",
+    name: "Consentimento e contatos",
+    detail: "Base CRM e evidências por finalidade",
+    status: "Em implantação",
+    tone: "amber",
     icon: Users,
-    evidence: "O número de teste de Duda está cadastrado na tabela app.channel_allowlist para o tenant William.",
+    evidence: "Contatos, canais e consentimentos serão segregados por tenant. Nenhum contato de outro negócio pode aparecer nesta área.",
   },
   {
     name: "Webhook WhatsApp",
-    detail: "Endpoint apontado para a Edge Function",
-    status: "Aguardando prova",
+    detail: "Eventos aparecerão após a conexão do canal",
+    status: "Aguardando conexão",
     tone: "amber",
     icon: Radio,
-    evidence: "Webhook inscrito no Meta Developer Portal. Pronto para registrar o primeiro evento real em app.inbox_events.",
+    evidence: "A inbox só exibirá mensagens do canal associado ao negócio atual, após a validação do webhook e das políticas de acesso.",
   },
 ];
 
 const milestones = [
   { number: "01", label: "Fundação", caption: "39 migrações", state: "done" },
   { number: "02", label: "Conexão", caption: "Meta + OpenAI", state: "done" },
-  { number: "03", label: "Allowlist", caption: "William autorizado", state: "done" },
-  { number: "04", label: "Primeira mensagem", caption: "Webhook pronto", state: "current" },
+  { number: "03", label: "Contexto", caption: "tenant resolvido", state: "current" },
+  { number: "04", label: "Primeira mensagem", caption: "canal a conectar", state: "next" },
   { number: "05", label: "Agenda real", caption: "Configuração ativa", state: "next" },
 ];
 
@@ -117,24 +134,81 @@ export default function DashboardPilotoWilliamPage() {
   const [activeNav, setActiveNav] = useState("overview");
   const [selectedComponent, setSelectedComponent] = useState<ComponentRecord | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [workspace, setWorkspace] = useState<TenantWorkspace | null>(null);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
 
-  const [services, setServices] = useState<any[]>([
-    { id: "1", name: "Corte Cabelo & Styling", price: 90, durationMinutes: 45 },
-    { id: "2", name: "Manicure Completa", price: 50, durationMinutes: 30 },
-    { id: "3", name: "Design de Cílios Fio a Fio", price: 180, durationMinutes: 90 },
-  ]);
-  const [inboxEvents, setInboxEvents] = useState<any[]>([]);
+  const inboxEvents: InboxEventRecord[] = [];
   const [statusInfo, setStatusInfo] = useState({
-    databaseStatus: "Ativo e Conectado (Supabase DEV hjghwryhphgusefyivbl)",
-    allowlistCount: 1,
-    statusText: "Piloto operacional ativo · RLS verificado",
+    databaseStatus: "Contexto do negócio em carregamento",
+    allowlistCount: 0,
+    statusText: "Aguardando contexto autenticado",
   });
 
-  const [newServiceName, setNewServiceName] = useState("");
-  const [newServicePrice, setNewServicePrice] = useState("");
-  const [newServiceDuration, setNewServiceDuration] = useState("30");
-
   const completedComponents = components.filter((c) => c.tone === "olive").length;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const requestedTenantId = new URLSearchParams(window.location.search).get("tenantId");
+    const query = requestedTenantId ? `?tenantId=${encodeURIComponent(requestedTenantId)}` : "";
+
+    fetch(`/api/dashboard-context${query}`, { signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(response.status === 401 ? "AUTHENTICATION_REQUIRED" : (body.error ?? "TENANT_CONTEXT_UNAVAILABLE"));
+        }
+        return body;
+      })
+      .then((body) => {
+        const activeWorkspace = body.activeWorkspace as TenantWorkspace;
+        setWorkspace(activeWorkspace);
+        setStatusInfo({
+          databaseStatus: `Tenant autorizado · ${activeWorkspace.timezone}`,
+          allowlistCount: 0,
+          statusText: `${activeWorkspace.status === "PUBLISHED" ? "Operação publicada" : "Configuração em rascunho"} · isolamento por tenant`,
+        });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (error instanceof Error && error.message === "AUTHENTICATION_REQUIRED") {
+          window.location.assign("/login");
+          return;
+        }
+        setWorkspaceError("Não foi possível resolver o negócio autorizado para esta sessão.");
+      })
+      .finally(() => setWorkspaceLoading(false));
+
+    return () => controller.abort();
+  }, []);
+
+  if (workspaceLoading) {
+    return (
+      <main className={styles.accessState} aria-busy="true">
+        <section className={styles.accessCard}>
+          <span className={styles.accessEyebrow}>operação do negócio</span>
+          <h1>Validando seu contexto.</h1>
+          <p>Estamos confirmando o negócio autorizado para esta sessão antes de abrir os dados operacionais.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!workspace) {
+    return (
+      <main className={styles.accessState}>
+        <section className={styles.accessCard}>
+          <span className={styles.accessEyebrow}>operação indisponível</span>
+          <h1>Não foi possível abrir este negócio.</h1>
+          <p>{workspaceError ?? "Esta sessão não possui um negócio autorizado para a área operacional."}</p>
+          <button className={styles.accessButton} onClick={() => window.location.assign("/")}>
+            Voltar ao configurador
+            <ArrowUpRight size={15} />
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   const handleNav = (target: string) => {
     setActiveNav(target);
@@ -142,32 +216,12 @@ export default function DashboardPilotoWilliamPage() {
     document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const handleAddService = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newServiceName.trim() || !newServicePrice.trim()) {
-      toast.error("Preencha o nome e o preço do serviço.");
-      return;
-    }
-    const newItem = {
-      id: Date.now().toString(),
-      name: newServiceName.trim(),
-      price: parseFloat(newServicePrice) || 0,
-      durationMinutes: parseInt(newServiceDuration, 10) || 30,
-    };
-    setServices((prev) => [newItem, ...prev]);
-    setNewServiceName("");
-    setNewServicePrice("");
-    toast.success("Serviço adicionado com sucesso!");
-  };
-
-  const handleDeleteService = (id: string) => {
-    setServices((prev) => prev.filter((s) => s.id !== id));
-    toast.success("Serviço removido.");
-  };
-
   const handleSync = () => {
-    toast.success("Dados sincronizados com o Supabase DEV!");
+    toast.success("Contexto operacional atualizado.");
   };
+
+  const tenantName = workspace?.tenantName ?? (workspaceLoading ? "Carregando negócio" : "Negócio não disponível");
+  const unitName = workspace?.unitName ?? "Unidade não disponível";
 
   return (
     <div className={styles.appShell}>
@@ -175,8 +229,8 @@ export default function DashboardPilotoWilliamPage() {
         <div className={styles.sidebarTopline}>
           <div className={styles.brandLockup}>
             <div>
-              <div className={styles.brandWordmark}>WILLIAM</div>
-              <div className={styles.brandSubline}>PILOTO / 001</div>
+              <div className={styles.brandWordmark}>{tenantName.toUpperCase()}</div>
+              <div className={styles.brandSubline}>OPERAÇÃO / 001</div>
             </div>
           </div>
           <button className={`${styles.iconButton} ${styles.mobileClose}`} aria-label="Fechar menu" onClick={() => setMobileNavOpen(false)}>
@@ -186,8 +240,8 @@ export default function DashboardPilotoWilliamPage() {
 
         <div className={styles.sidebarContext}>
           <span className={styles.contextLabel}>TENANT</span>
-          <span className={styles.contextValue}>Salão do William</span>
-          <span className={styles.contextEnv}><CircleDot size={9} fill="currentColor" /> Supabase DEV</span>
+          <span className={styles.contextValue}>{unitName}</span>
+          <span className={styles.contextEnv}><CircleDot size={9} fill="currentColor" /> contexto autorizado</span>
         </div>
 
         <nav className={styles.sidebarNav} aria-label="Navegação principal">
@@ -213,7 +267,7 @@ export default function DashboardPilotoWilliamPage() {
         <div className={styles.sidebarRule} />
         <div className={styles.sidebarFooterNote}>
           <span className={styles.navLabel}>DADOS REAIS</span>
-          <p>Conectado ao Supabase DEV com persistência ativa.</p>
+          <p>{workspaceError ?? "Dados separados por negócio e sessão autenticada."}</p>
           <div className={styles.miniSignal}><span /><span /><span /></div>
         </div>
         <div className={styles.sidebarFooter}>
@@ -231,9 +285,9 @@ export default function DashboardPilotoWilliamPage() {
           <button className={`${styles.iconButton} ${styles.mobileMenu}`} aria-label="Abrir menu" onClick={() => setMobileNavOpen(true)}>
             <Menu size={20} />
           </button>
-          <div className={styles.breadcrumb}><span>PILOTO</span><ChevronRight size={13} /><strong>VISÃO GERAL</strong></div>
+          <div className={styles.breadcrumb}><span>OPERAÇÃO</span><ChevronRight size={13} /><strong>VISÃO GERAL</strong></div>
           <div className={styles.topbarActions}>
-            <div className={styles.liveIndicator}><span className={styles.liveDot} /> supabase DEV live</div>
+            <div className={styles.liveIndicator}><span className={styles.liveDot} /> tenant autorizado</div>
             <button className={styles.iconButton} aria-label="Notificações" onClick={() => toast("Sem novas notificações")}><Bell size={17} /></button>
             <button className={styles.avatarButton} aria-label="Perfil de Duda">D</button>
           </div>
@@ -244,13 +298,13 @@ export default function DashboardPilotoWilliamPage() {
             <div className={styles.introCopy}>
               <div className={styles.overline}><span className={styles.overlineLine} /> relatório de prontidão operacional</div>
               <div className={styles.dossierSignature}>
-                <div><strong>WILLIAM / PILOTO</strong><span>caderno operacional · revisão 002</span></div>
+                <div><strong>{tenantName.toUpperCase()} / OPERAÇÃO</strong><span>caderno operacional · contexto autenticado</span></div>
               </div>
               <h1 className={styles.mainTitle}>O caminho está<br /><em>conectado.</em></h1>
-              <p className={styles.introLede}>A infraestrutura Supabase está integrada com rotas reais de API. Acompanhe a timeline de eventos e gerencie os serviços do salão.</p>
+              <p className={styles.introLede}>Acompanhe a inbox, os agendamentos, as confirmações e a configuração do seu próprio negócio — sem acesso a dados de outros tenants.</p>
               <div className={styles.introMeta}>
                 <span><Clock3 size={14} /> status DB: {statusInfo.databaseStatus}</span>
-                <span><GitBranch size={14} /> tenant: William</span>
+                <span><GitBranch size={14} /> tenant: {workspace?.tenantSlug ?? "indisponível"}</span>
               </div>
               <div className={styles.proofRail}>
                 <div><span>leitura de evidência</span><strong>{statusInfo.allowlistCount} número autorizado</strong></div>
@@ -260,8 +314,8 @@ export default function DashboardPilotoWilliamPage() {
             <div className={styles.heroFrame}>
               <img src={heroImage} alt="Interior do salão com estações de atendimento" />
               <div className={styles.heroFrameLabel}><span>01</span><span>base operacional</span></div>
-              <div className={styles.heroStamp}>W / 001</div>
-              <div className={styles.heroProofTag}><span className={styles.liveDot} /> api ativa / supabase dev</div>
+              <div className={styles.heroStamp}>OP / 001</div>
+              <div className={styles.heroProofTag}><span className={styles.liveDot} /> operação / tenant</div>
             </div>
           </section>
 
@@ -298,7 +352,7 @@ export default function DashboardPilotoWilliamPage() {
 
           <div className={styles.sectionGrid} id="integrations">
             <section className={styles.componentsPanel}>
-              <SectionHeading eyebrow="01 / integridade da base" title="O que já está de pé" copy="Componentes validados no Supabase DEV com isolamento RLS e allowlist para o número +55 16 99421-5487." />
+              <SectionHeading eyebrow="01 / integridade da base" title="O que já está de pé" copy="Base operacional estruturada para o seu negócio, com isolamento por tenant e evidências de ativação por módulo." />
               <div className={styles.componentList}>
                 {components.map((component, index) => {
                   const Icon = component.icon;
@@ -321,18 +375,18 @@ export default function DashboardPilotoWilliamPage() {
               <div className={styles.evidenceContent}>
                 <div className={styles.evidenceTopline}><span className={styles.eyebrow}>próxima prova</span><span className={styles.evidenceIndex}>02 / 04</span></div>
                 <h3>Uma mensagem.<br /><em>Um evento real.</em></h3>
-                <p>O número <strong>+55 16 99421-5487</strong> está autorizado. Envie uma mensagem para testar a ingestão na tabela <code>app.inbox_events</code>.</p>
+                <p>Conecte o número WhatsApp do seu negócio para iniciar a ingestão segura das conversas na inbox operacional.</p>
                 <button className={styles.inkButton} onClick={() => toast("Inbox atualizada", { description: "Nenhum novo evento pendente na API." })}>atualizar inbox <ArrowUpRight size={16} /></button>
               </div>
             </aside>
           </div>
 
           <section className={styles.timelineSection} id="timeline">
-            <SectionHeading eyebrow="02 / timeline e eventos" title="Fluxo de entrada e IA" copy="Registro em tempo real dos eventos recebidos da Cloud API e interpretados pelo motor de IA do piloto." />
+              <SectionHeading eyebrow="02 / timeline e eventos" title="Fluxo de entrada e IA" copy="Registro dos eventos recebidos pelo canal WhatsApp vinculado exclusivamente ao seu negócio." />
             <div className={styles.timelineContainer}>
               {inboxEvents.length > 0 ? (
                 <div className={styles.eventsList}>
-                  {inboxEvents.map((ev: any) => (
+                  {inboxEvents.map((ev) => (
                     <div className={styles.eventCard} key={ev.id}>
                       <div className={styles.eventHead}>
                         <span className={styles.eventType}>{ev.eventType}</span>
@@ -348,7 +402,7 @@ export default function DashboardPilotoWilliamPage() {
                 <div className={styles.timelineEmptyBox}>
                   <Radio size={32} strokeWidth={1.5} />
                   <strong>Nenhum evento na inbox ainda</strong>
-                  <p>Envie uma mensagem via WhatsApp para o número de teste (+55 16 99421-5487) para registrar o primeiro webhook.</p>
+                  <p>Assim que o canal WhatsApp deste negócio estiver conectado, as novas conversas aparecerão aqui.</p>
                   <button className={styles.inkButton} onClick={() => toast("Verificação concluída", { description: "Webhook pronto para receber requisições da Meta Cloud API." })}>verificar agora</button>
                 </div>
               )}
@@ -358,69 +412,21 @@ export default function DashboardPilotoWilliamPage() {
           <section className={styles.scheduleSection} id="schedule">
             <div className={styles.scheduleCopy}>
               <span className={styles.eyebrow}>03 / serviços e agenda</span>
-              <h2>Catálogo do Salão do William</h2>
-              <p>Adicione ou remova os serviços oferecidos pelo salão. Estes dados alimentam diretamente o motor de agendamento do assistente inteligente.</p>
-              
-              <form onSubmit={handleAddService} className={styles.serviceForm}>
-                <div className={styles.formRow}>
-                  <input
-                    type="text"
-                    placeholder="Nome do serviço (ex: Corte Masculino)"
-                    value={newServiceName}
-                    onChange={(e) => setNewServiceName(e.target.value)}
-                  />
-                </div>
-                <div className={styles.formRowGroup}>
-                  <input
-                    type="number"
-                    placeholder="Preço (R$)"
-                    value={newServicePrice}
-                    onChange={(e) => setNewServicePrice(e.target.value)}
-                  />
-                  <select
-                    value={newServiceDuration}
-                    onChange={(e) => setNewServiceDuration(e.target.value)}
-                  >
-                    <option value="15">15 min</option>
-                    <option value="30">30 min</option>
-                    <option value="45">45 min</option>
-                    <option value="60">60 min</option>
-                  </select>
-                  <button type="submit" className={styles.inkButton}>
-                    <Plus size={16} /> Adicionar
-                  </button>
-                </div>
-              </form>
+              <h2>Catálogo de {tenantName}</h2>
+              <p>O catálogo é configurado e persistido no configurador do negócio. A leitura operacional neste painel será conectada somente quando o contrato de agenda estiver disponível.</p>
+              <a href="/" className={styles.inkButton}>abrir configurador <ArrowUpRight size={16} /></a>
             </div>
 
             <div className={styles.scheduleServicesBox}>
               <div className={styles.servicesHeader}>
-                <strong>Serviços cadastrados</strong>
-                <span>{services.length} itens</span>
+                <strong>Sincronização do catálogo</strong>
+                <span>não conectada</span>
               </div>
               <div className={styles.servicesList}>
-                {services.length > 0 ? (
-                  services.map((srv: any) => (
-                    <div className={styles.serviceItem} key={srv.id}>
-                      <div>
-                        <strong>{srv.name}</strong>
-                        <span>R$ {Number(srv.price).toFixed(2)} · {srv.durationMinutes} min</span>
-                      </div>
-                      <button
-                        className={styles.deleteBtn}
-                        onClick={() => handleDeleteService(srv.id)}
-                        aria-label="Remover serviço"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className={styles.servicesEmpty}>
-                    <CalendarDays size={24} />
-                    <span>Nenhum serviço cadastrado ainda. Adicione o primeiro ao lado.</span>
-                  </div>
-                )}
+                <div className={styles.servicesEmpty}>
+                  <CalendarDays size={24} />
+                  <span>Nenhum serviço é mostrado aqui até existir uma leitura autenticada do catálogo. Use o configurador para criar, editar ou inativar serviços.</span>
+                </div>
               </div>
             </div>
           </section>
@@ -458,7 +464,7 @@ export default function DashboardPilotoWilliamPage() {
           </section>
 
           <footer className={styles.pageFooter}>
-            <span><Zap size={13} /> William / piloto restrito / Supabase DEV</span>
+            <span><Zap size={13} /> {tenantName} / operação autenticada</span>
             <span>domínio alvo: eddigital.ia.br</span>
             <span className={styles.footerSeal}>pronto para publicar</span>
           </footer>
@@ -472,7 +478,7 @@ export default function DashboardPilotoWilliamPage() {
               <div><span className={styles.eyebrow}>evidência do componente</span><h2>{selectedComponent.name}</h2></div>
               <button className={styles.iconButton} aria-label="Fechar evidência" onClick={() => setSelectedComponent(null)}><X size={18} /></button>
             </div>
-            <div className={styles.drawerStatus}><StatusPill tone={selectedComponent.tone}>{selectedComponent.status}</StatusPill><span>William / DEV</span></div>
+            <div className={styles.drawerStatus}><StatusPill tone={selectedComponent.tone}>{selectedComponent.status}</StatusPill><span>{tenantName} / operação</span></div>
             <p className={styles.drawerDetail}>{selectedComponent.detail}</p>
             <div className={styles.drawerNote}><FileCheck2 size={17} /><p>{selectedComponent.evidence}</p></div>
             <div className={styles.drawerMeta}><span><Terminal size={14} /> fonte registrada no Supabase</span><span><Inbox size={14} /> persistência ativa</span></div>

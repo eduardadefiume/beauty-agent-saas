@@ -12,3 +12,25 @@
 - [x] Publicar no preview e obter aprovação antes de qualquer alteração de produção.
 - [x] Regenerar o pnpm-lock.yaml e publicar a sincronização exigida pelo Vercel.
 - [x] Corrigir o carregamento de estilos do dashboard no preview Vercel e validar a referência visual aprovada localmente.
+- [x] Publicar e validar no preview Vercel o dashboard estilizado da referência aprovada (commit c1794ae).
+- [x] Definir e corrigir o destino pós-login entre o configurador da raiz e o Dashboard William em `/dashboard`.
+- [x] Substituir referências, identidade e dados fixos de William por contexto do tenant autenticado no dashboard.
+- [x] Manter o configurador na raiz e oferecer uma entrada explícita para o dashboard operacional do próprio negócio.
+- [x] Decisão superada por Duda: CRM, campanhas e expansão ficam no escopo do produto, com ativação incremental e controles de segurança.
+- [x] Rebaselinar o dashboard para incluir CRM, campanhas e funcionalidades de expansão como módulos do produto, com ativação incremental.
+- [x] Definir consentimento, segmentação, aprovação, descadastro, limites de contato e auditoria antes de habilitar campanhas.
+- [x] Priorizar a inbox/conversas WhatsApp como primeiro corte funcional de CRM por tenant.
+- [ ] Preparar o primeiro envio real de campanha do piloto com consentimento, template Meta, prévia, aprovação humana e auditoria.
+- [x] Implementar resolvedor server-side do tenant autenticado para o dashboard sem fallback William.
+- [x] Adicionar navegação explícita do configurador para a operação do mesmo tenant.
+- [x] Criar migração CRM mínima: contatos, canais, conversas, mensagens, consentimentos e auditoria com `tenant_id` e RLS.
+- [x] Criar testes negativos de isolamento por tenant e testes unitários do resolvedor de contexto.
+- [x] Generalizar o dashboard para identidade e dados do tenant autenticado, com estados vazios honestos.
+- [x] Redirecionar acessos não autenticados ao login antes de exibir o dashboard operacional.
+- [x] Exibir estado de acesso indisponível sem renderizar dados ou identidade operacional quando não houver workspace autorizado.
+- [ ] Implementar a projeção idempotente de eventos WhatsApp para contatos, conversas e mensagens CRM.
+- [ ] Implementar gestão de consentimento e sincronização de templates Meta aprovados.
+- [ ] Implementar rascunho, prévia de público congelado e aprovação humana de campanhas.
+- [ ] Implementar worker idempotente de disparo e auditoria de campanhas, sem envio automático não aprovado.
+- [x] Corrigir erros de lint do resolvedor de contexto e do dashboard multiempresa sem alterar o comportamento validado.
+- [x] Remover a aparência de persistência local do catálogo no dashboard e direcionar a gestão real ao configurador.

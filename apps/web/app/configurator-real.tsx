@@ -725,8 +725,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
       setNotice(`Não deu para conectar o Google Agenda (${calendarError}). Tenta de novo.`);
       router.replace('/');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router, searchParams]);
 
   useEffect(() => {
     void api({ action: 'list' })
@@ -944,6 +943,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
           </div>
           <div className="account">
             <strong>{user.displayName}</strong>
+            <a className="linklike" href={`/dashboard?tenantId=${encodeURIComponent(tenantId)}`}>
+              Operação
+            </a>
             <button className="linklike" onClick={() => void signOut()}>
               Sair
             </button>

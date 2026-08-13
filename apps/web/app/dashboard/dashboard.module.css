@@ -13,6 +13,62 @@
   -webkit-font-smoothing: antialiased;
 }
 
+.accessState {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 28px;
+  color: #1e2b2a;
+  background: #f4f0e8;
+  font-family: Manrope, Arial, sans-serif;
+}
+.accessCard {
+  width: min(100%, 550px);
+  border: 1px solid rgba(30,43,42,.14);
+  padding: clamp(30px, 6vw, 58px);
+  background: rgba(255,255,255,.46);
+  box-shadow: 0 20px 58px rgba(30,43,42,.08);
+}
+.accessEyebrow {
+  display: block;
+  color: #6e7a4a;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.accessCard h1 {
+  margin: 18px 0 0;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(35px, 5vw, 55px);
+  font-weight: 400;
+  letter-spacing: -.045em;
+  line-height: .95;
+}
+.accessCard p {
+  max-width: 420px;
+  margin: 20px 0 0;
+  color: #6c7066;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.accessButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 30px;
+  border: 0;
+  padding: 12px 15px;
+  color: #f4f0e8;
+  background: #1e2b2a;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
 .appShell *, .appShell *::before, .appShell *::after { box-sizing: border-box; }
 .appShell h1, .appShell h2, .appShell h3, .appShell p { margin: 0; }
 .appShell button, .appShell input, .appShell select { font: inherit; }
