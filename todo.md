@@ -1,7 +1,7 @@
-# Todo — Evolução Full-Stack do Painel William
+# Todo — Domínio e Evolução Real do Painel William
 
-- [ ] Fase 1: Migrar projeto estático para full-stack (`webdev_add_feature` feature="web-db-user") e configurar variáveis Supabase
-- [ ] Fase 2: Criar rotas de API no backend para buscar dados do tenant, estatísticas de allowlist e eventos de inbox
-- [ ] Fase 3: Implementar timeline de eventos reais (`app.inbox_events`) e logs de interpretação da IA
-- [ ] Fase 4: Construir tela interativa de gerenciamento de serviços, duração e disponibilidade profissional
-- [ ] Fase 5: Validar build, segurança multiempresa e preparar instruções de publicação e domínio `eddigital.ia.br`
+- [ ] Fase 1: Validar URL de publicação e configurar os apontamentos de DNS para o domínio `eddigital.ia.br`
+- [ ] Fase 2: Conectar o backend diretamente ao Supabase DEV (`hjghwryhphgusefyivbl`) para persistência real de serviços e inbox (eliminando mocks)
+- [ ] Fase 3: Adicionar autenticação com restrição de papel administrativo (`admin`) e isolamento por tenant no tRPC
+- [ ] Fase 4: Implementar ingestão e exibição de eventos reais da tabela `app.inbox_events` na timeline
+- [ ] Fase 5: Executar testes automatizados (vitest), salvar checkpoint e auditar prontidão operacional
