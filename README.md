@@ -101,3 +101,6 @@ Commits seguem `tipo(escopo): descrição curta`. Consulte `CONTRIBUTING.md` ant
 
 O fluxo é `feature/fix → PR para dev → QA → PR dev para main → produção`. Migration só chega a
 PROD depois de passar por DEV, advisors, testes de RLS e evidência registrada.
+
+## Modulo Adicional: Painel Operacional do Piloto William
+Dashboard Caderno de Operacoes adicionado em apps/pilot-dashboard para acompanhamento do piloto.

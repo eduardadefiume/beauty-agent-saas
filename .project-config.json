@@ -1,0 +1,42 @@
+{
+  "build_command": "pnpm run build",
+  "capabilities": [
+    "db",
+    "server",
+    "user"
+  ],
+  "dev_command": "pnpm run dev",
+  "env_vars": {
+    "DATABASE_URL": "mysql://o8C3VCdjBfqLeCp.root:qlS561Fy1U9KAScRkB5P@gateway03.us-east-1.prod.aws.tidbcloud.com:4000/nK6ZxqdYqrS2GEa9LHF4BT?ssl={\"rejectUnauthorized\":true}",
+    "DRIZZLE_DATABASE_URL": "mysql://o8C3VCdjBfqLeCp.root:qlS561Fy1U9KAScRkB5P@gateway03.us-east-1.prod.aws.tidbcloud.com:4000/nK6ZxqdYqrS2GEa9LHF4BT?ssl={\"rejectUnauthorized\":true}",
+    "MANUS_WEBDEV_PROJECT_ID": "nK6ZxqdYqrS2GEa9LHF4BT"
+  },
+  "experiments": null,
+  "git_remote": {
+    "repo_url": "https://7f0548f6b28a1758d9bf7be630d36cb4.artifacts.cloudflare.net/git/prod/nK6ZxqdYqrS2GEa9LHF4BT.git",
+    "expiration": "2026-08-14T11:50:13.758Z",
+    "token": "art_v2_x_b81e58e92dbf338f4736bab8d6ed18e9a1176bb6?expires=1786708213",
+    "backend": "GIT_BACKEND_ARTIFACTS"
+  },
+  "name": "piloto-william-dashboard",
+  "path": "/home/ubuntu/piloto-william-dashboard",
+  "port": 3000,
+  "secrets": {
+    "BUILT_IN_FORGE_API_KEY": "bJr9BoE4SZRLkwSS8UNmY3",
+    "BUILT_IN_FORGE_API_URL": "https://forge.manus.ai",
+    "JWT_SECRET": "FyUCkmo8MDziu5GK4JVS3u",
+    "OAUTH_SERVER_URL": "https://api.manus.im",
+    "OWNER_NAME": "Ed Digital",
+    "OWNER_OPEN_ID": "83yFtd7UEVNyc6Ag4x4ihy",
+    "VITE_ANALYTICS_ENDPOINT": "https://manus-analytics.com",
+    "VITE_ANALYTICS_WEBSITE_ID": "2533f9ee-15cd-4934-a39f-a1bc43f77cbc",
+    "VITE_APP_ID": "nK6ZxqdYqrS2GEa9LHF4BT",
+    "VITE_APP_LOGO": "https://files.manuscdn.com/user_upload_by_module/web_dev_logo/310519663859021729/cMpGZYfyXEFeZXdr.png",
+    "VITE_APP_TITLE": "Painel do Piloto William",
+    "VITE_FRONTEND_FORGE_API_KEY": "MYckfPKGrQ5E8kTWPK7FGx",
+    "VITE_FRONTEND_FORGE_API_URL": "https://forge.manus.ai",
+    "VITE_OAUTH_PORTAL_URL": "https://manus.im"
+  },
+  "template_id": "web-static",
+  "test_command": "pnpm test"
+}

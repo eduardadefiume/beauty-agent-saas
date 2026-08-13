@@ -1,0 +1,170 @@
+[2026-08-13T11:50:21.822Z] Starting dev server with command: pnpm run dev
+[2026-08-13T11:50:24.208Z] > piloto-william-dashboard@1.0.0 dev /home/ubuntu/piloto-william-dashboard
+[2026-08-13T11:50:24.208Z] > vite --host
+[2026-08-13T11:50:24.716Z] VITE v7.1.9  ready in 463 ms
+[2026-08-13T11:50:24.716Z] ➜  Local:   http://localhost:3000/
+[2026-08-13T11:50:24.716Z] ➜  Network: http://169.254.0.21:3000/
+[2026-08-13T11:52:21.313Z] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[2026-08-13T11:52:26.350Z] 11:52:26 AM [vite] (client) hmr update /src/pages/Home.tsx, /src/index.css
+[2026-08-13T11:53:13.065Z] 11:53:13 AM [vite] (client) hmr update /src/index.css
+[2026-08-13T11:53:21.125Z] 11:53:21 AM [vite] (client) page reload index.html
+[2026-08-13T11:54:11.189Z] 11:54:11 AM [vite] (client) hmr update /src/pages/Home.tsx, /src/index.css
+[2026-08-13T11:54:20.796Z] 11:54:20 AM [vite] (client) hmr update /src/index.css
+[2026-08-13T11:57:50.025Z] ELIFECYCLE  Command failed.
+[2026-08-13T11:57:50.075Z] Dev server exited with code -1
+[2026-08-13T11:57:51.205Z] Starting dev server with command: pnpm run dev
+[2026-08-13T11:57:51.927Z] > piloto-william-dashboard@1.0.0 dev /home/ubuntu/piloto-william-dashboard
+[2026-08-13T11:57:51.927Z] > NODE_ENV=development tsx watch server/_core/index.ts
+[2026-08-13T11:57:52.390Z] node:internal/modules/run_main:122
+[2026-08-13T11:57:52.390Z] triggerUncaughtException(
+[2026-08-13T11:57:52.390Z] ^
+[2026-08-13T11:57:52.390Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'dotenv' imported from /home/ubuntu/piloto-william-dashboard/server/_core/index.ts
+[2026-08-13T11:57:52.391Z] at packageResolve (node:internal/modules/esm/resolve:857:9)
+[2026-08-13T11:57:52.391Z] at moduleResolve (node:internal/modules/esm/resolve:926:18)
+[2026-08-13T11:57:52.391Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-08-13T11:57:52.391Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-08-13T11:57:52.391Z] at resolveBase (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786622272244:2:3744)
+[2026-08-13T11:57:52.391Z] at resolveDirectory (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786622272244:2:4243)
+[2026-08-13T11:57:52.391Z] at resolveTsPaths (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786622272244:2:4984)
+[2026-08-13T11:57:52.391Z] at async resolve (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786622272244:2:5355)
+[2026-08-13T11:57:52.391Z] at async nextResolve (node:internal/modules/esm/hooks:748:22)
+[2026-08-13T11:57:52.391Z] at async Hooks.resolve (node:internal/modules/esm/hooks:240:24) {
+[2026-08-13T11:57:52.391Z] code: 'ERR_MODULE_NOT_FOUND'
+[2026-08-13T11:57:52.391Z] }
+[2026-08-13T11:57:52.391Z] Node.js v22.13.0
+[2026-08-13T11:58:38.898Z] ELIFECYCLE  Command failed.
+[2026-08-13T11:58:38.912Z] Dev server exited with code -1
+[2026-08-13T11:58:40.020Z] Starting dev server with command: pnpm run dev
+[2026-08-13T11:58:40.754Z] > piloto-william-dashboard@1.0.0 dev /home/ubuntu/piloto-william-dashboard
+[2026-08-13T11:58:40.754Z] > NODE_ENV=development tsx watch server/_core/index.ts
+[2026-08-13T11:58:42.483Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-08-13T11:58:42.796Z] 11:58:42 AM [vite] (client) Re-optimizing dependencies because lockfile has changed
+[2026-08-13T11:58:42.839Z] Server running on http://localhost:3000/
+[2026-08-13T11:58:43.858Z] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[2026-08-13T12:04:54.124Z] 12:04:54 PM [tsx] change in ./server/routers.ts Restarting...
+[2026-08-13T12:04:54.512Z] c
+[2026-08-13T12:04:54.512Z] node:internal/modules/run_main:122
+[2026-08-13T12:04:54.512Z] triggerUncaughtException(
+[2026-08-13T12:04:54.512Z] ^
+[2026-08-13T12:04:54.512Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@supabase/supabase-js' imported from /home/ubuntu/piloto-william-dashboard/server/routers.ts
+[2026-08-13T12:04:54.512Z] at packageResolve (node:internal/modules/esm/resolve:857:9)
+[2026-08-13T12:04:54.512Z] at moduleResolve (node:internal/modules/esm/resolve:926:18)
+[2026-08-13T12:04:54.512Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-08-13T12:04:54.512Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-08-13T12:04:54.512Z] at resolveBase (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786622694283:2:3744)
+[2026-08-13T12:04:54.512Z] at resolveDirectory (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786622694283:2:4243)
+[2026-08-13T12:04:54.512Z] at resolveTsPaths (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786622694283:2:4984)
+[2026-08-13T12:04:54.512Z] at async resolve (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786622694283:2:5355)
+[2026-08-13T12:04:54.512Z] at async nextResolve (node:internal/modules/esm/hooks:748:22)
+[2026-08-13T12:04:54.512Z] at async Hooks.resolve (node:internal/modules/esm/hooks:240:24) {
+[2026-08-13T12:04:54.512Z] code: 'ERR_MODULE_NOT_FOUND'
+[2026-08-13T12:04:54.512Z] }
+[2026-08-13T12:04:54.512Z] Node.js v22.13.0
+[2026-08-13T12:05:07.889Z] ELIFECYCLE  Command failed.
+[2026-08-13T12:05:07.899Z] Dev server exited with code -1
+[2026-08-13T12:05:09.014Z] Starting dev server with command: pnpm run dev
+[2026-08-13T12:05:09.733Z] > piloto-william-dashboard@1.0.0 dev /home/ubuntu/piloto-william-dashboard
+[2026-08-13T12:05:09.733Z] > NODE_ENV=development tsx watch server/_core/index.ts
+[2026-08-13T12:05:11.379Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-08-13T12:05:11.666Z] 12:05:11 PM [vite] (client) Re-optimizing dependencies because lockfile has changed
+[2026-08-13T12:05:11.689Z] Server running on http://localhost:3000/
+[2026-08-13T12:05:12.778Z] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[2026-08-13T12:28:28.146Z] 12:28:28 PM [vite] changed tsconfig file detected: /home/ubuntu/piloto-william-dashboard/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
+[2026-08-13T12:28:28.152Z] 12:28:28 PM [vite] (client) page reload index.html
+[2026-08-13T12:28:28.152Z] 12:28:28 PM [vite] (client) page reload public/.gitkeep
+[2026-08-13T12:28:28.152Z] 12:28:28 PM [vite] (client) page reload public/__manus__/debug-collector.js
+[2026-08-13T12:28:28.153Z] 12:28:28 PM [vite] (client) page reload src/App.tsx
+[2026-08-13T12:28:28.153Z] 12:28:28 PM [vite] (client) page reload src/_core/hooks/useAuth.ts
+[2026-08-13T12:28:28.153Z] 12:28:28 PM [vite] (client) page reload src/components/AIChatBox.tsx
+[2026-08-13T12:28:28.153Z] 12:28:28 PM [vite] (client) page reload src/components/DashboardLayout.tsx
+[2026-08-13T12:28:28.153Z] 12:28:28 PM [vite] (client) page reload src/components/DashboardLayoutSkeleton.tsx
+[2026-08-13T12:28:28.153Z] 12:28:28 PM [vite] (client) page reload src/components/ErrorBoundary.tsx
+[2026-08-13T12:28:28.153Z] 12:28:28 PM [vite] (client) page reload src/components/ManusDialog.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/Map.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/accordion.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/alert-dialog.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/alert.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/aspect-ratio.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/avatar.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/badge.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/breadcrumb.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/button-group.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/button.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/calendar.tsx
+[2026-08-13T12:28:28.154Z] 12:28:28 PM [vite] (client) page reload src/components/ui/card.tsx
+[2026-08-13T12:28:28.155Z] 12:28:28 PM [vite] (client) page reload src/components/ui/carousel.tsx
+[2026-08-13T12:28:28.155Z] 12:28:28 PM [vite] (client) page reload src/components/ui/chart.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/checkbox.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/collapsible.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/command.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/context-menu.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/dialog.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/drawer.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/dropdown-menu.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/empty.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/field.tsx
+[2026-08-13T12:28:28.156Z] 12:28:28 PM [vite] (client) page reload src/components/ui/form.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/hover-card.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/input-group.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/input-otp.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/input.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/item.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/kbd.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/label.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/menubar.tsx
+[2026-08-13T12:28:28.157Z] 12:28:28 PM [vite] (client) page reload src/components/ui/navigation-menu.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/pagination.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/popover.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/progress.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/radio-group.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/resizable.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/scroll-area.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/select.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/separator.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/sheet.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/sidebar.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/skeleton.tsx
+[2026-08-13T12:28:28.158Z] 12:28:28 PM [vite] (client) page reload src/components/ui/slider.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/sonner.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/spinner.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/switch.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/table.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/tabs.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/textarea.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/toggle-group.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/toggle.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/components/ui/tooltip.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/const.ts
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/contexts/ThemeContext.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/hooks/useComposition.ts
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/hooks/useMobile.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/hooks/usePersistFn.ts
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) hmr update /src/index.css
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/lib/trpc.ts
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/lib/utils.ts
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/main.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/pages/ComponentShowcase.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/pages/Home.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload src/pages/NotFound.tsx
+[2026-08-13T12:28:28.159Z] 12:28:28 PM [vite] (client) page reload /home/ubuntu/piloto-william-dashboard/shared/const.ts
+[2026-08-13T12:28:28.264Z] 12:28:28 PM [tsx] unlink in ./vite.config.ts Restarting...
+[2026-08-13T12:28:28.523Z] c
+[2026-08-13T12:28:28.523Z] node:internal/modules/run_main:122
+[2026-08-13T12:28:28.523Z] triggerUncaughtException(
+[2026-08-13T12:28:28.523Z] ^
+[2026-08-13T12:28:28.523Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/piloto-william-dashboard/server/_core/index.ts' imported from /home/ubuntu/piloto-william-dashboard/
+[2026-08-13T12:28:28.523Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-08-13T12:28:28.523Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-08-13T12:28:28.523Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-08-13T12:28:28.523Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-08-13T12:28:28.523Z] at resolveBase (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786624108398:2:3744)
+[2026-08-13T12:28:28.523Z] at resolveDirectory (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786624108398:2:4243)
+[2026-08-13T12:28:28.523Z] at resolveTsPaths (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786624108398:2:4984)
+[2026-08-13T12:28:28.523Z] at resolve (file:///home/ubuntu/piloto-william-dashboard/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1786624108398:2:5361)
+[2026-08-13T12:28:28.523Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-08-13T12:28:28.523Z] at Hooks.resolve (node:internal/modules/esm/hooks:240:30) {
+[2026-08-13T12:28:28.523Z] code: 'ERR_MODULE_NOT_FOUND',
+[2026-08-13T12:28:28.523Z] url: 'file:///home/ubuntu/piloto-william-dashboard/server/_core/index.ts'
+[2026-08-13T12:28:28.523Z] }
+[2026-08-13T12:28:28.523Z] Node.js v22.13.0
+[2026-08-13T12:28:33.288Z] Dev server exited with code 0
