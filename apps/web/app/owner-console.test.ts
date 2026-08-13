@@ -43,7 +43,8 @@ describe('owner console — auth boundary', () => {
 
   it('the login page offers password sign-in via the server route, with magic-link as a fallback', async () => {
     const source = await read('./login/page.tsx');
-    expect(source).toMatch(/type=["']password["']/);
+    const passwordField = await read('./components/PasswordField.tsx');
+    expect(passwordField).toMatch(/type=\{visible \? ['"]text['"] : ['"]password['"]\}/);
     expect(source).toMatch(/\/api\/auth\/login/);
     // O link mágico continua existindo como alternativa para contas
     // criadas antes da senha existir (Duda, William, Jack, Piloto Eduarda).
