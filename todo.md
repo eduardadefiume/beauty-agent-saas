@@ -43,3 +43,9 @@
 - [x] Promover a branch `feature/saas-com-dashboard-completo` para Produção na Vercel, conforme autorização da proprietária.
 - [x] Validar que `https://eddigital.ia.br/` entrega o configurador e o fluxo operacional multiempresa após a promoção.
 - [x] Tornar a entrada para a operação um controle explícito e destacado no configurador autenticado, sem depender de link discreto no cabeçalho.
+- [x] Extrair o dossiê completo e consolidar a visão de SaaS vendável, conflitos e lacunas.
+- [x] Modelar um catálogo configurável de procedimentos, etapas, pausas, produtos, durações, preços, contraindicações e tipos de cabelo.
+- [x] Especificar CRM de histórico técnico, recorrência, vencimento de procedimento, segmentação e ações comerciais governadas.
+- [x] Especificar agente conversacional capaz de responder dúvidas técnicas e executar ações autorizadas sobre agenda e clientes.
+- [x] Definir a estratégia segura para imagens de tipo de cabelo, coleta de dados, IA e LGPD.
+- [x] Rebaselinar o backlog de produção do produto completo com custo, riscos, dependências e critérios de aceite verificáveis.
