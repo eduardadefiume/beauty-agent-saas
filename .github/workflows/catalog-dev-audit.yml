@@ -1,0 +1,28 @@
+name: Audit DEV technical catalog
+
+on:
+  push:
+    branches:
+      - feature/saas-com-dashboard-completo
+    paths:
+      - 'supabase/migrations/20260813190000_technical_service_catalog.sql'
+      - 'scripts/verify-technical-catalog.mjs'
+      - '.github/workflows/catalog-dev-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify DEV technical catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: hjghwryhphgusefyivbl
+    steps:
+      - name: Checkout selected revision
+        uses: actions/checkout@v4
+
+      - name: Validate catalog through read-only Management API query
+        run: node scripts/verify-technical-catalog.mjs
