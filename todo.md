@@ -49,3 +49,25 @@
 - [x] Especificar agente conversacional capaz de responder dúvidas técnicas e executar ações autorizadas sobre agenda e clientes.
 - [x] Definir a estratégia segura para imagens de tipo de cabelo, coleta de dados, IA e LGPD.
 - [x] Rebaselinar o backlog de produção do produto completo com custo, riscos, dependências e critérios de aceite verificáveis.
+- [x] Auditar o schema, as políticas, os contratos e a interface existentes para definir a primeira fatia segura do catálogo técnico.
+- [ ] Implementar entidades multiempresa versionadas para serviços, versões, etapas e regras de preço/duração.
+- [ ] Aplicar RLS, constraints e testes negativos de isolamento ao novo domínio de catálogo.
+- [ ] Construir a configuração administrativa inicial para criar e publicar procedimentos configuráveis por tenant.
+- [ ] Validar a fatia de catálogo com testes unitários, build, QA visual e evidência de persistência.
+- [x] Corrigir o erro de lint do configurador técnico sem alterar os campos persistidos.
+- [x] Completar os valores padrão técnicos exigidos ao criar serviços e etapas no configurador.
+- [x] Corrigir o backfill técnico para preservar snapshots históricos sem remover a proteção normal de drafts.
+- [ ] Investigar a expiração recorrente da sessão administrativa Supabase e eliminar o acoplamento desnecessário da execução de migrações ao navegador.
+- [ ] Reexecutar a validação pós-migração do catálogo técnico por canal confiável; a consulta no editor falhou antes de atingir o banco e não constitui evidência.
+- [ ] Registrar resultados do catálogo somente com evidência observável, distinguindo executado, verificado por consulta, testado e bloqueado.
+- [x] Concluir a criação e a cópia única de um token Supabase dedicado à validação reproduzível.
+- [x] Registrar o token dedicado como segredo do repositório sem expô-lo em código, histórico ou conversa.
+- [ ] Reabrir o aviso de valor único do token recém-criado e confirmar a cópia antes de salvar o segredo no repositório.
+- [x] Colar o token recém-copiado no segredo `SUPABASE_ACCESS_TOKEN` e confirmar apenas a existência do segredo, nunca seu valor.
+- [ ] Criar e executar uma validação manual, somente de leitura e reproduzível do catálogo técnico pelo GitHub Actions.
+- [ ] Atualizar a credencial GitHub local com um token de escopo mínimo que permita `Contents: Read and write` no repositório alvo.
+- [ ] Aplicar o token pessoal GitHub recém-criado por canal efêmero e confirmar escrita efetiva; a credencial de integração retornou HTTP 403 em operação de escrita.
+- [x] Inspecionar o erro exibido pelo publicador temporário; a API retornou HTTP 403 `Resource not accessible by personal access token`.
+- [ ] Revogar o token pessoal que foi usado no teste falho e criar credencial substituta com acesso comprovado ao repositório e permissão de workflows.
+- [ ] Reautorizar a CLI GitHub com os escopos `repo` e `workflow`, confirmando o acesso antes de publicar qualquer arquivo.
+- [ ] Publicar pela interface GitHub autenticada os arquivos revisados do commit local `41c44ff`, preservando a branch `feature/saas-com-dashboard-completo`.
