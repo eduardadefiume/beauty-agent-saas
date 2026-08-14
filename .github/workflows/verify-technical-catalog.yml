@@ -1,0 +1,22 @@
+name: Verify technical catalog
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify DEV technical catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: hjghwryhphgusefyivbl
+    steps:
+      - name: Checkout selected revision
+        uses: actions/checkout@v4
+
+      - name: Validate technical catalog through read-only Management API query
+        run: node scripts/verify-technical-catalog.mjs
