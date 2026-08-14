@@ -48,6 +48,24 @@ type ClientException = {
   note: string;
 };
 type ResourceType = { name: string; resources: Array<{ name: string; capacity: number }> };
+type TechnicalRequirement = {
+  kind: 'CONSULTATION' | 'HAIR_HISTORY' | 'STRAND_TEST' | 'SENSITIVITY_TEST' | 'CONSENT' | 'PROFESSIONAL_RELEASE' | 'MANUFACTURER_INSTRUCTION';
+  severity: 'INFO' | 'WARNING' | 'BLOCKING';
+  title: string;
+  instruction: string;
+};
+type TechnicalProfile = {
+  family: 'CUT' | 'COLOR' | 'BLEACH' | 'TREATMENT' | 'STRAIGHTENING' | 'TEXTURE' | 'STYLING' | 'OTHER';
+  professionalAssessmentRequired: boolean;
+  manufacturerInstructionRef: string;
+  clientFacingSummary: string;
+  requirements: TechnicalRequirement[];
+};
+type ProductRequirement = {
+  productLabel: string;
+  manufacturerInstructionRef: string;
+  required: boolean;
+};
 type Step = {
   name: string;
   position: number;
@@ -60,6 +78,12 @@ type Step = {
     quantity: number;
     retainUntilServiceEnd: boolean;
   }>;
+  technicalCategory: 'ASSESS' | 'PREPARE' | 'CLEANSE' | 'DRY' | 'APPLY' | 'PROCESS' | 'RINSE' | 'NEUTRALIZE' | 'TREAT' | 'FINISH' | 'STYLE' | 'OTHER';
+  minimumDurationMinutes: number;
+  maximumDurationMinutes: number;
+  professionalConfirmationRequired: boolean;
+  productRecordRequired: boolean;
+  productRequirements: ProductRequirement[];
 };
 type Service = {
   name: string;
@@ -71,6 +95,7 @@ type Service = {
   strandTestLeadDays: number;
   strandTestDurationMinutes: number;
   strandTestPreferredWeekdays: number[];
+  technicalProfile: TechnicalProfile;
 };
 type CancellationChargeType = 'FULL_PRICE' | 'FIXED_AMOUNT' | 'PERCENTAGE';
 type Config = {
@@ -308,7 +333,11 @@ function normalize(data: Loaded): Config {
         capacity: Number(resource.capacity ?? 1),
       })),
     })),
-    services: rows(raw.services).map((item) => ({
+    services: rows(raw.services).map((item) => {
+      const profile = item.technicalProfile && typeof item.technicalProfile === 'object'
+        ? (item.technicalProfile as Obj)
+        : {};
+      return ({
       name: String(item.name),
       basePriceMinor: item.base_price_minor == null ? null : Number(item.base_price_minor),
       requiresStrandTest: Boolean(item.requires_strand_test),
@@ -319,6 +348,18 @@ function normalize(data: Loaded): Config {
         ? item.strand_test_preferred_weekdays
         : [4, 5]
       ).map((day) => Number(day)),
+      technicalProfile: {
+        family: String(profile.family ?? 'OTHER') as TechnicalProfile['family'],
+        professionalAssessmentRequired: Boolean(profile.professional_assessment_required ?? profile.professionalAssessmentRequired),
+        manufacturerInstructionRef: String(profile.manufacturer_instruction_ref ?? profile.manufacturerInstructionRef ?? ''),
+        clientFacingSummary: String(profile.client_facing_summary ?? profile.clientFacingSummary ?? ''),
+        requirements: rows(profile.requirements).map((requirement) => ({
+          kind: String(requirement.kind ?? 'CONSULTATION') as TechnicalRequirement['kind'],
+          severity: String(requirement.severity ?? 'INFO') as TechnicalRequirement['severity'],
+          title: String(requirement.title ?? ''),
+          instruction: String(requirement.instruction ?? ''),
+        })),
+      },
       variations: rows(item.variations).map((variation) => ({
         name: String(variation.name),
         priceMinor: variation.price_minor == null ? null : Number(variation.price_minor),
@@ -328,6 +369,16 @@ function normalize(data: Loaded): Config {
         position: Number(step.position),
         durationMinutes: Number(step.duration_minutes),
         kind: String(step.kind ?? 'ACTIVE') as Step['kind'],
+        technicalCategory: String(step.technical_category ?? step.technicalCategory ?? 'OTHER') as Step['technicalCategory'],
+        minimumDurationMinutes: Number(step.minimum_duration_minutes ?? step.minimumDurationMinutes ?? step.duration_minutes),
+        maximumDurationMinutes: Number(step.maximum_duration_minutes ?? step.maximumDurationMinutes ?? step.duration_minutes),
+        professionalConfirmationRequired: Boolean(step.professional_confirmation_required ?? step.professionalConfirmationRequired),
+        productRecordRequired: Boolean(step.product_record_required ?? step.productRecordRequired),
+        productRequirements: rows(step.productRequirements).map((product) => ({
+          productLabel: String(product.product_label ?? product.productLabel ?? ''),
+          manufacturerInstructionRef: String(product.manufacturer_instruction_ref ?? product.manufacturerInstructionRef ?? ''),
+          required: Boolean(product.required ?? true),
+        })),
         skillNames: rows(step.skillRequirements)
           .map((requirement) => skillNames.get(String(requirement.skill_id)))
           .filter(Boolean) as string[],
@@ -347,7 +398,8 @@ function normalize(data: Loaded): Config {
           }))
           .filter((requirement) => requirement.resourceTypeName),
       })),
-    })),
+      });
+    }),
   };
 }
 
@@ -2259,6 +2311,13 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             strandTestLeadDays: 7,
                             strandTestDurationMinutes: 60,
                             strandTestPreferredWeekdays: [4, 5],
+                            technicalProfile: {
+                              family: 'OTHER',
+                              professionalAssessmentRequired: false,
+                              manufacturerInstructionRef: '',
+                              clientFacingSummary: '',
+                              requirements: [],
+                            },
                           })
                         );
                         setExpandedServices((current) => new Set(current).add(newIndex));
@@ -2503,6 +2562,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                   position: target.steps.length + 1,
                                   durationMinutes: 30,
                                   kind: 'ACTIVE',
+                                  technicalCategory: 'OTHER',
+                                  minimumDurationMinutes: 30,
+                                  maximumDurationMinutes: 30,
+                                  professionalConfirmationRequired: false,
+                                  productRecordRequired: false,
+                                  productRequirements: [],
                                   skillNames: [],
                                   skillQualifiers: [],
                                   resourceRequirements: [],
@@ -2562,6 +2627,101 @@ export default function Configurator({ user }: { user: { displayName: string; em
                               </select>
                             </label>
                           </div>
+                          <div className="grid three">
+                            <label>
+                              Categoria técnica
+                              <select
+                                disabled={!editable}
+                                value={step.technicalCategory}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                    if (target)
+                                      target.technicalCategory = e.target.value as Step['technicalCategory'];
+                                  })
+                                }
+                              >
+                                <option value="ASSESS">Avaliar</option>
+                                <option value="PREPARE">Preparar</option>
+                                <option value="CLEANSE">Lavar</option>
+                                <option value="DRY">Pré-secar/secar</option>
+                                <option value="APPLY">Aplicar</option>
+                                <option value="PROCESS">Pausa/processar</option>
+                                <option value="RINSE">Enxaguar</option>
+                                <option value="NEUTRALIZE">Neutralizar</option>
+                                <option value="TREAT">Tratar</option>
+                                <option value="FINISH">Finalizar</option>
+                                <option value="STYLE">Escovar/modelar</option>
+                                <option value="OTHER">Outra</option>
+                              </select>
+                            </label>
+                            <label>
+                              Janela mínima (min)
+                              <input
+                                type="number"
+                                min={1}
+                                disabled={!editable}
+                                value={step.minimumDurationMinutes}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                    if (target)
+                                      target.minimumDurationMinutes = Math.max(
+                                        1,
+                                        Number(e.target.value) || target.durationMinutes
+                                      );
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              Janela máxima (min)
+                              <input
+                                type="number"
+                                min={step.minimumDurationMinutes}
+                                disabled={!editable}
+                                value={step.maximumDurationMinutes}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                    if (target)
+                                      target.maximumDurationMinutes = Math.max(
+                                        target.minimumDurationMinutes,
+                                        Number(e.target.value) || target.durationMinutes
+                                      );
+                                  })
+                                }
+                              />
+                            </label>
+                          </div>
+                          <label className="check">
+                            <input
+                              type="checkbox"
+                              disabled={!editable}
+                              checked={step.professionalConfirmationRequired}
+                              onChange={(e) =>
+                                change((draft) => {
+                                  const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                  if (target) target.professionalConfirmationRequired = e.target.checked;
+                                })
+                              }
+                            />
+                            Exige confirmação profissional na execução
+                          </label>
+                          <label className="check">
+                            <input
+                              type="checkbox"
+                              disabled={!editable}
+                              checked={step.productRecordRequired}
+                              onChange={(e) =>
+                                change((draft) => {
+                                  const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                  if (target) target.productRecordRequired = e.target.checked;
+                                })
+                              }
+                            />
+                            Exige registro de produto/lote na execução
+                          </label>
                           <fieldset>
                             <legend>Quem pode fazer</legend>
                             {config.skills.filter((s) => s.name).length === 0 && (
