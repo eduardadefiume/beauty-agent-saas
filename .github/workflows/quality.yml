@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout selected revision
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -35,5 +37,37 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run repository quality gate
-        run: pnpm quality
+      - name: Run active SaaS quality gate
+        run: |
+          pnpm guardrails
+          pnpm backup:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
+      - name: Check formatting of changed files
+        env:
+          FORMAT_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          base_sha="${FORMAT_BASE_SHA}"
+          if [ -z "${base_sha}" ] || [ "${base_sha}" = "0000000000000000000000000000000000000000" ]; then
+            base_sha="$(git rev-parse HEAD^)"
+          fi
+          mapfile -d '' changed_files < <(git diff --name-only -z --diff-filter=ACMR "${base_sha}" "${GITHUB_SHA}")
+          format_files=()
+          for file in "${changed_files[@]}"; do
+            case "${file}" in
+              *.ts|*.tsx|*.js|*.mjs|*.cjs|*.json|*.css|*.md|*.yml|*.yaml)
+                format_files+=("${file}")
+                ;;
+            esac
+          done
+          if [ "${#format_files[@]}" -eq 0 ]; then
+            echo "Nenhum arquivo suportado alterado para verificar."
+            exit 0
+          fi
+          printf 'Verificando formatação de %s arquivo(s) alterado(s):\n' "${#format_files[@]}"
+          printf ' - %s\n' "${format_files[@]}"
+          pnpm exec prettier --check --ignore-unknown "${format_files[@]}"
