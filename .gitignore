@@ -18,3 +18,6 @@ backups/
 *.clixml
 config/backup/*.json
 !config/backup/*.example.json
+
+# Config da plataforma Manus (contém segredos). Nunca versionar.
+.project-config.json

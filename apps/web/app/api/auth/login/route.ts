@@ -1,28 +1,26 @@
 import { createSupabaseServerClient } from '../../../../lib/supabase/server';
+import { callAdminRpc } from '../../../../lib/supabase/admin-rpc';
 import { isValidCpf, onlyDigits, isLikelyEmail } from '../../../../lib/validation';
 
 export const dynamic = 'force-dynamic';
 
-const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+const JSON_HEADERS = {
+  'content-type': 'application/json; charset=utf-8',
+  'cache-control': 'no-store',
+};
 const GENERIC_ERROR = 'E-mail/CPF ou senha inválidos, ou e-mail ainda não confirmado.';
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
+// Usa a chave secreta, não a publicável: `resolve_login_email` transforma um CPF
+// no e-mail de login, e não pode ficar acessível ao papel `anon` (F0-02).
 async function resolveEmailFromCpf(cpfDigits: string): Promise<string | null> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) return null;
-
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/resolve_login_email`, {
-    method: 'POST',
-    headers: { apikey: anonKey, authorization: `Bearer ${anonKey}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ target_cpf_digits: cpfDigits }),
+  const result = await callAdminRpc<string | null>('resolve_login_email', {
+    target_cpf_digits: cpfDigits,
   });
-  if (!response.ok) return null;
-  const value = (await response.json().catch(() => null)) as string | null;
-  return value ?? null;
+  return result.ok ? (result.data ?? null) : null;
 }
 
 export async function POST(request: Request): Promise<Response> {
