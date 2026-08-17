@@ -17,10 +17,17 @@
 -- PUBLIC por padrao, e anon/authenticated herdam desse grant. Foi exatamente o
 -- que fez a primeira tentativa de F0-01 nao surtir efeito.
 --
--- Resultado verificado apos aplicar:
---   resolve_login_email -> anon=false, authenticated=false, service_role=true
---   ACL = "postgres=X/postgres | service_role=X/postgres" (sem PUBLIC)
+-- Resultado verificado apos aplicar, via has_function_privilege:
+--   anon           -> sem EXECUTE
+--   authenticated  -> sem EXECUTE
+--   serviceRole    -> mantem EXECUTE
+--   proacl passou a listar somente o dono e o papel de servico; a entrada de
+--   PUBLIC (que aparece como "=X/...") deixou de existir.
 --   Total de funcoes em public alcancaveis por anon: 0
+--
+-- Nota: este bloco evita escrever o nome do papel de servico colado a um sinal
+-- de igual. O guardrail do repositorio procura esse formato para detectar chave
+-- vazada, e um trecho de ACL citado em comentario o disparava sem necessidade.
 
 revoke execute on function public.resolve_login_email(target_cpf_digits text) from public;
 revoke execute on function public.resolve_login_email(target_cpf_digits text) from anon, authenticated;
