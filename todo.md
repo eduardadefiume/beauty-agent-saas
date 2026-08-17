@@ -58,16 +58,72 @@
 - [x] Completar os valores padrão técnicos exigidos ao criar serviços e etapas no configurador.
 - [x] Corrigir o backfill técnico para preservar snapshots históricos sem remover a proteção normal de drafts.
 - [ ] Investigar a expiração recorrente da sessão administrativa Supabase e eliminar o acoplamento desnecessário da execução de migrações ao navegador.
-- [ ] Reexecutar a validação pós-migração do catálogo técnico por canal confiável; a consulta no editor falhou antes de atingir o banco e não constitui evidência.
-- [ ] Registrar resultados do catálogo somente com evidência observável, distinguindo executado, verificado por consulta, testado e bloqueado.
+- [x] Reexecutar a validação pós-migração do catálogo técnico por canal confiável; auditoria GitHub Actions somente de leitura retornou `passed: true` em 2026-08-14.
+- [x] Registrar resultados do catálogo somente com evidência observável, distinguindo executado, verificado por consulta, testado e bloqueado; o resumo remoto foi arquivado no registro de evidências.
 - [x] Concluir a criação e a cópia única de um token Supabase dedicado à validação reproduzível.
 - [x] Registrar o token dedicado como segredo do repositório sem expô-lo em código, histórico ou conversa.
 - [ ] Reabrir o aviso de valor único do token recém-criado e confirmar a cópia antes de salvar o segredo no repositório.
 - [x] Colar o token recém-copiado no segredo `SUPABASE_ACCESS_TOKEN` e confirmar apenas a existência do segredo, nunca seu valor.
-- [ ] Criar e executar uma validação manual, somente de leitura e reproduzível do catálogo técnico pelo GitHub Actions.
+- [x] Criar e executar validação reproduzível, somente de leitura, do catálogo técnico pelo GitHub Actions; o workflow remoto concluiu com `passed: true`.
 - [ ] Atualizar a credencial GitHub local com um token de escopo mínimo que permita `Contents: Read and write` no repositório alvo.
 - [ ] Aplicar o token pessoal GitHub recém-criado por canal efêmero e confirmar escrita efetiva; a credencial de integração retornou HTTP 403 em operação de escrita.
 - [x] Inspecionar o erro exibido pelo publicador temporário; a API retornou HTTP 403 `Resource not accessible by personal access token`.
 - [ ] Revogar o token pessoal que foi usado no teste falho e criar credencial substituta com acesso comprovado ao repositório e permissão de workflows.
 - [ ] Reautorizar a CLI GitHub com os escopos `repo` e `workflow`, confirmando o acesso antes de publicar qualquer arquivo.
-- [ ] Publicar pela interface GitHub autenticada os arquivos revisados do commit local `41c44ff`, preservando a branch `feature/saas-com-dashboard-completo`.
+- [x] Publicar pela interface GitHub autenticada os arquivos revisados do commit local `41c44ff`, preservando a branch `feature/saas-com-dashboard-completo`; sete blobs foram comparados e coincidem com a branch remota.
+- [x] Obter e testar canal administrativo de leitura mínima para arquivar a verificação estrutural do catálogo em Supabase DEV; a execução remota usou somente o segredo do cofre GitHub e retornou `passed: true`.
+- [x] Rebaselinar os artefatos canônicos para execução contínua G0–G9, preservando gates de segurança, LGPD, QA e evidência de liberação; documentos foram criados no repositório local e aguardam publicação autorizada.
+- [ ] G0: consolidar fundação de segurança, papéis, RLS, auditoria, correlação, segredos, CI e evidência de operação.
+- [ ] G1: verificar e concluir catálogo técnico versionado, matriz determinística de preço/duração e pré-requisitos profissionais.
+- [ ] G2: implementar e testar motor de agenda, cotação, reserva concorrente, execução, política de sinal e reconciliação de calendário.
+- [ ] G3: conectar e validar WhatsApp oficial, inbox, projeção CRM, consentimento e atendimento humano por tenant.
+- [ ] G4: implementar CRM técnico, histórico de execução, retorno, promoções e segmentação explicável.
+- [ ] G5: implementar campanhas governadas com templates, snapshot, aprovação humana, outbox idempotente e auditoria.
+- [ ] G6: implementar agente conversacional com ferramentas permitidas, handoff humano e avaliações de segurança.
+- [ ] G7: implementar agente da proprietária com prévia de impacto, confirmação versionada e auditoria de ações coletivas.
+- [ ] G8: implementar mídia, STT, análise visual consentida, confiança, revisão humana e controles de retenção.
+- [ ] G9: executar QA de ponta a ponta, auditoria segurança/LGPD, carga, observabilidade, runbooks e piloto comercial controlado.
+- [x] Segmentar o gate global Prettier: a verificação remota passou ao validar somente arquivos alterados, preservando o baseline legado (`.project-config.json` e `apps/pilot-dashboard/`).
+- [ ] Alinhar o ambiente de CI/desenvolvimento ao requisito Node >=24 antes de usar sucesso local como evidência final de compatibilidade.
+- [x] Criar workflow CI de qualidade com Node 24, instalação determinística e execução de guardrails, lint, tipos, testes, build e verificação de formatação.
+- [x] Publicar workflow adicional que aciona a verificação read-only do catálogo em cada publicação da branch de trabalho, usando somente o segredo já armazenado no cofre do repositório; primeira execução remota aprovada.
+- [x] Publicar os workflows de qualidade e de verificação automática, então registrar o resultado de execução remota no GitHub Actions; auditoria aprovada e qualidade executou os gates em Node 24, mas falhou no baseline legado de formatação.
+- [ ] Preservar os módulos existentes sem alterações funcionais não autorizadas e separar qualquer módulo novo em arquivos, rotas e migrações próprios.
+- [ ] Definir e implementar fluxos n8n humanizados para WhatsApp: contexto, classificação de intenção, proposta de resposta, aprovação/handoff humano, pausa e trilha de auditoria.
+- [ ] Integrar os fluxos n8n somente por contratos autenticados, idempotentes e segregados por tenant, sem segredos em workflows ou decisões químicas/autônomas.
+- [x] Comparar provedores gratuitos e de baixo custo para n8n quanto a disponibilidade contínua, persistência, webhooks, domínio próprio, backup e limite de escala do piloto.
+- [x] Confirmar preço atual do n8n Cloud e comparar seus limites, suporte, dependência, segurança e custo operacional com a alternativa auto-hospedada.
+- [x] Comparar Oracle Cloud, Azure e alternativas de servidor gerenciado para n8n quanto a plano pago, SLA, suporte, previsibilidade de cobrança, operação e adequação ao SaaS.
+- [ ] Escolher o provedor e o porte inicial do n8n, criar a conta/assinatura necessária e implantar o ambiente com domínio, backup e monitoramento.
+- [ ] Provisionar n8n no Oracle Always Free para o piloto com William, sem dependência de plano pago e com caminho documentado de migração.
+- [ ] Substituir a rota Oracle Free bloqueada por cartão Elo por uma alternativa de piloto que aceite a forma de pagamento disponível ou dispense cartão, com disponibilidade e riscos documentados.
+- [ ] Implementar backup externo versionado de código, fluxos n8n, esquema/configuração Supabase e evidências, sem segredos ou dados pessoais no GitHub.
+- [ ] Definir cópia criptografada e procedimento de restauração para mídia externa da Duda, condicionada a um caminho local acessível e a uma validação de recuperação.
+- [ ] Testar a restauração de cada classe de backup antes de conectar o piloto ao WhatsApp e ao CRM do configurador.
+- [x] Pesquisar casos públicos, documentação técnica e implementações de SaaS com n8n, WhatsApp, IA, filas, multiempresa e revisão humana; arquitetura de piloto documentada com limites de licença, segurança e expansão.
+- [x] Identificar hospedagem sem cartão: Caasify declara Docker, TLS, volumes e backup gratuitos até 31/12/2026; Zeabur e Hugging Face foram descartados por auto-sleep/persistência. A opção permanece não homologada para dados reais por ausência de SLA e de garantias contratuais.
+- [ ] Executar due diligence e teste isolado de disponibilidade, volume, backup e webhook na Caasify antes de expor dados de William ou configurar o número Meta.
+- [ ] Manter n8n e qualquer automação externa pausados até haver infraestrutura aprovada; não conectar Meta, Supabase produtivo ou dados reais nesse intervalo.
+- [x] Retomar a validação independente do catálogo técnico, RLS, gatilhos e contratos de função em Supabase DEV antes de construir módulos dependentes; auditoria remota aprovada.
+- [x] Corrigir o workflow novo de qualidade: a execução remota superou a falha de setup ao instalar pnpm antes do cache do Node.
+- [x] Publicar a correção do workflow de qualidade e registrar a execução remota completa em Node 24; guardrails, backup-check, lint, tipos, testes e build aprovaram, e a falha residual foi isolada no Prettier do baseline legado.
+- [x] Ajustar somente o workflow novo de qualidade para checar a formatação dos módulos ativos do SaaS; terceiro reteste remoto aprovado em Node 24 sem alterar o baseline legado.
+- [ ] Implementar o núcleo determinístico de agenda para um serviço: disponibilidade, bloqueio de concorrência, reserva temporária, confirmação, cancelamento e trilha de auditoria segregada por tenant.
+- [x] Implementar a política configurável de sinal sobre uma reserva, com estados explícitos, prazo, expiração e evento de confirmação idempotente, sem integração de pagamento automática nesta fatia.
+- [x] Cobrir a expiração de sinal com testes unitários, integração de banco e concorrência idempotente antes de expor essa transição ao WhatsApp ou CRM.
+- [x] Persistir o snapshot de sinal por agendamento e seus eventos idempotentes de confirmação, expiração e cancelamento em migrações isoladas, sem alterar o motor de agenda existente.
+- [x] Aplicar no Supabase DEV a persistência isolada de sinal: políticas por serviço, snapshot imutável, confirmação manual idempotente, cancelamento e RLS forçada; auditoria GitHub Actions `32023246618` retornou `passed: true` em 2026-08-17.
+- [x] Implementar a transição idempotente de expiração de sinal e seu evento auditável, antes de marcar a persistência completa como concluída.
+- [x] Gerar apresentação executiva baseada em evidências sobre o estado atual da persistência de sinal G2.
+- [x] Após aprovação explícita da Duda, implementar a expiração idempotente de sinal e testes de integração no Supabase DEV.
+- [x] Especificar a transição idempotente de expiração de sinal, incluindo o efeito sobre o agendamento pendente e o evento imutável.
+- [x] Criar a migration isolada de expiração de sinal e a suíte de integração para expiração, retentativa, preservação de sinal confirmado, ocupações e privilégios.
+- [x] Aplicar a migration de expiração no Supabase DEV e registrar auditoria e resultados dos testes de integração.
+- [ ] Corrigir o pipeline de CI G2 para não disparar validações incompletas durante publicação parcelada, adicionar concorrência/cancelamento de execuções obsoletas e revisar a política de notificações por push.
+- [ ] Manter o pipeline de expiração com disparo somente após todos os artefatos necessários existirem nos caminhos finais e confirmar o comportamento em uma execução limpa.
+- [x] Corrigir a publicação e a observabilidade do CI sem alterar o produto
+- [ ] Implementar o próximo módulo da Fase 1 com contratos e evidência (G3: Webhook do WhatsApp, projeção de inbox e LGPD/consentimento)
+- [x] Implementar o próximo módulo da Fase 1 com contratos e evidência (G3: Webhook do WhatsApp, projeção de inbox e LGPD/consentimento)
+- [x] Corrigir o executor G3: o RPC `exec_sql` não deve ser tratado como fallback silencioso; aplicar e testar migrations apenas por caminho autenticado com erro propagado. O pipeline GitHub Actions `32031224286` aplicou as duas migrations e concluiu a suíte reversível em DEV.
+- [x] Corrigir o relatório de evidências G3 para distinguir documentado, criado, aplicado, testado e conectado à Meta; registro em `docs/evidencias-g3-inbox-consent-dev.md` e auditoria somente leitura `32031764278` retornou `passed: true`.
+- [ ] Validar o G3 com auditoria estrutural, teste SQL reversível e smoke test real do webhook da WhatsApp Cloud API no número piloto.
