@@ -1,0 +1,62 @@
+# Configuração versionada do projeto Supabase.
+#
+# Motivo de existir (F0-05): até aqui, `verify_jwt` de cada Edge Function existia
+# apenas como estado do painel, sem nenhum arquivo no repositório que o fixasse.
+# `owner-console-api` e `scheduling-api` extraem o e-mail do JWT e autorizam o
+# tenant a partir dele; se um deploy for feito com `--no-verify-jwt`, elas passam
+# a aceitar qualquer token forjado com `{"email": "vitima@..."}` e o invasor
+# assume o tenant da vítima. Nada no repositório impedia esse deploy.
+#
+# Este arquivo passa a ser a fonte de verdade. Qualquer mudança em `verify_jwt`
+# vira diff revisável em Pull Request.
+#
+# Estado verificado no projeto DEV em 17/08/2026 — este arquivo reflete o que
+# está aplicado, exceto onde comentado.
+
+project_id = "hjghwryhphgusefyivbl"
+
+# --- Funções que exigem sessão autenticada -----------------------------------
+
+# Console da proprietária: recebe o JWT do usuário, extrai o e-mail e resolve o
+# tenant. A verificação de assinatura é o que impede impersonação. NUNCA mudar
+# para false.
+[functions.owner-console-api]
+verify_jwt = true
+
+# API de agenda: mesmo modelo de autorização do owner-console-api.
+# NUNCA mudar para false.
+[functions.scheduling-api]
+verify_jwt = true
+
+# --- Funções deliberadamente públicas ----------------------------------------
+
+# Webhook da Meta. Precisa ser público porque quem chama é a Meta, que não tem
+# um JWT do Supabase. A autenticidade é garantida por HMAC-SHA256 sobre o corpo
+# bruto (cabeçalho X-Hub-Signature-256), com comparação em tempo constante.
+# Correto que seja false.
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+# Política de privacidade em HTML estático. Precisa ser pública por definição.
+[functions.privacy-policy]
+verify_jwt = false
+
+# --- Funções com pendência declarada -----------------------------------------
+
+# Interpretação de intenção por LLM. Hoje está como false no projeto e valida o
+# acesso por chave publicável mais `can_access_tenant`. Está fixado aqui como
+# true porque nenhum código do repositório a invoca — não há chamador para
+# quebrar — e porque uma função que consome LLM não deve ficar aberta sem
+# sessão, pelo custo e pelo abuso.
+# ATENÇÃO: diverge do estado atual do projeto; passa a valer no próximo deploy.
+[functions.interpret-booking-intent]
+verify_jwt = true
+
+# Gateway legado do ChatGPT Sites. Autentica por token estático compartilhado no
+# cabeçalho e aceita `siteProjectId` e `userEmail` vindos do corpo — ou seja,
+# quem tiver o token vira qualquer usuário. Foi substituído pelo
+# owner-console-api.
+# Mantido como false apenas para não quebrar antes da remoção; a remoção é item
+# da trilha A do plano estratégico. Não usar em nada novo.
+[functions.site-configurator-api]
+verify_jwt = false
