@@ -1,6 +1,12 @@
 name: Audit DEV G2 appointment deposit
 
 on:
+  push:
+    branches:
+      - feature/saas-com-dashboard-completo
+    paths:
+      - .github/workflows/g2-deposit-dev-audit.yml
+      - scripts/verify-g2-deposit-persistence.mjs
   workflow_dispatch:
 
 permissions:
