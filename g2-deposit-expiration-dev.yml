@@ -1,0 +1,38 @@
+name: Validate DEV G2 deposit expiration
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/saas-com-dashboard-completo
+    paths:
+      - supabase/migrations/20260817000000_g2_expire_due_deposits.sql
+      - supabase/tests/g2_deposit_expiration_integration.sql
+      - scripts/apply-g2-deposit-expiration.mjs
+      - scripts/run-g2-deposit-expiration-integration.mjs
+      - scripts/verify-g2-deposit-expiration.mjs
+      - .github/workflows/g2-deposit-expiration-dev.yml
+
+jobs:
+  validate-expiration:
+    runs-on: ubuntu-latest
+    environment: development
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply expiration migration
+        run: node scripts/apply-g2-deposit-expiration.mjs
+        env:
+          SUPABASE_PROJECT_REF: hjghwryhphgusefyivbl
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - name: Run reversible integration suite
+        run: node scripts/run-g2-deposit-expiration-integration.mjs
+        env:
+          SUPABASE_PROJECT_REF: hjghwryhphgusefyivbl
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - name: Audit applied contract
+        run: node scripts/verify-g2-deposit-expiration.mjs
+        env:
+          SUPABASE_PROJECT_REF: hjghwryhphgusefyivbl
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
