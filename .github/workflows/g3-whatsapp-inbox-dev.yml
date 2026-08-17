@@ -1,0 +1,39 @@
+name: Validate G3 WhatsApp Inbox and Consent DEV
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/saas-com-dashboard-completo
+    paths:
+      - 'supabase/migrations/20260817120000_g3_whatsapp_inbox_consent.sql'
+      - 'supabase/migrations/20260817121000_g3_inbox_integrity.sql'
+      - 'supabase/tests/g3_whatsapp_inbox_consent_integration.sql'
+      - 'scripts/run-g3-integration.mjs'
+      - '.github/workflows/g3-whatsapp-inbox-dev.yml'
+
+concurrency:
+  group: g3-whatsapp-inbox-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-g3:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || npm install
+
+      - name: Run G3 migration and integration test against Supabase DEV
+        env:
+          SUPABASE_PROJECT_REF: hjghwryhphgusefyivbl
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          node scripts/run-g3-integration.mjs
