@@ -1,0 +1,699 @@
+<title>Rota do Agente de Beleza</title>
+<style>
+  :root{
+    --ground:#FBFAFC; --surface:#FFFFFF; --surface-2:#F4F1F6;
+    --ink:#221D2A; --ink-2:#5C5468; --ink-3:#8B8398;
+    --line:#E4DEE9; --line-2:#CFC6D6;
+    --accent:#6D3D5F; --accent-soft:#F2E7EE; --accent-ink:#542F49;
+    --crit:#B3261E; --crit-bg:#FBEAE8;
+    --warn:#8A5A00; --warn-bg:#FBF2DF;
+    --ok:#2E6B4F; --ok-bg:#E4F1EA;
+    --info:#3A4E7A; --info-bg:#E8EDF7;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    --serif:Georgia,"Iowan Old Style","Palatino Linotype",Palatino,serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --measure:72ch;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#151318; --surface:#1D1A23; --surface-2:#252030;
+      --ink:#EBE6F0; --ink-2:#ABA2B8; --ink-3:#7E7590;
+      --line:#312B3B; --line-2:#453D52;
+      --accent:#C285AC; --accent-soft:#2E2233; --accent-ink:#DCAECC;
+      --crit:#FF7A6E; --crit-bg:#331C1A;
+      --warn:#E0AC4A; --warn-bg:#302614;
+      --ok:#6FC79A; --ok-bg:#152A20;
+      --info:#94AEE0; --info-bg:#1B2233;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#151318; --surface:#1D1A23; --surface-2:#252030;
+    --ink:#EBE6F0; --ink-2:#ABA2B8; --ink-3:#7E7590;
+    --line:#312B3B; --line-2:#453D52;
+    --accent:#C285AC; --accent-soft:#2E2233; --accent-ink:#DCAECC;
+    --crit:#FF7A6E; --crit-bg:#331C1A;
+    --warn:#E0AC4A; --warn-bg:#302614;
+    --ok:#6FC79A; --ok-bg:#152A20;
+    --info:#94AEE0; --info-bg:#1B2233;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--serif); font-size:17px; line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--measure); margin:0 auto; padding:0 24px;}
+  .bleed{max-width:1080px; margin:0 auto; padding:0 24px;}
+
+  h1,h2,h3,h4,.label,.chip,.idtag,nav,th{font-family:var(--sans);}
+  h1{font-size:clamp(2.1rem,5.4vw,3.4rem); line-height:1.05; letter-spacing:-.032em; font-weight:800; margin:0 0 .5rem; text-wrap:balance;}
+  h2{font-size:clamp(1.5rem,3.2vw,2rem); line-height:1.15; letter-spacing:-.022em; font-weight:750; margin:0; text-wrap:balance;}
+  h3{font-size:1.16rem; line-height:1.3; letter-spacing:-.012em; font-weight:700; margin:2rem 0 .6rem; text-wrap:balance;}
+  h4{font-size:.95rem; letter-spacing:-.005em; font-weight:700; margin:1.5rem 0 .4rem;}
+  p{margin:0 0 1.05rem;}
+  a{color:var(--accent); text-underline-offset:3px; text-decoration-thickness:1px;}
+  strong{font-weight:700;}
+  code{font-family:var(--mono); font-size:.855em; background:var(--surface-2); padding:.12em .38em; border-radius:4px; border:1px solid var(--line);}
+  :focus-visible{outline:2.5px solid var(--accent); outline-offset:2px; border-radius:3px;}
+
+  .label{font-size:.7rem; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-3);}
+
+  /* header */
+  header{border-bottom:1px solid var(--line); background:var(--surface); padding:4.5rem 0 3rem;}
+  .kicker{display:flex; gap:.6rem; align-items:center; margin-bottom:1.4rem; flex-wrap:wrap;}
+  .rule{height:2px; width:44px; background:var(--accent); border-radius:2px;}
+  .lede{font-size:1.16rem; color:var(--ink-2); max-width:60ch; margin:1.1rem 0 0;}
+  .meta{display:flex; flex-wrap:wrap; gap:.5rem 2rem; margin-top:2rem; padding-top:1.4rem; border-top:1px solid var(--line); font-family:var(--sans); font-size:.82rem; color:var(--ink-2);}
+  .meta b{display:block; color:var(--ink-3); font-size:.68rem; letter-spacing:.11em; text-transform:uppercase; font-weight:700; margin-bottom:.15rem;}
+
+  /* nav */
+  nav{position:sticky; top:0; z-index:20; background:color-mix(in srgb, var(--ground) 92%, transparent); backdrop-filter:blur(10px); border-bottom:1px solid var(--line);}
+  nav ol{list-style:none; display:flex; gap:.2rem; overflow-x:auto; margin:0; padding:.5rem 24px; max-width:1080px; margin-inline:auto; font-size:.79rem;}
+  nav a{display:block; white-space:nowrap; padding:.34rem .6rem; border-radius:6px; color:var(--ink-2); text-decoration:none; font-weight:600;}
+  nav a:hover{background:var(--accent-soft); color:var(--accent-ink);}
+
+  section{padding:3.4rem 0; border-bottom:1px solid var(--line);}
+  .sec-head{display:flex; gap:1rem; align-items:baseline; margin-bottom:1.3rem;}
+  .sec-num{font-family:var(--mono); font-size:.83rem; color:var(--accent); font-weight:600; padding-top:.35rem;}
+
+  /* chips */
+  .chip{display:inline-flex; align-items:center; gap:.32rem; font-size:.7rem; font-weight:700; letter-spacing:.02em; padding:.18em .55em; border-radius:5px; white-space:nowrap; border:1px solid transparent;}
+  .c-ok{background:var(--ok-bg); color:var(--ok); border-color:color-mix(in srgb,var(--ok) 25%,transparent);}
+  .c-part{background:var(--warn-bg); color:var(--warn); border-color:color-mix(in srgb,var(--warn) 25%,transparent);}
+  .c-no{background:var(--crit-bg); color:var(--crit); border-color:color-mix(in srgb,var(--crit) 25%,transparent);}
+  .c-schema{background:var(--info-bg); color:var(--info); border-color:color-mix(in srgb,var(--info) 25%,transparent);}
+  .idtag{font-family:var(--mono); font-size:.76rem; font-weight:600; color:var(--accent); white-space:nowrap;}
+
+  /* tables */
+  .tscroll{overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--surface); margin:1.3rem 0;}
+  table{border-collapse:collapse; width:100%; font-size:.87rem; font-family:var(--sans); line-height:1.45;}
+  th{text-align:left; font-size:.68rem; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); font-weight:700; padding:.75rem .9rem; border-bottom:1px solid var(--line-2); background:var(--surface-2); white-space:nowrap;}
+  td{padding:.72rem .9rem; border-bottom:1px solid var(--line); vertical-align:top;}
+  tr:last-child td{border-bottom:0;}
+  td code{font-size:.8em;}
+  .num{font-variant-numeric:tabular-nums;}
+
+  /* severity cards */
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:1.2rem 1.35rem; margin:1.1rem 0;}
+  .card.sev{border-left:4px solid var(--crit);}
+  .card.sev-w{border-left:4px solid var(--warn);}
+  .card.sev-k{border-left:4px solid var(--ok);}
+  .card h4{margin-top:0;}
+  .card p:last-child{margin-bottom:0;}
+
+  .alert{background:var(--crit-bg); border:1px solid color-mix(in srgb,var(--crit) 32%,transparent); border-radius:10px; padding:1.3rem 1.45rem; margin:1.4rem 0;}
+  .alert .label{color:var(--crit);}
+  .alert h3{margin-top:.35rem; color:var(--crit);}
+  .alert p:last-child{margin-bottom:0;}
+
+  pre{background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:1rem 1.15rem; overflow-x:auto; font-family:var(--mono); font-size:.79rem; line-height:1.55; margin:1.1rem 0;}
+  pre code{background:none; border:0; padding:0; font-size:1em;}
+
+  blockquote{margin:1.3rem 0; padding:.2rem 0 .2rem 1.2rem; border-left:3px solid var(--accent); color:var(--ink-2); font-style:italic;}
+  blockquote p:last-child{margin-bottom:0;}
+
+  ul,ol{margin:0 0 1.05rem; padding-left:1.35rem;}
+  li{margin-bottom:.4rem;}
+
+  /* tracks */
+  .tracks{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:1rem; margin:1.4rem 0;}
+  .track{background:var(--surface); border:1px solid var(--line); border-top:3px solid var(--accent); border-radius:10px; padding:1.05rem 1.15rem;}
+  .track h4{margin:.15rem 0 .15rem; font-size:1.02rem;}
+  .track .label{margin-bottom:.7rem; display:block;}
+  .track ul{list-style:none; padding:0; margin:0; font-family:var(--sans); font-size:.83rem; line-height:1.4;}
+  .track li{display:flex; gap:.5rem; margin-bottom:.5rem; align-items:baseline;}
+
+  .kpi{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.9rem; margin:1.5rem 0;}
+  .kpi div{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:.95rem 1.05rem;}
+  .kpi b{display:block; font-family:var(--sans); font-size:1.75rem; font-weight:800; letter-spacing:-.03em; line-height:1.05; font-variant-numeric:tabular-nums;}
+  .kpi span{font-family:var(--sans); font-size:.78rem; color:var(--ink-2); display:block; margin-top:.25rem; line-height:1.35;}
+  .kpi .bad b{color:var(--crit);} .kpi .good b{color:var(--ok);} .kpi .neutral b{color:var(--accent);}
+
+  footer{padding:3rem 0 4rem; color:var(--ink-2); font-size:.87rem;}
+  footer h3{margin-top:0;}
+
+  @media (max-width:640px){
+    body{font-size:16px;}
+    header{padding:3rem 0 2.2rem;}
+    section{padding:2.6rem 0;}
+    .sec-head{flex-direction:column; gap:.2rem;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important;}}
+</style>
+
+<header>
+  <div class="wrap">
+    <div class="kicker"><span class="rule"></span><span class="label">Auditoria e plano de execução · 17 ago 2026</span></div>
+    <h1>Rota do Agente de Beleza</h1>
+    <p class="lede">O que existe de verdade no SaaS hoje, o que vai quebrar se ficar como está, e o caminho completo até o piloto com o William — em quatro trilhas que correm em paralelo.</p>
+    <div class="meta">
+      <div><b>Repositório</b>beauty-agent-saas · <code>d326884</code></div>
+      <div><b>Banco auditado</b>Supabase DEV · consulta ao vivo</div>
+      <div><b>Fontes</b>Dossiê + 20 docs do Manus</div>
+    </div>
+  </div>
+</header>
+
+<nav aria-label="Seções">
+  <ol>
+    <li><a href="#veredito">Veredito</a></li>
+    <li><a href="#estado">Estado real</a></li>
+    <li><a href="#seguranca">Emergência</a></li>
+    <li><a href="#certo">O que está certo</a></li>
+    <li><a href="#errado">O que está errado</a></li>
+    <li><a href="#quebra">O que vai quebrar</a></li>
+    <li><a href="#decisoes">Decisões</a></li>
+    <li><a href="#plano">Plano</a></li>
+    <li><a href="#config">Configuração</a></li>
+    <li><a href="#n8n">n8n</a></li>
+    <li><a href="#evidencia">Evidência</a></li>
+    <li><a href="#custo">Custo</a></li>
+    <li><a href="#voce">Preciso de você</a></li>
+  </ol>
+</nav>
+
+<section id="veredito">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Veredito</h2></div>
+    <p>Você não está andando em círculos por falta de trabalho. Está andando em círculos por <strong>três causas estruturais concretas</strong>.</p>
+    <div class="card sev-w">
+      <h4>1 · Três modelos de dados rivais para a mesma coisa</h4>
+      <p>WhatsApp e CRM foram modelados três vezes. Cada rodada criou tabelas novas em vez de convergir as anteriores. <strong>Duas das três ondas não têm nenhum código chamando-as.</strong></p>
+    </div>
+    <div class="card sev-w">
+      <h4>2 · A camada de evidência mede a coisa errada</h4>
+      <p>Os relatórios de prontidão comprovam <em>existência de tabela e de constraint</em>, não <em>funcionamento de produto</em>. Por isso um módulo é declarado “concluído” sem ter um único chamador.</p>
+    </div>
+    <div class="card sev-w">
+      <h4>3 · A tela mais visível é a menos ancorada em dados</h4>
+      <p>O <code>/dashboard</code> exibe “Concluído”, “verificação concluída” e “persistência ativa” a partir de textos fixos no código. Isso destruiu sua própria capacidade de saber onde você está.</p>
+    </div>
+    <p>O que <strong>é</strong> real e bom: o motor de agenda determinístico em SQL, o configurador com versionamento e trava otimista, a integração com o Google Calendar e o webhook do WhatsApp. Essa base é sólida e não deve ser reescrita.</p>
+    <p>E existe <strong>uma emergência de segurança que precisa ser resolvida antes de qualquer outra coisa.</strong></p>
+  </div>
+</section>
+
+<section id="estado">
+  <div class="bleed">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Estado real, módulo a módulo</h2></div>
+  </div>
+  <div class="wrap"><p>Comparação entre o que os relatórios afirmam e o que a auditoria conseguiu comprovar.</p></div>
+  <div class="bleed">
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Módulo</th><th>Alegado</th><th>Comprovado</th><th>Evidência</th></tr></thead>
+        <tbody>
+          <tr><td>Configurador <code>/</code></td><td>“parcialmente implementado”</td><td><span class="chip c-ok">FUNCIONA</span> Melhor parte do produto. 8 de 14 módulos ativos, persistência versionada</td><td><code>configurator-real.tsx</code></td></tr>
+          <tr><td>Motor de agenda</td><td>“em desenvolvimento”</td><td><span class="chip c-ok">FUNCIONA</span> Real, em SQL, exclusion constraints GiST, holds idempotentes</td><td>migration <code>20260808120000</code></td></tr>
+          <tr><td>Google Calendar</td><td>“não conectado”</td><td><span class="chip c-ok">FUNCIONA</span> OAuth, refresh, leitura de eventos. 1 conexão ativa</td><td><code>/api/calendar-sync</code></td></tr>
+          <tr><td>WhatsApp — webhook</td><td>“pronto para recepção”</td><td><span class="chip c-part">PARCIAL</span> Código correto, mas <strong>zero mensagens recebidas</strong></td><td><code>app.inbox_events</code> = 0 linhas</td></tr>
+          <tr><td>Multiempresa / RLS</td><td>“RLS ativa”</td><td><span class="chip c-part">PARCIAL</span> 15 tabelas com RLS e <strong>zero políticas</strong>; 27 sem <code>FORCE</code></td><td><code>pg_policies</code></td></tr>
+          <tr><td>Backup</td><td>“implementado”</td><td><span class="chip c-part">PARCIAL</span> Scripts existem, <strong>nunca executados nem restaurados</strong></td><td>doc de operações</td></tr>
+          <tr><td>Agente conversacional</td><td>“motor de intenção processa”</td><td><span class="chip c-part">PARCIAL</span> Edge Function real, <strong>nenhum código a invoca</strong></td><td>0 chamadores</td></tr>
+          <tr><td>Sinal / depósito</td><td>“implementado e auditado”</td><td><span class="chip c-schema">SÓ SCHEMA</span> Zero UI, zero endpoint, zero agendador</td><td>0 referências em <code>apps/</code></td></tr>
+          <tr><td>CRM</td><td>“sete tabelas com RLS”</td><td><span class="chip c-schema">SÓ SCHEMA</span> Dois modelos rivais, ambos sem chamador</td><td>migrations 13/08 e 17/08</td></tr>
+          <tr><td>Campanhas</td><td>“modelado”</td><td><span class="chip c-schema">SÓ SCHEMA</span> Sem fila, sem template, sem opt-out</td><td>—</td></tr>
+          <tr><td>Dashboard <code>/dashboard</code></td><td>“generalizado”</td><td><span class="chip c-no">NÃO FUNCIONA</span> 1 dado real. Botões só emitem aviso afirmando ter verificado</td><td><code>page.tsx:141,198,379</code></td></tr>
+          <tr><td>Inbox / UI de conversa</td><td>“G3 concluído”</td><td><span class="chip c-no">NÃO FUNCIONA</span> Nenhuma tela lê conversa</td><td>0 chamadores</td></tr>
+          <tr><td>Agente da proprietária</td><td>“expansão”</td><td><span class="chip c-no">NÃO EXISTE</span></td><td>—</td></tr>
+          <tr><td>Pagamento</td><td>“pendente”</td><td><span class="chip c-no">NÃO EXISTE</span> Nenhuma referência no repositório</td><td>—</td></tr>
+          <tr><td>Filas / workers</td><td><code>apps/worker</code></td><td><span class="chip c-no">NÃO EXISTE</span> Stub de 20 linhas, zero dependência de fila</td><td><code>worker/src/main.ts</code></td></tr>
+          <tr><td>n8n</td><td>“documentado”</td><td><span class="chip c-no">NÃO PROVISIONADO</span></td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="wrap">
+    <h3>O fato que mais importa</h3>
+    <div class="kpi">
+      <div class="bad"><b>0</b><span>mensagens em <code>app.inbox_events</code></span></div>
+      <div class="neutral"><b>46</b><span>migrations aplicadas</span></div>
+      <div class="neutral"><b>55</b><span>tabelas no schema</span></div>
+      <div class="bad"><b>15</b><span>tabelas com RLS e zero políticas</span></div>
+    </div>
+    <p>Os relatórios “Prontidão Operacional” e “Atualização da Allowlist” dizem que o sistema está “apto a receber mensagens” e “pronto para o disparo real”. Isso é verdade como <em>configuração</em>. Mas <strong>nenhuma mensagem real do WhatsApp jamais chegou ao banco</strong> — o teste de ponta a ponta descrito nesses relatórios nunca foi concluído, ou falhou em silêncio.</p>
+    <p>Esse é o teste mais barato e mais informativo disponível hoje, e por isso ele abre a Trilha B.</p>
+  </div>
+</section>
+
+<section id="seguranca">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Emergência de segurança</h2></div>
+
+    <div class="alert">
+      <span class="label">Crítico · explorável hoje · dados reais expostos</span>
+      <h3>Qualquer pessoa na internet pode extrair os tokens do Google do salão</h3>
+      <p>A função <code>site_list_calendar_connections_for_sync</code> é <code>SECURITY DEFINER</code>, devolve <strong><code>accessToken</code> e <code>refreshToken</code> em texto claro</strong>, e tem permissão de execução para o papel <code>anon</code> — o papel da chave pública que está embutida no JavaScript do site.</p>
+    </div>
+
+    <p>A autorização dela depende inteiramente de <code>private.require_site_tenant</code>, que valida <strong>apenas os três valores que o próprio chamador envia</strong>. Não há sessão, não há <code>auth.uid()</code>, não há segredo:</p>
+
+    <pre><code>not exists (
+  select 1 from app.site_identities identity_record
+   where identity_record.site_project_id  = target_site_project_id
+     and identity_record.email_normalized = lower(trim(target_email))
+     and identity_record.tenant_id        = target_tenant_id
+     and identity_record.status = 'ACTIVE'
+) then raise exception ... 'SITE_TENANT_NOT_ACCESSIBLE';</code></pre>
+
+    <p>Quem tiver a trinca entra. E a trinca é obtível:</p>
+    <ul>
+      <li><strong><code>tenant_id</code></strong> — aparece na própria URL <code>/dashboard?tenantId=&lt;uuid&gt;</code>, como o seu doc de validação documenta.</li>
+      <li><strong><code>email</code></strong> — obtível por <code>resolve_login_email(cpf)</code>, <em>também</em> liberada ao <code>anon</code>, que converte um CPF no e-mail de login da proprietária.</li>
+      <li><strong><code>site_project_id</code></strong> — constante de baixa entropia. Há apenas 2 valores distintos no banco.</li>
+    </ul>
+
+    <p>Confirmado no DEV: existe <strong>1 conexão com <code>access_token</code> e <code>refresh_token</code> preenchidos</strong>. Um refresh token do Google não expira com o tempo — dá acesso persistente à agenda até ser revogado.</p>
+
+    <h3>Superfície completa exposta ao papel anônimo</h3>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Função</th><th>Impacto se explorada</th></tr></thead>
+        <tbody>
+          <tr><td><code>site_list_calendar_connections_for_sync</code></td><td><strong>Vaza access e refresh token do Google</strong></td></tr>
+          <tr><td><code>site_save_calendar_connection</code></td><td><strong>Grava tokens arbitrários</strong> no tenant da vítima</td></tr>
+          <tr><td><code>site_record_calendar_shift_sync</code></td><td>Injeta eventos falsos e sobrescreve tokens</td></tr>
+          <tr><td><code>schedule_record_strand_test_booking</code></td><td><strong>Escreve na agenda</strong> da vítima</td></tr>
+          <tr><td><code>site_disconnect_calendar_connection</code></td><td>Derruba a integração da vítima</td></tr>
+          <tr><td><code>site_list_calendar_connections</code></td><td>Enumera conexões e e-mails externos</td></tr>
+          <tr><td><code>site_list_calendar_shifts</code> · <code>schedule_list_calendar_shifts</code></td><td>Lê a agenda</td></tr>
+          <tr><td><code>schedule_list_strand_test_occupancies</code></td><td>Lê ocupação</td></tr>
+          <tr><td><code>site_start_new_draft</code></td><td>Cria rascunho de configuração</td></tr>
+          <tr><td><code>resolve_login_email</code></td><td><strong>CPF → e-mail de login</strong>, sem limite de tentativas</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>A correção — verificada como segura</h3>
+    <p>Rastreei quem chama cada uma dessas funções. <strong>As 10 primeiras são invocadas exclusivamente pelas Edge Functions <code>owner-console-api</code> e <code>scheduling-api</code>, que usam <code>service_role</code></strong> — e o <code>service_role</code> já tem execução em todas as 11.</p>
+    <blockquote><p>Revogar <code>anon</code> e <code>authenticated</code> dessas 10 funções não quebra absolutamente nada. É uma linha por função, imediata e reversível.</p></blockquote>
+    <p><code>resolve_login_email</code> é a exceção: é chamada com a chave anônima pelas rotas de login e cadastro. Como essas rotas rodam no servidor Next.js, basta trocarem para a chave secreta antes da revogação — cerca de quatro linhas.</p>
+
+    <h3>Mais três frentes na mesma fase</h3>
+    <div class="card sev">
+      <h4>Segredos vivos versionados no Git</h4>
+      <p><code>.project-config.json</code> está commitado com senha de banco TiDB, <code>JWT_SECRET</code>, duas chaves de API e um token git. São credenciais da plataforma Manus, não do SaaS — o que reduz o impacto, mas não elimina. Pior: <code>scripts/guardrails.mjs</code> varre esse arquivo e <strong>passa verde</strong>, porque seus quatro padrões não pegam DSN com senha nem chaves opacas.</p>
+    </div>
+    <div class="card sev">
+      <h4>JWT decodificado sem verificar assinatura</h4>
+      <p>As Edge Functions fazem apenas <code>atob</code> do payload para extrair o e-mail. Não validam assinatura, expiração nem audiência. O comentário no código diz depender de <code>verify_jwt = true</code> no gateway — mas <code>supabase/config.toml</code> <strong>não existe no repositório</strong>, então esse controle não está versionado nem garantido.</p>
+    </div>
+    <div class="card sev">
+      <h4>Tokens OAuth guardados em texto claro</h4>
+      <p><code>calendar_connections.access_token</code> e <code>refresh_token</code> são colunas <code>text</code> sem cifragem. Contradiz a sua própria arquitetura, que exige segredos apenas em cofre.</p>
+    </div>
+  </div>
+</section>
+
+<section id="certo">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>O que está certo e não deve ser tocado</h2></div>
+    <p>Isto importa tanto quanto a lista de problemas. Você pediu para não mudar a estrutura do site — e eu concordo.</p>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Ativo</th><th>Por que preservar</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Estrutura do configurador</strong></td><td>É o padrão certo: configurador na raiz, 14 módulos, entrada explícita para operação. Mantida como está.</td></tr>
+          <tr><td><strong>Honestidade do código do configurador</strong></td><td>Os 6 módulos não prontos trazem uma nota explicando exatamente o que falta. É o artefato mais honesto do repositório e deve virar o padrão do produto inteiro.</td></tr>
+          <tr><td><strong>Motor de agenda em SQL</strong></td><td>Exclusion constraints GiST, ledger unificado, holds idempotentes, snapshot com hash. Correto e difícil de fazer melhor.</td></tr>
+          <tr><td><strong>Versionamento de configuração</strong></td><td>Versão imutável por trigger mais trava otimista. Resolve o problema de alterar preço hoje e reescrever o histórico de ontem.</td></tr>
+          <tr><td><strong>Webhook do WhatsApp</strong></td><td>HMAC-SHA256 com comparação em tempo constante, limite de payload, deduplicação por hash, persiste antes de responder. Conforme a documentação da Meta.</td></tr>
+          <tr><td><strong>Integração Google Calendar</strong></td><td>Única integração externa completa e funcionando.</td></tr>
+          <tr><td><strong>Chaves compostas no núcleo</strong></td><td><code>(tenant_id, id)</code> aplicado corretamente em toda a configuração e agenda.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Confirmado nesta auditoria: <code>lint</code>, <code>typecheck</code> e <code>test</code> passam.</p>
+  </div>
+</section>
+
+<section id="errado">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>O que está errado</h2></div>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>#</th><th>Problema</th><th>Consequência</th></tr></thead>
+        <tbody>
+          <tr><td><span class="idtag">E1</span></td><td>Três schemas rivais de WhatsApp e CRM</td><td>Duas ondas mortas no banco. Toda fatia nova escolhe errado.</td></tr>
+          <tr><td><span class="idtag">E2</span></td><td>O motor testado não é o motor executado</td><td>O pacote com 17 testes foi <strong>copiado à mão</strong> para a Edge Function. O próprio cabeçalho admite que os testes não cobrem a cópia. Os testes não protegem o código que roda.</td></tr>
+          <tr><td><span class="idtag">E3</span></td><td><code>/dashboard</code> exibe status inventado</td><td>É o que fez você perder a noção do estado real do projeto.</td></tr>
+          <tr><td><span class="idtag">E4</span></td><td>15 tabelas com RLS e zero políticas</td><td>Não é vazamento, é o oposto — mas significa que todo o isolamento dessas tabelas vive em código, não no banco.</td></tr>
+          <tr><td><span class="idtag">E5</span></td><td>9 chaves estrangeiras permitem cruzar tenants no CRM</td><td>A pior liga destinatário de campanha a consentimento de <em>outro</em> tenant. É exatamente a prova de opt-in que a LGPD e a Meta exigem.</td></tr>
+          <tr><td><span class="idtag">E6</span></td><td><code>apps/pilot-dashboard</code></td><td>12.437 linhas que não compilam, com telefone real e fallbacks que <strong>retornam sucesso quando a escrita falha</strong>.</td></tr>
+          <tr><td><span class="idtag">E7</span></td><td>Testes que leem o código-fonte</td><td>Seis “testes de segurança” que só verificam se certas palavras existem no arquivo. Falsa sensação de cobertura.</td></tr>
+          <tr><td><span class="idtag">E8</span></td><td>Dois sistemas de autorização divergentes</td><td>As RPCs autorizam por uma tabela; o RLS por outra. A segunda tem zero linhas.</td></tr>
+          <tr><td><span class="idtag">E9</span></td><td>Restrição errada em <code>conversations</code></td><td>Um contato nunca pode ter uma segunda conversa. Modelo errado para atendimento recorrente.</td></tr>
+          <tr><td><span class="idtag">E10</span></td><td>CI aplica alterações de banco em push de branch</td><td>Sem aprovação, em banco compartilhado. E um workflow cai sempre no gerenciador errado, ignorando o lockfile.</td></tr>
+          <tr><td><span class="idtag">E11</span></td><td><code>main</code> e <code>dev</code> abandonados</td><td>Todo o trabalho vive numa branch de feature que é a branch de produção. Sem revisão.</td></tr>
+          <tr><td><span class="idtag">E12</span></td><td>Sem ambiente local</td><td>Toda validação roda contra o banco DEV compartilhado.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="quebra">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>O que vai quebrar</h2></div>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>#</th><th>O que quebra</th><th>Gatilho</th><th>Prazo</th></tr></thead>
+        <tbody>
+          <tr><td><span class="idtag">Q1</span></td><td>Conta Google do salão comprometida</td><td>Qualquer pessoa que junte a trinca</td><td><span class="chip c-no">JÁ EXPOSTO</span></td></tr>
+          <tr><td><span class="idtag">Q2</span></td><td>Vazamento de dados entre empresas</td><td>Segundo tenant + um bug numa Edge Function</td><td>No 1º cliente pagante</td></tr>
+          <tr><td><span class="idtag">Q3</span></td><td>Campanha enviada a quem não consentiu</td><td>Consentimento cruzando tenants, sem opt-out</td><td>No 1º disparo real</td></tr>
+          <tr><td><span class="idtag">Q4</span></td><td>Número bloqueado pela Meta</td><td>Template não aprovado, sem opt-in rastreável</td><td>No 1º disparo real</td></tr>
+          <tr><td><span class="idtag">Q5</span></td><td>Dupla reserva no mesmo recurso</td><td>Divergência entre o motor testado e o executado</td><td>Quando o volume subir</td></tr>
+          <tr><td><span class="idtag">Q6</span></td><td>Holds e sinais que nunca expiram</td><td>Expiração preguiçosa e sem agendador</td><td><span class="chip c-part">JÁ OCORRE</span></td></tr>
+          <tr><td><span class="idtag">Q7</span></td><td>Perda definitiva de mensagem</td><td>A Meta reenvia por 7 dias e <strong>descarta</strong>. Não há API para recuperar histórico</td><td>No 1º incidente</td></tr>
+          <tr><td><span class="idtag">Q8</span></td><td>Build de produção quebrado</td><td>Falha de prerender documentada, diagnóstico inconclusivo</td><td>A cada deploy</td></tr>
+          <tr><td><span class="idtag">Q9</span></td><td>Impossível restaurar um desastre</td><td>Backup nunca executado nem restaurado</td><td>No 1º incidente</td></tr>
+          <tr><td><span class="idtag">Q10</span></td><td>Onboarding multiempresa desligado</td><td>A Meta deprecia o Embedded Signup v2</td><td><strong>15/10/2026</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="decisoes">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">07</span><h2>Seis decisões que fecham as divergências</h2></div>
+    <p>Estas eliminam a causa de andar em círculos. Precisam ser tomadas <strong>antes</strong> de escrever mais código.</p>
+    <div class="card sev-k"><h4><span class="idtag">D1</span> &nbsp;O modelo vencedor de WhatsApp e CRM</h4><p>O log durável de entrada continua sendo <code>inbox_events</code> — é o único com chamador real e assinatura validada. As tabelas <code>crm_*</code> viram a projeção legível. As cinco tabelas da onda G3, com zero linhas e zero chamadores, são <strong>removidas por migração</strong>.</p></div>
+    <div class="card sev-k"><h4><span class="idtag">D2</span> &nbsp;Fonte única do motor de agenda</h4><p>A Edge Function passa a <strong>importar</strong> o pacote em vez de manter uma cópia manual. Os 17 testes passam a proteger o código que realmente executa. Elimina a classe de bug mais perigosa do sistema.</p></div>
+    <div class="card sev-k"><h4><span class="idtag">D3</span> &nbsp;Uma única fonte de autorização</h4><p><code>tenant_memberships</code> vira a verdade; <code>site_identities</code> é migrado e descontinuado. As RPCs passam a autorizar por sessão. Isso elimina a <em>raiz</em> da vulnerabilidade — que só existe porque a autorização aceita parâmetros do chamador.</p></div>
+    <div class="card sev-k"><h4><span class="idtag">D4</span> &nbsp;Nenhuma tela exibe status que não venha do banco</h4><p>Todo indicador de prontidão é derivado de consulta. Onde não há dado, a tela diz “não configurado” — nunca “concluído”.</p></div>
+    <div class="card sev-k"><h4><span class="idtag">D5</span> &nbsp;Orquestração assíncrona dentro do Supabase</h4><p>Filas e cron no próprio banco para projeção de inbox, expiração de sinal e envio de campanha. O n8n <strong>não</strong> vira infraestrutura de produção — esses caminhos não podem depender de uma VM gratuita.</p></div>
+    <div class="card sev-k"><h4><span class="idtag">D6</span> &nbsp;O produto otimiza para mensagem de utilidade</h4><p>No Brasil, template de marketing custa cerca de 7× o de utilidade, e resposta dentro da janela de 24 h é gratuita. Confirmação, lembrete e remarcação são o motor de margem. Isso define o produto <em>e</em> o preço.</p></div>
+  </div>
+</section>
+
+<section id="plano">
+  <div class="bleed">
+    <div class="sec-head"><span class="sec-num">08</span><h2>O plano — quatro trilhas paralelas</h2></div>
+  </div>
+  <div class="wrap">
+    <p>Você pediu fases que não impeçam outras de acontecer. Há <strong>uma única dependência dura</strong> em todo o plano: nada vai a cliente real antes da contenção.</p>
+  </div>
+
+  <div class="bleed">
+    <div class="card sev" style="margin-bottom:1.6rem;">
+      <span class="label" style="color:var(--crit);">Fase bloqueante · 1 a 3 dias</span>
+      <h4 style="margin-top:.35rem;">F0 · Contenção</h4>
+      <div class="tscroll" style="margin-top:.8rem;">
+        <table>
+          <thead><tr><th>ID</th><th>Entrega</th><th>Evidência de conclusão</th></tr></thead>
+          <tbody>
+            <tr><td><span class="idtag">F0-01</span></td><td>Revogar o papel anônimo das 10 RPCs seguras</td><td>Permissão de execução do <code>anon</code> passa a falsa nas 10</td></tr>
+            <tr><td><span class="idtag">F0-02</span></td><td>Rotas de login e cadastro passam à chave secreta; revogar a 11ª</td><td>Login por CPF continua funcionando</td></tr>
+            <tr><td><span class="idtag">F0-03</span></td><td>Revogar e reemitir o token OAuth do Google</td><td>Token antigo inválido</td></tr>
+            <tr><td><span class="idtag">F0-04</span></td><td>Remover o arquivo de config, rotacionar os 4 segredos, purgar do histórico</td><td>Guardrail ampliado detecta o padrão</td></tr>
+            <tr><td><span class="idtag">F0-05</span></td><td>Criar <code>supabase/config.toml</code> fixando verificação de JWT</td><td>Arquivo versionado</td></tr>
+            <tr><td><span class="idtag">F0-06</span></td><td>Validar assinatura do JWT dentro das Edge Functions</td><td>JWT forjado retorna 401</td></tr>
+            <tr><td><span class="idtag">F0-07</span></td><td>Cifrar tokens OAuth em repouso</td><td>RPC de sync não devolve token em claro</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tracks">
+      <div class="track">
+        <span class="label">Trilha A</span><h4>Fundação estrutural</h4>
+        <ul>
+          <li><span class="idtag">A1</span> Migração de convergência dos três schemas</li>
+          <li><span class="idtag">A2</span> Chaves compostas nas 9 FKs que cruzam tenant</li>
+          <li><span class="idtag">A3</span> Políticas RLS nas 15 tabelas mudas</li>
+          <li><span class="idtag">A4</span> Fonte única do motor de agenda</li>
+          <li><span class="idtag">A5</span> Autorização por sessão nas RPCs</li>
+          <li><span class="idtag">A6</span> Remover código morto e stubs</li>
+          <li><span class="idtag">A7</span> Trocar os testes de grep por testes de comportamento</li>
+          <li><span class="idtag">A8</span> Filas e cron com fila de erro e replay</li>
+          <li><span class="idtag">A9</span> Corrigir a restrição de conversas</li>
+          <li><span class="idtag">A10</span> Proteger <code>main</code>, exigir revisão</li>
+        </ul>
+      </div>
+      <div class="track">
+        <span class="label">Trilha B</span><h4>Canal WhatsApp</h4>
+        <ul>
+          <li><span class="idtag">B1</span> <strong>Primeira mensagem real ponta a ponta</strong></li>
+          <li><span class="idtag">B2</span> Worker de projeção da inbox</li>
+          <li><span class="idtag">B3</span> Inbox operacional com atendimento humano</li>
+          <li><span class="idtag">B4</span> Pausa por conversa e parada de emergência</li>
+          <li><span class="idtag">B5</span> Outbox de envio idempotente</li>
+          <li><span class="idtag">B6</span> Sincronização de templates e qualidade</li>
+          <li><span class="idtag">B7</span> Áudio e imagem assíncronos</li>
+          <li><span class="idtag">B8</span> Onboarding v4 — prazo 15/10</li>
+        </ul>
+      </div>
+      <div class="track">
+        <span class="label">Trilha C</span><h4>Inteligência</h4>
+        <ul>
+          <li><span class="idtag">C1</span> Gateway de ferramentas tipadas</li>
+          <li><span class="idtag">C2</span> Agente da cliente — leitura</li>
+          <li><span class="idtag">C3</span> Agente da cliente — escrita com hold</li>
+          <li><span class="idtag">C4</span> Handoff determinístico</li>
+          <li><span class="idtag">C5</span> Agente da proprietária com prévia e confirmação</li>
+          <li><span class="idtag">C6</span> Visão e transcrição com revisão humana</li>
+          <li><span class="idtag">C7</span> Avaliação contínua de qualidade e custo</li>
+        </ul>
+      </div>
+      <div class="track">
+        <span class="label">Trilha D</span><h4>Operação e negócio</h4>
+        <ul>
+          <li><span class="idtag">D1</span> Observabilidade e alertas</li>
+          <li><span class="idtag">D2</span> LGPD executável: retenção e eliminação</li>
+          <li><span class="idtag">D3</span> Backup executado <em>e restaurado</em></li>
+          <li><span class="idtag">D4</span> Piloto William com métricas e runbooks</li>
+          <li><span class="idtag">D5</span> Precificação a partir de custo medido</li>
+          <li><span class="idtag">D6</span> Provisionar produção e pipeline de migração</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <h3>Critérios para abrir o piloto real</h3>
+    <p>O piloto só recebe clientes reais quando <strong>todos</strong> forem verdade:</p>
+    <ol>
+      <li>F0 completa.</li>
+      <li><span class="idtag">B1</span> comprovado — mensagem real no banco.</li>
+      <li><span class="idtag">A2</span> e <span class="idtag">A3</span> completos — isolamento provado por teste negativo.</li>
+      <li><span class="idtag">B4</span> — pausa de emergência funcionando.</li>
+      <li><span class="idtag">C4</span> — handoff bloqueando química e preço sem regra.</li>
+      <li><span class="idtag">D3</span> — backup restaurado ao menos uma vez.</li>
+      <li>Allowlist restrita ao seu número.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="config">
+  <div class="bleed">
+    <div class="sec-head"><span class="sec-num">09</span><h2>Tudo o que o agente precisa ter configurado</h2></div>
+  </div>
+  <div class="wrap">
+    <p>A regra que organiza esta seção inteira: <strong>a IA interpreta e redige; a configuração decide.</strong> Cada item abaixo é um dado que, se faltar, obriga o agente a perguntar ou escalar — nunca a inventar.</p>
+  </div>
+  <div class="bleed">
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Área</th><th>Configuração</th><th>Se faltar</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="3"><strong>Negócio</strong></td><td>Nome, segmento, fuso, endereço, unidades</td><td>Bloqueia publicação</td></tr>
+          <tr><td>Papéis e permissões</td><td>Ação sem papel é negada e auditada</td></tr>
+          <tr><td>Modo de operação (sozinha ou equipe)</td><td>Muda o cálculo de capacidade</td></tr>
+
+          <tr><td rowspan="6"><strong>Equipe</strong></td><td>Faixas semanais múltiplas e turnos quebrados</td><td>Agenda oferece horário inexistente</td></tr>
+          <tr><td>Disponibilidade fixa, híbrida ou dinâmica por evento</td><td>Assistente ocasional entra no cálculo indevidamente</td></tr>
+          <tr><td>Turnos dinâmicos por data, com início e fim reais</td><td>Sábado cheio não abre vaga</td></tr>
+          <tr><td>Habilidades com qualificadores</td><td>Nenhum profissional qualificado encontrado</td></tr>
+          <tr><td>Substitutos permitidos por etapa</td><td>Uma ausência derruba o atendimento inteiro</td></tr>
+          <tr><td>Almoço fixo ou dinâmico</td><td>Horário oferecido em cima do almoço</td></tr>
+
+          <tr><td><strong>Recursos</strong></td><td>Lavatório, cadeira, sala, secador, prancha — com tipo, capacidade e unidade; cada etapa declara se <strong>libera ou bloqueia</strong> durante a pausa</td><td>Duas clientes recebem o mesmo lavatório</td></tr>
+
+          <tr><td rowspan="6"><strong>Serviços</strong></td><td>Serviço composto: <em>um</em> vendável com etapas internas — lavagem e pausa não viram serviços separados</td><td>Catálogo poluído e agenda errada</td></tr>
+          <tr><td>Etapas ordenadas com condição de entrada, duração, responsável e recursos</td><td>Motor não consegue montar a sequência</td></tr>
+          <tr><td>Pausa que libera o profissional mantendo a cadeira</td><td>Capacidade subestimada</td></tr>
+          <tr><td>Variações por comprimento, densidade, textura, técnica, unidade</td><td>Preço genérico e errado</td></tr>
+          <tr><td>Matriz de preço e duração que devolve valor <strong>ou</strong> “avaliação necessária”</td><td>A IA inventa preço</td></tr>
+          <tr><td>Perfil técnico: produto, instrução do fabricante, teste de mecha, EPI, validade</td><td>Química agendada sem pré-requisito</td></tr>
+
+          <tr><td rowspan="6"><strong>Agenda</strong></td><td>Expediente e <strong>término máximo</strong> — nada pode terminar depois do fechamento</td><td>Procedimento invade a madrugada</td></tr>
+          <tr><td>Exceções com escopo, motivo e aprovador</td><td>Sábado às 7h impossível de atender</td></tr>
+          <tr><td>Preparo vinculado: duração, antecedência, dias permitidos</td><td>Teste de mecha não entra na capacidade</td></tr>
+          <tr><td><strong>Precedência:</strong> bloqueio legal → regra da cliente → exceção aprovada → regra do serviço → do período → geral</td><td>Conflito não resolvido deve bloquear e chamar uma pessoa</td></tr>
+          <tr><td>Sinal, cancelamento, remarcação, atraso, no-show, reembolso</td><td>Política improvisada pelo agente</td></tr>
+          <tr><td>Google Calendar: OAuth por tenant, sync incremental, tratamento de token invalidado</td><td>Loop, duplicidade e agenda dessincronizada</td></tr>
+
+          <tr><td rowspan="5"><strong>WhatsApp</strong></td><td>Tom da marca e regra de resolver antes de responder</td><td>Respostas genéricas</td></tr>
+          <tr><td>Mensagens por evento: confirmação, sinal, lembrete, remarcação, ausência</td><td>Comunicação inconsistente</td></tr>
+          <tr><td>Número e conta mapeados ao tenant; token no cofre, nunca no banco</td><td>Roteamento cruzado entre empresas</td></tr>
+          <tr><td>Templates com idioma, <strong>categoria</strong>, status e qualidade</td><td>Envio fora da janela é rejeitado ou bloqueia o número</td></tr>
+          <tr><td>Pausa por conversa, canal, unidade e tenant</td><td>Impossível parar o agente numa emergência</td></tr>
+
+          <tr><td rowspan="4"><strong>Cliente e CRM</strong></td><td>Perfil descritivo de cabelo com <strong>taxonomia do tenant</strong> — nunca classificação racial</td><td>Discriminação e preço injusto</td></tr>
+          <tr><td>Proveniência: informado, inferido ou revisado — foto não sobrescreve revisão profissional</td><td>Dado inferido vira decisão de química</td></tr>
+          <tr><td>Consentimento por finalidade e canal, com evidência e revogação</td><td>Campanha ilegal</td></tr>
+          <tr><td>Janela de retorno derivada de atendimento <strong>executado</strong>, não agendado</td><td>Campanha para quem não foi atendida</td></tr>
+
+          <tr><td><strong>Campanhas</strong></td><td>Vigência, elegibilidade, <strong>justificativa por cliente</strong>, limite de frequência, opt-out, template aprovado, aprovação humana do público congelado</td><td>Spam, bloqueio e dano reputacional</td></tr>
+
+          <tr><td rowspan="5"><strong>A própria IA</strong></td><td>Modelo e versão do prompt, versionados e auditados por decisão</td><td>Impossível explicar uma resposta passada</td></tr>
+          <tr><td>Lista fechada de ferramentas permitidas</td><td>Ação fora do contrato</td></tr>
+          <tr><td>Contexto mínimo por intenção — nunca chave, SQL ou dado de outro tenant</td><td>Vazamento por prompt</td></tr>
+          <tr><td>Limiares de confiança e gatilhos de escalonamento obrigatório</td><td>Promessa errada sobre química ou preço</td></tr>
+          <tr><td>Teto de custo por conversa e por tenant</td><td>Conta de IA sem controle</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="n8n">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">10</span><h2>n8n — o caminho</h2></div>
+    <p>O n8n é <strong>orquestrador do piloto e de integrações periféricas</strong>. Não é o CRM, o banco, a autorização nem a interface. E não entra no caminho crítico — projeção de inbox, expiração de sinal e envio de campanha ficam no Supabase, porque não podem depender de uma VM gratuita.</p>
+    <blockquote><p>Regra inegociável: a Meta <strong>nunca</strong> aponta para o n8n. O callback termina no webhook do SaaS, que valida a assinatura, persiste e responde. Só depois um evento interno assinado chama o n8n. Se ele cair, o evento fica pendente e é reprocessado — a queda não vira perda de conversa.</p></blockquote>
+
+    <h3>Provisionamento</h3>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>#</th><th>Ação</th><th>Evidência</th></tr></thead>
+        <tbody>
+          <tr><td><span class="idtag">N1</span></td><td>Criar conta Oracle Cloud e VM gratuita — <strong>exige seus dados pessoais, só você pode fazer</strong></td><td>VM acessível</td></tr>
+          <tr><td><span class="idtag">N2</span></td><td>Subdomínio, DNS e TLS</td><td>Certificado válido</td></tr>
+          <tr><td><span class="idtag">N3</span></td><td>Docker Compose: n8n, PostgreSQL dedicado e proxy reverso</td><td>Reinício preserva execuções</td></tr>
+          <tr><td><span class="idtag">N4</span></td><td>Endurecer: porta administrativa nunca exposta, só HTTPS, login único</td><td>Varredura sem porta aberta</td></tr>
+          <tr><td><span class="idtag">N5</span></td><td>Chave de criptografia longa guardada fora do servidor, host e webhook fixados, cookie seguro, limite de payload</td><td>Manifesto versionado <strong>sem valores</strong></td></tr>
+          <tr><td><span class="idtag">N6</span></td><td>Contrato de evento assinado do SaaS para o n8n, com identificador, correlação e expiração curta</td><td>Assinatura inválida e tenant divergente são rejeitados</td></tr>
+          <tr><td><span class="idtag">N7</span></td><td>Backup do banco do n8n e export de workflows <strong>sem credenciais</strong></td><td>Restauração testada em destino limpo</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Fluxo principal — triagem e proposta</h3>
+    <pre><code>Evento interno assinado
+  → valida assinatura, expiração e tenant
+  → busca contexto mínimo no backend
+     (mensagem, últimas relevantes, estado da conversa,
+      catálogo publicado, políticas)
+  → classificador determinístico de risco
+      ├─ risco alto → HANDOFF → fila humana → FIM
+      └─ risco baixo ↓
+  → IA propõe texto e intenção estruturada
+     (nunca executa ação)
+  → backend valida a proposta contra schema e política
+  → no piloto: 1ª resposta da conversa e toda ação de
+     agenda exigem aprovação humana
+  → grava na outbox com chave idempotente
+  → envio pelo SaaS, não pelo n8n</code></pre>
+    <p>Disparam handoff obrigatório: química, imagem, pagamento, alteração de agendamento, preço sem regra publicada, baixa confiança, reclamação e pedido explícito de humano.</p>
+    <p>Os outros três fluxos são <strong>consulta de disponibilidade</strong> (devolve só o que o motor retornou — o n8n não calcula agenda), <strong>pedido de reserva</strong> (cria hold temporário; confirmação e sinal permanecem no SaaS) e <strong>notificação de falha</strong>.</p>
+
+    <h3>Quando sair do n8n</h3>
+    <p>A edição comunitária serve <strong>uma administradora</strong>. Múltiplos operadores, credenciais por cliente ou necessidade de permissões finas são gatilho de reavaliação. E revise a licença de uso sustentável antes de expor o editor a um cliente — esta arquitetura não expõe o editor ao William.</p>
+  </div>
+</section>
+
+<section id="evidencia">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">11</span><h2>A definição de “pronto”</h2></div>
+    <p>Nenhum item é concluído sem os sete critérios. Esta é a regra que impede a repetição do ciclo.</p>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>#</th><th>Critério</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td><strong>Visível</strong> — acessível na interface, não escondido</td></tr>
+          <tr><td class="num">2</td><td><strong>Editável</strong> — criar, editar, inativar e excluir de verdade</td></tr>
+          <tr><td class="num">3</td><td><strong>Persistente</strong> — sobrevive a recarga e a outro dispositivo</td></tr>
+          <tr><td class="num">4</td><td><strong>Aplicado ao motor</strong> — muda o comportamento da regra que o consome</td></tr>
+          <tr><td class="num">5</td><td><strong>Falha tratada</strong> — erro tem mensagem compreensível e estado seguro</td></tr>
+          <tr><td class="num">6</td><td><strong>Testado</strong> — caminho feliz <em>e</em> caminho crítico</td></tr>
+          <tr><td class="num">7</td><td><strong>Rotulado</strong> — simulação, sandbox conectado ou produção testada com evento real</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card sev-w">
+      <h4>Duas regras derivadas do que deu errado</h4>
+      <p>Um teste que lê o código-fonte procurando palavras <strong>não</strong> satisfaz o critério 6. E um relatório que comprova existência de tabela <strong>não</strong> satisfaz o critério 4.</p>
+    </div>
+  </div>
+</section>
+
+<section id="custo">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">12</span><h2>Custo e modelo comercial</h2></div>
+    <h3>O que a mensagem custa no Brasil</h3>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Categoria</th><th>Custo aproximado</th><th>Uso no produto</th></tr></thead>
+        <tbody>
+          <tr><td>Serviço — dentro da janela de 24 h</td><td><strong>Gratuito</strong></td><td>Toda conversa iniciada pela cliente</td></tr>
+          <tr><td>Utilidade</td><td class="num">~R$ 0,04–0,05</td><td>Confirmação, lembrete, remarcação, sinal</td></tr>
+          <tr><td>Marketing</td><td class="num">~R$ 0,31–0,38</td><td>Promoção e reativação</td></tr>
+          <tr><td>Autenticação</td><td class="num">~R$ 0,15–0,19</td><td>Não usado</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>O valor recorrente vem de utilidade e da janela gratuita — cerca de <strong>7× mais barato</strong> que marketing. Campanha promocional é o item de maior custo <em>e</em> maior risco, e deve ser vendida como recurso controlado, não como carro-chefe.</p>
+
+    <h3>O que a retenção exige</h3>
+    <div class="kpi">
+      <div class="neutral"><b>2–4%</b><span>churn mensal saudável em SaaS para PME</span></div>
+      <div class="bad"><b>70%</b><span>do churn acontece nos primeiros 90 dias</span></div>
+      <div class="good"><b>&lt;7 dias</b><span>até o primeiro valor reduz churn pela metade</span></div>
+      <div class="good"><b>40–60%</b><span>menos churn com contrato anual</span></div>
+    </div>
+    <p>Traduzindo para o seu produto: o onboarding — que aqui significa <em>configurar o agente</em> — <strong>é</strong> o produto. Um salão que não termina a configuração não ativa, e não ativando, cancela. É por isso que a seção 9 é a parte mais importante deste plano: <strong>o configurador é o motor de retenção</strong>, não uma tela acessória.</p>
+
+    <h3>O que ainda não dá para calcular</h3>
+    <p>Não há cliente pagante, volume de mensagens, sessões de IA, custo de armazenamento nem provedor de pagamento escolhido. Qualquer CAC, LTV, prazo de lucro ou preço final agora seria ficção. O item <span class="idtag">D5</span> existe justamente para produzir esses números a partir de uso real do piloto.</p>
+  </div>
+</section>
+
+<section id="voce">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">13</span><h2>Preciso de você</h2></div>
+    <p>Seis decisões travam o próximo passo e não posso tomar sozinho:</p>
+    <ol>
+      <li><strong>Aplico a contenção agora?</strong> Os 10 revokes são seguros e verificados.</li>
+      <li><strong>Confirma <span class="idtag">D1</span>?</strong> Remover as 5 tabelas da onda G3, que têm zero linhas e zero chamadores.</li>
+      <li><strong>Confirma <span class="idtag">D5</span>?</strong> Filas no Supabase para o caminho crítico, n8n como periférico.</li>
+      <li><strong>Provedor de pagamento</strong> para o sinal — Mercado Pago, Asaas ou Stripe?</li>
+      <li><strong>Política de retenção</strong> para fotos, histórico químico, mensagens e auditoria.</li>
+      <li><strong>Recorte do MVP comercial</strong> — salão, studio ou ambos no primeiro lançamento?</li>
+    </ol>
+
+    <h3>E esta semana</h3>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Dia</th><th>Ação</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>Fechar a exposição e rotacionar segredos <span class="idtag">F0-01 → F0-04</span></td></tr>
+          <tr><td class="num">2</td><td>Config versionada, assinatura de JWT, cifrar tokens <span class="idtag">F0-05 → F0-07</span></td></tr>
+          <tr><td class="num">3</td><td><strong>Enviar uma mensagem real ao número do piloto</strong> e provar que ela chega ao banco <span class="idtag">B1</span></td></tr>
+          <tr><td class="num">4–5</td><td>Migração de convergência e correção das chaves que cruzam tenant <span class="idtag">A1 A2</span></td></tr>
+          <tr><td class="num">5</td><td>Proteger a branch principal e tirar alteração de banco automática do CI <span class="idtag">A10</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Depois disso, as quatro trilhas correm em paralelo e nenhuma trava a outra.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <h3>Fontes externas consultadas</h3>
+    <ul>
+      <li><a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/overview/">Meta — Embedded Signup</a> · v2 depreciada em 15/10/2026; 10 clientes por 7 dias, 200 após verificação</li>
+      <li><a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview">Meta — Webhooks</a> · reenvio por até 7 dias, sem API de recuperação</li>
+      <li><a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/overview">Meta — Templates</a> · só aprovados fora da janela de 24 h</li>
+      <li><a href="https://developers.google.com/workspace/calendar/api/guides/sync">Google Calendar — Sincronização incremental</a> e <a href="https://developers.google.com/workspace/calendar/api/guides/push">notificações push</a></li>
+      <li><a href="https://supabase.com/docs/guides/queues">Supabase — Filas</a> · <a href="https://supabase.com/docs/guides/cron">Cron</a></li>
+      <li><a href="https://docs.n8n.io/hosting/scaling/queue-mode/">n8n — Modo fila</a> · <a href="https://docs.n8n.io/privacy-and-security/sustainable-use-license/">licença de uso sustentável</a></li>
+      <li><a href="https://www.gov.br/anvisa/pt-br/comunicacao/campanhas/estetica/produtos-alisantes-e-ondulantes-para-cabelo">Anvisa — Produtos alisantes e ondulantes</a></li>
+    </ul>
+    <p style="margin-top:1.6rem; padding-top:1.2rem; border-top:1px solid var(--line); font-size:.8rem; color:var(--ink-3);">A versão em Markdown deste plano está no repositório em <code>docs/plano-estrategico-ponta-a-ponta.md</code>. Produção em <code>eddigital.ia.br</code> não foi verificável deste ambiente — o acesso de rede está bloqueado; os dois projetos Supabase de produção estão inativos.</p>
+  </div>
+</footer>
