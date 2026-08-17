@@ -5,6 +5,8 @@ on:
     branches:
       - feature/saas-com-dashboard-completo
     paths:
+      - supabase/migrations/20260816000000_g2_add_pending_signal_status.sql
+      - supabase/migrations/20260816001000_g2_appointment_deposit.sql
       - scripts/apply-g2-deposit-persistence.mjs
       - .github/workflows/apply-g2-deposit-dev.yml
   workflow_dispatch:
