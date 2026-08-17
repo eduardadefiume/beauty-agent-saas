@@ -46,6 +46,7 @@ create table app.appointment_deposits (
     foreign key (tenant_id, appointment_id)
     references app.appointments(tenant_id, id) on delete restrict,
   constraint appointment_deposits_one_per_appointment unique (tenant_id, appointment_id),
+  constraint appointment_deposits_tenant_id_unique unique (tenant_id, id),
   constraint appointment_deposits_snapshot_valid check (
     (policy_kind = 'NONE' and policy_value = 0 and policy_due_within_minutes is null
       and amount_cents = 0 and due_at is null and status = 'NOT_REQUIRED')
