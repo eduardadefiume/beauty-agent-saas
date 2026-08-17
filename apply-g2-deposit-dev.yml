@@ -1,0 +1,29 @@
+name: Apply G2 deposit persistence to DEV
+
+on:
+  push:
+    branches:
+      - feature/saas-com-dashboard-completo
+    paths:
+      - scripts/apply-g2-deposit-persistence.mjs
+      - .github/workflows/apply-g2-deposit-dev.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: Apply approved G2 migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: development
+    steps:
+      - name: Checkout approved branch contents
+        uses: actions/checkout@v4
+
+      - name: Apply the two G2 migrations in order
+        env:
+          SUPABASE_PROJECT_REF: hjghwryhphgusefyivbl
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/apply-g2-deposit-persistence.mjs
