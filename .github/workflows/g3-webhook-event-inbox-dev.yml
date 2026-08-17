@@ -1,0 +1,31 @@
+name: G3 webhook event inbox DEV
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: g3-webhook-event-inbox-dev
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  apply-and-verify-dev:
+    name: Apply G3.2 migration and run reversible test
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Apply G3.2 and validate
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/run-g3-webhook-event-inbox-integration.mjs
