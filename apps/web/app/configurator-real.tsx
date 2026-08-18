@@ -49,13 +49,21 @@ type ClientException = {
 };
 type ResourceType = { name: string; resources: Array<{ name: string; capacity: number }> };
 type TechnicalRequirement = {
-  kind: 'CONSULTATION' | 'HAIR_HISTORY' | 'STRAND_TEST' | 'SENSITIVITY_TEST' | 'CONSENT' | 'PROFESSIONAL_RELEASE' | 'MANUFACTURER_INSTRUCTION';
+  kind:
+    | 'CONSULTATION'
+    | 'HAIR_HISTORY'
+    | 'STRAND_TEST'
+    | 'SENSITIVITY_TEST'
+    | 'CONSENT'
+    | 'PROFESSIONAL_RELEASE'
+    | 'MANUFACTURER_INSTRUCTION';
   severity: 'INFO' | 'WARNING' | 'BLOCKING';
   title: string;
   instruction: string;
 };
 type TechnicalProfile = {
-  family: 'CUT' | 'COLOR' | 'BLEACH' | 'TREATMENT' | 'STRAIGHTENING' | 'TEXTURE' | 'STYLING' | 'OTHER';
+  family:
+    'CUT' | 'COLOR' | 'BLEACH' | 'TREATMENT' | 'STRAIGHTENING' | 'TEXTURE' | 'STYLING' | 'OTHER';
   professionalAssessmentRequired: boolean;
   manufacturerInstructionRef: string;
   clientFacingSummary: string;
@@ -78,7 +86,19 @@ type Step = {
     quantity: number;
     retainUntilServiceEnd: boolean;
   }>;
-  technicalCategory: 'ASSESS' | 'PREPARE' | 'CLEANSE' | 'DRY' | 'APPLY' | 'PROCESS' | 'RINSE' | 'NEUTRALIZE' | 'TREAT' | 'FINISH' | 'STYLE' | 'OTHER';
+  technicalCategory:
+    | 'ASSESS'
+    | 'PREPARE'
+    | 'CLEANSE'
+    | 'DRY'
+    | 'APPLY'
+    | 'PROCESS'
+    | 'RINSE'
+    | 'NEUTRALIZE'
+    | 'TREAT'
+    | 'FINISH'
+    | 'STYLE'
+    | 'OTHER';
   minimumDurationMinutes: number;
   maximumDurationMinutes: number;
   professionalConfirmationRequired: boolean;
@@ -334,71 +354,96 @@ function normalize(data: Loaded): Config {
       })),
     })),
     services: rows(raw.services).map((item) => {
-      const profile = item.technicalProfile && typeof item.technicalProfile === 'object'
-        ? (item.technicalProfile as Obj)
-        : {};
-      return ({
-      name: String(item.name),
-      basePriceMinor: item.base_price_minor == null ? null : Number(item.base_price_minor),
-      requiresStrandTest: Boolean(item.requires_strand_test),
-      strandTestLeadDays: item.strand_test_lead_days == null ? 7 : Number(item.strand_test_lead_days),
-      strandTestDurationMinutes:
-        item.strand_test_duration_minutes == null ? 60 : Number(item.strand_test_duration_minutes),
-      strandTestPreferredWeekdays: (Array.isArray(item.strand_test_preferred_weekdays)
-        ? item.strand_test_preferred_weekdays
-        : [4, 5]
-      ).map((day) => Number(day)),
-      technicalProfile: {
-        family: String(profile.family ?? 'OTHER') as TechnicalProfile['family'],
-        professionalAssessmentRequired: Boolean(profile.professional_assessment_required ?? profile.professionalAssessmentRequired),
-        manufacturerInstructionRef: String(profile.manufacturer_instruction_ref ?? profile.manufacturerInstructionRef ?? ''),
-        clientFacingSummary: String(profile.client_facing_summary ?? profile.clientFacingSummary ?? ''),
-        requirements: rows(profile.requirements).map((requirement) => ({
-          kind: String(requirement.kind ?? 'CONSULTATION') as TechnicalRequirement['kind'],
-          severity: String(requirement.severity ?? 'INFO') as TechnicalRequirement['severity'],
-          title: String(requirement.title ?? ''),
-          instruction: String(requirement.instruction ?? ''),
+      const profile =
+        item.technicalProfile && typeof item.technicalProfile === 'object'
+          ? (item.technicalProfile as Obj)
+          : {};
+      return {
+        name: String(item.name),
+        basePriceMinor: item.base_price_minor == null ? null : Number(item.base_price_minor),
+        requiresStrandTest: Boolean(item.requires_strand_test),
+        strandTestLeadDays:
+          item.strand_test_lead_days == null ? 7 : Number(item.strand_test_lead_days),
+        strandTestDurationMinutes:
+          item.strand_test_duration_minutes == null
+            ? 60
+            : Number(item.strand_test_duration_minutes),
+        strandTestPreferredWeekdays: (Array.isArray(item.strand_test_preferred_weekdays)
+          ? item.strand_test_preferred_weekdays
+          : [4, 5]
+        ).map((day) => Number(day)),
+        technicalProfile: {
+          family: String(profile.family ?? 'OTHER') as TechnicalProfile['family'],
+          professionalAssessmentRequired: Boolean(
+            profile.professional_assessment_required ?? profile.professionalAssessmentRequired
+          ),
+          manufacturerInstructionRef: String(
+            profile.manufacturer_instruction_ref ?? profile.manufacturerInstructionRef ?? ''
+          ),
+          clientFacingSummary: String(
+            profile.client_facing_summary ?? profile.clientFacingSummary ?? ''
+          ),
+          requirements: rows(profile.requirements).map((requirement) => ({
+            kind: String(requirement.kind ?? 'CONSULTATION') as TechnicalRequirement['kind'],
+            severity: String(requirement.severity ?? 'INFO') as TechnicalRequirement['severity'],
+            title: String(requirement.title ?? ''),
+            instruction: String(requirement.instruction ?? ''),
+          })),
+        },
+        variations: rows(item.variations).map((variation) => ({
+          name: String(variation.name),
+          priceMinor: variation.price_minor == null ? null : Number(variation.price_minor),
         })),
-      },
-      variations: rows(item.variations).map((variation) => ({
-        name: String(variation.name),
-        priceMinor: variation.price_minor == null ? null : Number(variation.price_minor),
-      })),
-      steps: rows(item.steps).map((step) => ({
-        name: String(step.name),
-        position: Number(step.position),
-        durationMinutes: Number(step.duration_minutes),
-        kind: String(step.kind ?? 'ACTIVE') as Step['kind'],
-        technicalCategory: String(step.technical_category ?? step.technicalCategory ?? 'OTHER') as Step['technicalCategory'],
-        minimumDurationMinutes: Number(step.minimum_duration_minutes ?? step.minimumDurationMinutes ?? step.duration_minutes),
-        maximumDurationMinutes: Number(step.maximum_duration_minutes ?? step.maximumDurationMinutes ?? step.duration_minutes),
-        professionalConfirmationRequired: Boolean(step.professional_confirmation_required ?? step.professionalConfirmationRequired),
-        productRecordRequired: Boolean(step.product_record_required ?? step.productRecordRequired),
-        productRequirements: rows(step.productRequirements).map((product) => ({
-          productLabel: String(product.product_label ?? product.productLabel ?? ''),
-          manufacturerInstructionRef: String(product.manufacturer_instruction_ref ?? product.manufacturerInstructionRef ?? ''),
-          required: Boolean(product.required ?? true),
-        })),
-        skillNames: rows(step.skillRequirements)
-          .map((requirement) => skillNames.get(String(requirement.skill_id)))
-          .filter(Boolean) as string[],
-        skillQualifiers: rows(step.skillRequirements)
-          .map((requirement) =>
-            toQualifierChoice(
-              requirement.skill_id,
-              requirement.qualifier as { qualifier_option_id?: unknown; custom_value?: unknown } | null
+        steps: rows(item.steps).map((step) => ({
+          name: String(step.name),
+          position: Number(step.position),
+          durationMinutes: Number(step.duration_minutes),
+          kind: String(step.kind ?? 'ACTIVE') as Step['kind'],
+          technicalCategory: String(
+            step.technical_category ?? step.technicalCategory ?? 'OTHER'
+          ) as Step['technicalCategory'],
+          minimumDurationMinutes: Number(
+            step.minimum_duration_minutes ?? step.minimumDurationMinutes ?? step.duration_minutes
+          ),
+          maximumDurationMinutes: Number(
+            step.maximum_duration_minutes ?? step.maximumDurationMinutes ?? step.duration_minutes
+          ),
+          professionalConfirmationRequired: Boolean(
+            step.professional_confirmation_required ?? step.professionalConfirmationRequired
+          ),
+          productRecordRequired: Boolean(
+            step.product_record_required ?? step.productRecordRequired
+          ),
+          productRequirements: rows(step.productRequirements).map((product) => ({
+            productLabel: String(product.product_label ?? product.productLabel ?? ''),
+            manufacturerInstructionRef: String(
+              product.manufacturer_instruction_ref ?? product.manufacturerInstructionRef ?? ''
+            ),
+            required: Boolean(product.required ?? true),
+          })),
+          skillNames: rows(step.skillRequirements)
+            .map((requirement) => skillNames.get(String(requirement.skill_id)))
+            .filter(Boolean) as string[],
+          skillQualifiers: rows(step.skillRequirements)
+            .map((requirement) =>
+              toQualifierChoice(
+                requirement.skill_id,
+                requirement.qualifier as {
+                  qualifier_option_id?: unknown;
+                  custom_value?: unknown;
+                } | null
+              )
             )
-          )
-          .filter((q): q is SkillQualifierChoice => q !== null),
-        resourceRequirements: rows(step.resourceRequirements)
-          .map((requirement) => ({
-            resourceTypeName: typeNames.get(String(requirement.resource_type_id)) ?? '',
-            quantity: Number(requirement.quantity ?? 1),
-            retainUntilServiceEnd: Boolean(requirement.retain_until_service_end),
-          }))
-          .filter((requirement) => requirement.resourceTypeName),
-      })),
-      });
+            .filter((q): q is SkillQualifierChoice => q !== null),
+          resourceRequirements: rows(step.resourceRequirements)
+            .map((requirement) => ({
+              resourceTypeName: typeNames.get(String(requirement.resource_type_id)) ?? '',
+              quantity: Number(requirement.quantity ?? 1),
+              retainUntilServiceEnd: Boolean(requirement.retain_until_service_end),
+            }))
+            .filter((requirement) => requirement.resourceTypeName),
+        })),
+      };
     }),
   };
 }
@@ -442,9 +487,15 @@ function buildCancellationClause(config: Config): string {
   if (!config.cancellationPolicyEnabled) return '';
   const hours = config.cancellationWindowHours;
   let chargeText = 'o valor do procedimento';
-  if (config.cancellationChargeType === 'FIXED_AMOUNT' && config.cancellationChargeAmountMinor != null) {
+  if (
+    config.cancellationChargeType === 'FIXED_AMOUNT' &&
+    config.cancellationChargeAmountMinor != null
+  ) {
     chargeText = formatMoneyFromMinor(config.cancellationChargeAmountMinor);
-  } else if (config.cancellationChargeType === 'PERCENTAGE' && config.cancellationChargePercentage != null) {
+  } else if (
+    config.cancellationChargeType === 'PERCENTAGE' &&
+    config.cancellationChargePercentage != null
+  ) {
     chargeText = `${config.cancellationChargePercentage}% do valor do procedimento`;
   } else if (config.cancellationChargeType === 'FULL_PRICE') {
     chargeText = 'o valor cheio do procedimento';
@@ -616,19 +667,41 @@ type CalendarShift = {
   endsAt: string;
 };
 
-const WEEK_VIEW_START_HOUR = 6;
-const WEEK_VIEW_END_HOUR = 22;
+const DEFAULT_VIEW_START_HOUR = 6;
+const DEFAULT_VIEW_END_HOUR = 22;
 const HOUR_ROW_HEIGHT_PX = 44;
 
-function startOfWeek(reference: Date): Date {
+type AgendaViewMode = 'DAY' | 'WEEK' | 'MONTH';
+type OperatingHourRow = Slot & { latestEndTime: string };
+
+function startOfDay(reference: Date): Date {
   const result = new Date(reference);
   result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function startOfWeek(reference: Date): Date {
+  const result = startOfDay(reference);
   result.setDate(result.getDate() - result.getDay());
   return result;
 }
 
+function startOfMonth(reference: Date): Date {
+  const result = startOfDay(reference);
+  result.setDate(1);
+  return result;
+}
+
 function addDays(reference: Date, days: number): Date {
-  return new Date(reference.getTime() + days * 86_400_000);
+  const result = new Date(reference);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function addMonths(reference: Date, months: number): Date {
+  const result = startOfMonth(reference);
+  result.setMonth(result.getMonth() + months);
+  return result;
 }
 
 function toDateIso(date: Date): string {
@@ -644,26 +717,82 @@ function minutesSinceMidnight(iso: string): number {
   return date.getHours() * 60 + date.getMinutes();
 }
 
+function hourOfTimeString(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const hour = Number.parseInt(value.slice(0, 2), 10);
+  return Number.isFinite(hour) ? hour : null;
+}
+
 /**
- * Visualização de agenda em semana, no espírito da própria interface do
- * Google Agenda: colunas por dia, blocos de horário posicionados pela hora
- * real do evento. Só mostra o que já foi sincronizado (CalendarShift) —
- * não é a agenda de atendimentos do salão, é o que veio de fora bloqueando
- * horário em cima dela.
+ * A faixa de horas visível sai do expediente que o próprio negócio cadastrou,
+ * não de um 6h–22h fixo: um studio que abre 8h e fecha 18h não deve rolar a
+ * tela por horas que ele nunca atende. Cai no padrão só enquanto não houver
+ * expediente cadastrado.
  */
-function GoogleAgendaWeekView({ shifts }: { shifts: CalendarShift[] }) {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+function visibleHourRange(operatingHours: OperatingHourRow[]): { start: number; end: number } {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (const row of operatingHours) {
+    const start = hourOfTimeString(row.startsAt);
+    const end = hourOfTimeString(row.latestEndTime || row.endsAt);
+    if (start !== null) starts.push(start);
+    if (end !== null) ends.push(end);
+  }
+  if (starts.length === 0 || ends.length === 0) {
+    return { start: DEFAULT_VIEW_START_HOUR, end: DEFAULT_VIEW_END_HOUR };
+  }
+  const start = Math.max(0, Math.min(...starts) - 1);
+  const end = Math.min(24, Math.max(...ends) + 1);
+  return end > start
+    ? { start, end }
+    : { start: DEFAULT_VIEW_START_HOUR, end: DEFAULT_VIEW_END_HOUR };
+}
+
+/**
+ * Visualização da agenda sincronizada do Google. Abre no DIA, porque é assim
+ * que um salão opera — semana e mês existem para planejar, e a escolha fica
+ * guardada entre visitas. Só mostra o que já foi sincronizado (CalendarShift):
+ * não é a agenda de atendimentos, é o que veio de fora bloqueando horário.
+ */
+function GoogleAgendaView({
+  shifts,
+  operatingHours,
+}: {
+  shifts: CalendarShift[];
+  operatingHours: OperatingHourRow[];
+}) {
+  // Abre sempre no dia. Semana e mes sao escolha explicita e valem enquanto a
+  // tela estiver aberta: nada de estado do configurador no navegador.
+  const [mode, setMode] = useState<AgendaViewMode>('DAY');
+  const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
+
+  const range = useMemo(() => visibleHourRange(operatingHours), [operatingHours]);
   const hourRows = useMemo(
-    () => Array.from({ length: WEEK_VIEW_END_HOUR - WEEK_VIEW_START_HOUR }, (_, i) => WEEK_VIEW_START_HOUR + i),
-    []
+    () => Array.from({ length: range.end - range.start }, (_, i) => range.start + i),
+    [range]
   );
-  const trackHeight = (WEEK_VIEW_END_HOUR - WEEK_VIEW_START_HOUR) * HOUR_ROW_HEIGHT_PX;
-  const totalMinutes = (WEEK_VIEW_END_HOUR - WEEK_VIEW_START_HOUR) * 60;
+  const trackHeight = (range.end - range.start) * HOUR_ROW_HEIGHT_PX;
+  const totalMinutes = (range.end - range.start) * 60;
+
+  const days = useMemo(() => {
+    if (mode === 'DAY') return [anchor];
+    if (mode === 'WEEK')
+      return Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i));
+    const firstCell = startOfWeek(startOfMonth(anchor));
+    return Array.from({ length: 42 }, (_, i) => addDays(firstCell, i));
+  }, [mode, anchor]);
+
+  function step(direction: 1 | -1) {
+    setAnchor((current) => {
+      if (mode === 'DAY') return addDays(current, direction);
+      if (mode === 'WEEK') return addDays(current, direction * 7);
+      return addMonths(current, direction);
+    });
+  }
 
   function shiftsForDay(day: Date): CalendarShift[] {
-    const dayStartMs = day.getTime();
-    const dayEndMs = dayStartMs + 86_400_000;
+    const dayStartMs = startOfDay(day).getTime();
+    const dayEndMs = addDays(startOfDay(day), 1).getTime();
     return shifts.filter((shift) => {
       const startMs = Date.parse(shift.startsAt);
       return startMs >= dayStartMs && startMs < dayEndMs;
@@ -671,62 +800,170 @@ function GoogleAgendaWeekView({ shifts }: { shifts: CalendarShift[] }) {
   }
 
   function blockStyle(shift: CalendarShift): { top: string; height: string } {
-    const startMinute = Math.max(0, minutesSinceMidnight(shift.startsAt) - WEEK_VIEW_START_HOUR * 60);
+    const startMinute = Math.max(0, minutesSinceMidnight(shift.startsAt) - range.start * 60);
     const endMinute = Math.min(
       totalMinutes,
-      minutesSinceMidnight(shift.endsAt) - WEEK_VIEW_START_HOUR * 60 || totalMinutes
+      minutesSinceMidnight(shift.endsAt) - range.start * 60 || totalMinutes
     );
     const top = (startMinute / totalMinutes) * 100;
     const height = Math.max(2.5, ((endMinute - startMinute) / totalMinutes) * 100);
     return { top: `${top}%`, height: `${height}%` };
   }
 
+  const periodLabel = useMemo(() => {
+    if (mode === 'DAY') {
+      return anchor.toLocaleDateString('pt-BR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+      });
+    }
+    if (mode === 'WEEK') {
+      const first = startOfWeek(anchor);
+      return `${formatDatePtBr(toDateIso(first))} – ${formatDatePtBr(toDateIso(addDays(first, 6)))}`;
+    }
+    return anchor.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  }, [mode, anchor]);
+
+  const todayIso = toDateIso(new Date());
+  const anchorMonth = startOfMonth(anchor).getMonth();
+
   return (
     <div className="week-calendar">
       <div className="week-calendar-header">
-        <button type="button" className="ghost" onClick={() => setWeekStart((current) => addDays(current, -7))}>
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => step(-1)}
+          aria-label="Período anterior"
+        >
           ‹
         </button>
-        <strong>
-          {formatDatePtBr(toDateIso(days[0] as Date))} – {formatDatePtBr(toDateIso(days[6] as Date))}
-        </strong>
-        <button type="button" className="ghost" onClick={() => setWeekStart((current) => addDays(current, 7))}>
+        <strong>{periodLabel}</strong>
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => step(1)}
+          aria-label="Próximo período"
+        >
           ›
         </button>
-      </div>
-      <div className="week-calendar-grid">
-        <div className="week-calendar-gutter">
-          {hourRows.map((hour) => (
-            <div className="week-calendar-hour" key={hour} style={{ height: HOUR_ROW_HEIGHT_PX }}>
-              {hour}h
-            </div>
+        <div className="agenda-modes" role="group" aria-label="Como exibir a agenda">
+          {(
+            [
+              ['DAY', 'Dia'],
+              ['WEEK', 'Semana'],
+              ['MONTH', 'Mês'],
+            ] as Array<[AgendaViewMode, string]>
+          ).map(([value, label]) => (
+            <button
+              type="button"
+              key={value}
+              className={'agenda-mode' + (mode === value ? ' active' : '')}
+              aria-pressed={mode === value}
+              onClick={() => setMode(value)}
+            >
+              {label}
+            </button>
           ))}
         </div>
-        {days.map((day) => {
-          const dayShifts = shiftsForDay(day);
-          const isToday = toDateIso(day) === toDateIso(new Date());
-          return (
-            <div className="week-calendar-day" key={toDateIso(day)}>
-              <div className={'week-calendar-daylabel' + (isToday ? ' today' : '')}>
-                {formatWeekdayShort(day)} {day.getDate()}
-              </div>
-              <div className="week-calendar-track" style={{ height: trackHeight }}>
-                {hourRows.map((hour, index) => (
-                  <div className="week-calendar-gridline" key={hour} style={{ top: `${(index / hourRows.length) * 100}%` }} />
-                ))}
-                {dayShifts.map((shift) => (
-                  <div className="week-calendar-event" style={blockStyle(shift)} key={shift.id} title={shift.title ?? 'Ocupado'}>
-                    <span className="week-calendar-event-time">
-                      {new Date(shift.startsAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="week-calendar-event-title">{shift.title || 'Ocupado'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+        <button type="button" className="ghost" onClick={() => setAnchor(startOfDay(new Date()))}>
+          Hoje
+        </button>
       </div>
+
+      {mode === 'MONTH' ? (
+        <div className="month-calendar">
+          <div className="month-calendar-weekdays">
+            {WEEKDAY_LETTERS.map((letter, index) => (
+              <span key={`${letter}-${index}`}>{letter}</span>
+            ))}
+          </div>
+          <div className="month-calendar-grid">
+            {days.map((day) => {
+              const dayShifts = shiftsForDay(day);
+              const iso = toDateIso(day);
+              const classes = [
+                'month-calendar-cell',
+                day.getMonth() === anchorMonth ? '' : 'outside',
+                iso === todayIso ? 'today' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              return (
+                <button
+                  type="button"
+                  className={classes}
+                  key={iso}
+                  onClick={() => {
+                    setAnchor(startOfDay(day));
+                    setMode('DAY');
+                  }}
+                  title={`Abrir ${formatDatePtBr(iso)} no modo dia`}
+                >
+                  <span className="month-calendar-daynumber">{day.getDate()}</span>
+                  {dayShifts.length > 0 && (
+                    <span className="month-calendar-count">
+                      {dayShifts.length} {dayShifts.length === 1 ? 'compromisso' : 'compromissos'}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className={'week-calendar-grid' + (mode === 'DAY' ? ' mode-day' : '')}>
+          <div className="week-calendar-gutter">
+            {hourRows.map((hour) => (
+              <div className="week-calendar-hour" key={hour} style={{ height: HOUR_ROW_HEIGHT_PX }}>
+                {hour}h
+              </div>
+            ))}
+          </div>
+          {days.map((day) => {
+            const dayShifts = shiftsForDay(day);
+            const iso = toDateIso(day);
+            return (
+              <div className="week-calendar-day" key={iso}>
+                <div className={'week-calendar-daylabel' + (iso === todayIso ? ' today' : '')}>
+                  {formatWeekdayShort(day)} {day.getDate()}
+                </div>
+                <div className="week-calendar-track" style={{ height: trackHeight }}>
+                  {hourRows.map((hour, index) => (
+                    <div
+                      className="week-calendar-gridline"
+                      key={hour}
+                      style={{ top: `${(index / hourRows.length) * 100}%` }}
+                    />
+                  ))}
+                  {dayShifts.length === 0 && mode === 'DAY' && (
+                    <p className="week-calendar-empty">
+                      Nenhum compromisso sincronizado neste dia.
+                    </p>
+                  )}
+                  {dayShifts.map((shift) => (
+                    <div
+                      className="week-calendar-event"
+                      style={blockStyle(shift)}
+                      key={shift.id}
+                      title={shift.title ?? 'Ocupado'}
+                    >
+                      <span className="week-calendar-event-time">
+                        {new Date(shift.startsAt).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      <span className="week-calendar-event-title">{shift.title || 'Ocupado'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -819,14 +1056,20 @@ export default function Configurator({ user }: { user: { displayName: string; em
   }, [tenantId]);
 
   async function disconnectCalendar(connectionId: string) {
-    if (!window.confirm('Desconectar essa agenda? Os compromissos importados de lá param de bloquear horário.')) {
+    if (
+      !window.confirm(
+        'Desconectar essa agenda? Os compromissos importados de lá param de bloquear horário.'
+      )
+    ) {
       return;
     }
     setBusy(true);
     try {
       await api({ action: 'disconnectCalendarConnection', tenantId, connectionId });
       setCalendarConnections((current) => current.filter((entry) => entry.id !== connectionId));
-      setCalendarShifts((current) => current.filter((shift) => shift.connectionId !== connectionId));
+      setCalendarShifts((current) =>
+        current.filter((shift) => shift.connectionId !== connectionId)
+      );
       setNotice('Agenda desconectada.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Falha ao desconectar.');
@@ -870,7 +1113,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
   }
 
   function selectTenant(nextTenantId: string) {
-    if (dirty && !window.confirm('Você tem alterações não salvas nesta empresa. Trocar de empresa agora vai descartá-las. Trocar mesmo assim?')) {
+    if (
+      dirty &&
+      !window.confirm(
+        'Você tem alterações não salvas nesta empresa. Trocar de empresa agora vai descartá-las. Trocar mesmo assim?'
+      )
+    ) {
       return;
     }
     setLoading(true);
@@ -1090,9 +1338,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                   </label>
                   <p className="hint small">
                     Data e horário do atendimento entram sozinhos, não precisa digitar. Se a
-                    política de cancelamento estiver ativa (aba Política de cancelamento), o
-                    aviso sobre falta e cancelamento em cima da hora também entra sozinho, depois
-                    do que você escrever aqui.
+                    política de cancelamento estiver ativa (aba Política de cancelamento), o aviso
+                    sobre falta e cancelamento em cima da hora também entra sozinho, depois do que
+                    você escrever aqui.
                   </p>
                   <div className="preview-box">
                     <span className="preview-label">É assim que a cliente recebe:</span>
@@ -1196,7 +1444,10 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       )}
                       <div className="preview-box">
                         <span className="preview-label">Aviso que entra na mensagem:</span>
-                        <p>{buildCancellationClause(config) || 'Escolha o que cobrar para ver o aviso.'}</p>
+                        <p>
+                          {buildCancellationClause(config) ||
+                            'Escolha o que cobrar para ver o aviso.'}
+                        </p>
                       </div>
                     </>
                   )}
@@ -1324,10 +1575,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                   </div>
                   <p className="hint">
                     Alguma cliente só consegue vir fora do expediente normal (ex.: só sábado de
-                    manhã, só depois das 19h numa terça)? Cadastre aqui, vale só para ela. O
-                    resto da clientela continua vendo o expediente normal. Hoje o telefone é
-                    digitado à mão; quando o WhatsApp estiver conectado, dá pra puxar da lista de
-                    contatos.
+                    manhã, só depois das 19h numa terça)? Cadastre aqui, vale só para ela. O resto
+                    da clientela continua vendo o expediente normal. Hoje o telefone é digitado à
+                    mão; quando o WhatsApp estiver conectado, dá pra puxar da lista de contatos.
                   </p>
                   {config.clientExceptions.length === 0 && (
                     <p className="empty">Nenhuma exceção cadastrada ainda.</p>
@@ -1335,135 +1585,140 @@ export default function Configurator({ user }: { user: { displayName: string; em
                   {config.clientExceptions.map((exception, index) => {
                     const isOpen = expandedExceptions.has(index);
                     return (
-                    <article className="nested item-card" key={index}>
-                      <div className="item-summary">
-                        <div className="item-summary-text">
-                          <strong>{exception.clientName || 'Nova exceção'}</strong>
-                          <span className="item-badge">
-                            {DAYS[exception.weekday]} {exception.startsAt}–{exception.endsAt}
-                          </span>
+                      <article className="nested item-card" key={index}>
+                        <div className="item-summary">
+                          <div className="item-summary-text">
+                            <strong>{exception.clientName || 'Nova exceção'}</strong>
+                            <span className="item-badge">
+                              {DAYS[exception.weekday]} {exception.startsAt}–{exception.endsAt}
+                            </span>
+                          </div>
+                          <div className="item-summary-actions">
+                            <button
+                              className="ghost"
+                              onClick={() => toggleExpanded(setExpandedExceptions, index)}
+                            >
+                              {isOpen ? 'Fechar' : 'Detalhes'}
+                            </button>
+                            <button
+                              className="danger ghost"
+                              disabled={!editable}
+                              onClick={() =>
+                                change((draft) => draft.clientExceptions.splice(index, 1))
+                              }
+                            >
+                              Remover
+                            </button>
+                          </div>
                         </div>
-                        <div className="item-summary-actions">
-                          <button
-                            className="ghost"
-                            onClick={() => toggleExpanded(setExpandedExceptions, index)}
-                          >
-                            {isOpen ? 'Fechar' : 'Detalhes'}
-                          </button>
-                          <button
-                            className="danger ghost"
-                            disabled={!editable}
-                            onClick={() => change((draft) => draft.clientExceptions.splice(index, 1))}
-                          >
-                            Remover
-                          </button>
-                        </div>
-                      </div>
-                      {isOpen && (
-                      <div className="item-details">
-                      <div className="grid two">
-                        <label>
-                          Nome da cliente
-                          <input
-                            disabled={!editable}
-                            value={exception.clientName}
-                            placeholder="Ex.: Maria Silva"
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.clientExceptions[index];
-                                if (target) target.clientName = e.target.value;
-                              })
-                            }
-                          />
-                        </label>
-                        <label>
-                          Telefone (opcional, com DDD)
-                          <input
-                            disabled={!editable}
-                            value={exception.clientPhoneDigits}
-                            placeholder="Ex.: 11987654321"
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.clientExceptions[index];
-                                if (target)
-                                  target.clientPhoneDigits = e.target.value.replace(/\D/g, '');
-                              })
-                            }
-                          />
-                        </label>
-                      </div>
-                      <div className="row hour">
-                        <select
-                          disabled={!editable}
-                          value={exception.weekday}
-                          onChange={(e) =>
-                            change((draft) => {
-                              const target = draft.clientExceptions[index];
-                              if (target) target.weekday = Number(e.target.value);
-                            })
-                          }
-                        >
-                          {DAYS.map((day, dayIndex) => (
-                            <option value={dayIndex} key={day}>
-                              {day}
-                            </option>
-                          ))}
-                        </select>
-                        <label className="inline">
-                          <span>De</span>
-                          <input
-                            type="time"
-                            disabled={!editable}
-                            value={exception.startsAt}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.clientExceptions[index];
-                                if (target) target.startsAt = e.target.value;
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="inline">
-                          <span>Até</span>
-                          <input
-                            type="time"
-                            disabled={!editable}
-                            value={exception.endsAt}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.clientExceptions[index];
-                                if (target) target.endsAt = e.target.value;
-                              })
-                            }
-                          />
-                        </label>
-                      </div>
-                      <label>
-                        Nota (opcional, só pra você lembrar o motivo)
-                        <input
-                          disabled={!editable}
-                          value={exception.note}
-                          placeholder="Ex.: mora longe, só consegue vir de manhã cedo"
-                          onChange={(e) =>
-                            change((draft) => {
-                              const target = draft.clientExceptions[index];
-                              if (target) target.note = e.target.value;
-                            })
-                          }
-                        />
-                      </label>
-                      <div className="item-save-row">
-                        <button
-                          className="primary"
-                          disabled={!editable || busy || !dirty}
-                          onClick={() => void save()}
-                        >
-                          {busy ? 'Salvando…' : 'Salvar exceção'}
-                        </button>
-                      </div>
-                      </div>
-                      )}
-                    </article>
+                        {isOpen && (
+                          <div className="item-details">
+                            <div className="grid two">
+                              <label>
+                                Nome da cliente
+                                <input
+                                  disabled={!editable}
+                                  value={exception.clientName}
+                                  placeholder="Ex.: Maria Silva"
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target = draft.clientExceptions[index];
+                                      if (target) target.clientName = e.target.value;
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Telefone (opcional, com DDD)
+                                <input
+                                  disabled={!editable}
+                                  value={exception.clientPhoneDigits}
+                                  placeholder="Ex.: 11987654321"
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target = draft.clientExceptions[index];
+                                      if (target)
+                                        target.clientPhoneDigits = e.target.value.replace(
+                                          /\D/g,
+                                          ''
+                                        );
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                            <div className="row hour">
+                              <select
+                                disabled={!editable}
+                                value={exception.weekday}
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.clientExceptions[index];
+                                    if (target) target.weekday = Number(e.target.value);
+                                  })
+                                }
+                              >
+                                {DAYS.map((day, dayIndex) => (
+                                  <option value={dayIndex} key={day}>
+                                    {day}
+                                  </option>
+                                ))}
+                              </select>
+                              <label className="inline">
+                                <span>De</span>
+                                <input
+                                  type="time"
+                                  disabled={!editable}
+                                  value={exception.startsAt}
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target = draft.clientExceptions[index];
+                                      if (target) target.startsAt = e.target.value;
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label className="inline">
+                                <span>Até</span>
+                                <input
+                                  type="time"
+                                  disabled={!editable}
+                                  value={exception.endsAt}
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target = draft.clientExceptions[index];
+                                      if (target) target.endsAt = e.target.value;
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                            <label>
+                              Nota (opcional, só pra você lembrar o motivo)
+                              <input
+                                disabled={!editable}
+                                value={exception.note}
+                                placeholder="Ex.: mora longe, só consegue vir de manhã cedo"
+                                onChange={(e) =>
+                                  change((draft) => {
+                                    const target = draft.clientExceptions[index];
+                                    if (target) target.note = e.target.value;
+                                  })
+                                }
+                              />
+                            </label>
+                            <div className="item-save-row">
+                              <button
+                                className="primary"
+                                disabled={!editable || busy || !dirty}
+                                onClick={() => void save()}
+                              >
+                                {busy ? 'Salvando…' : 'Salvar exceção'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </article>
                     );
                   })}
 
@@ -1474,10 +1729,13 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     <article className="nested">
                       <p className="hint">
                         Conecte sua agenda do Google para bloquear automático os horários em que
-                        você já tem compromisso marcado por lá. Isso não mexe no expediente que
-                        você configurou aqui, só fecha em cima dele quando tiver algo no Google.
+                        você já tem compromisso marcado por lá. Isso não mexe no expediente que você
+                        configurou aqui, só fecha em cima dele quando tiver algo no Google.
                       </p>
-                      <a className="button primary" href={`/conectar-google-agenda?tenantId=${tenantId}`}>
+                      <a
+                        className="button primary"
+                        href={`/conectar-google-agenda?tenantId=${tenantId}`}
+                      >
                         Conectar Google Agenda
                       </a>
                     </article>
@@ -1489,7 +1747,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             <div className="item-summary-text">
                               <strong>Google Agenda</strong>
                               {connection.externalAccountEmail && (
-                                <span className="item-badge">{connection.externalAccountEmail}</span>
+                                <span className="item-badge">
+                                  {connection.externalAccountEmail}
+                                </span>
                               )}
                             </div>
                             <div className="item-summary-actions">
@@ -1527,7 +1787,10 @@ export default function Configurator({ user }: { user: { displayName: string; em
                         mostra os compromissos já sincronizados, que o motor de agenda usa pra
                         fechar horário automático.
                       </p>
-                      <GoogleAgendaWeekView shifts={calendarShifts} />
+                      <GoogleAgendaView
+                        shifts={calendarShifts}
+                        operatingHours={config.operatingHours}
+                      />
                     </>
                   )}
                 </article>
@@ -1633,8 +1896,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                             </div>
                             <p className="hint small">
                               Se a competência tem variações que nem toda a equipe cobre (ex.: nem
-                              toda colorista faz tom vermelho, o Gloss Express muda o tempo de
-                              ação conforme o tom), marque &ldquo;Tem variação&rdquo; e cadastre as
+                              toda colorista faz tom vermelho, o Gloss Express muda o tempo de ação
+                              conforme o tom), marque &ldquo;Tem variação&rdquo; e cadastre as
                               opções. Assim o agente só marca quem realmente sabe fazer aquele caso
                               específico, não qualquer coisa da competência.
                             </p>
@@ -1659,7 +1922,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                   <button
                                     disabled={!editable}
                                     onClick={() =>
-                                      change((draft) => draft.skills[index]?.qualifierOptions.push(''))
+                                      change((draft) =>
+                                        draft.skills[index]?.qualifierOptions.push('')
+                                      )
                                     }
                                   >
                                     Adicionar opção
@@ -1680,7 +1945,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                       onChange={(e) =>
                                         change((draft) => {
                                           const target = draft.skills[index];
-                                          if (target) target.qualifierOptions[optionIndex] = e.target.value;
+                                          if (target)
+                                            target.qualifierOptions[optionIndex] = e.target.value;
                                         })
                                       }
                                     />
@@ -1688,7 +1954,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                       className="danger"
                                       disabled={!editable}
                                       onClick={() =>
-                                        change((draft) => draft.skills[index]?.qualifierOptions.splice(optionIndex, 1))
+                                        change((draft) =>
+                                          draft.skills[index]?.qualifierOptions.splice(
+                                            optionIndex,
+                                            1
+                                          )
+                                        )
                                       }
                                     >
                                       ×
@@ -1796,8 +2067,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       </div>
                       <p className="hint small">
                         Escolhendo qualquer uma das opções, cadastre-se (ou cadastre a primeira
-                        pessoa) abaixo. Dá pra adicionar mais gente a qualquer momento, mesmo
-                        depois de marcar &ldquo;sozinha(o)&rdquo;.
+                        pessoa) abaixo. Dá pra adicionar mais gente a qualquer momento, mesmo depois
+                        de marcar &ldquo;sozinha(o)&rdquo;.
                       </p>
                     </article>
                   )}
@@ -1842,297 +2113,335 @@ export default function Configurator({ user }: { user: { displayName: string; em
                         </div>
                         {isOpen && (
                           <div className="item-details">
-                      <div
-                        className={
-                          'member-detail-grid' +
-                          (member.availabilityMode !== 'FIXED' ? ' has-calendar' : '')
-                        }
-                      >
-                      <div className="member-detail-main">
-                      <div className="grid two">
-                        <label>
-                          Nome
-                          <input
-                            disabled={!editable}
-                            value={member.name}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.teamMembers[memberIndex];
-                                if (target) target.name = e.target.value;
-                              })
-                            }
-                          />
-                        </label>
-                        <label>
-                          Tipo de agenda
-                          <select
-                            disabled={!editable}
-                            value={member.availabilityMode}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.teamMembers[memberIndex];
-                                if (target)
-                                  target.availabilityMode = e.target
-                                    .value as Member['availabilityMode'];
-                              })
-                            }
-                          >
-                            <option value="FIXED">Fixa (mesma agenda toda semana)</option>
-                            <option value="HYBRID">Híbrida (mistura fixo e combinado)</option>
-                            <option value="DYNAMIC">Dinâmica (só entra quando confirmar)</option>
-                          </select>
-                        </label>
-                      </div>
-                      <fieldset>
-                        <legend>Competências desta pessoa</legend>
-                        {config.skills.filter((s) => s.name).length === 0 && (
-                          <p className="empty small">Cadastre competências acima primeiro.</p>
-                        )}
-                        {config.skills
-                          .filter((s) => s.name)
-                          .map((skill) => {
-                            if (!skill.qualifierLabel) {
-                              return (
-                                <label className="check" key={skill.name}>
-                                  <input
-                                    type="checkbox"
-                                    disabled={!editable}
-                                    checked={member.skillNames.includes(skill.name)}
-                                    onChange={(e) =>
+                            <div
+                              className={
+                                'member-detail-grid' +
+                                (member.availabilityMode !== 'FIXED' ? ' has-calendar' : '')
+                              }
+                            >
+                              <div className="member-detail-main">
+                                <div className="grid two">
+                                  <label>
+                                    Nome
+                                    <input
+                                      disabled={!editable}
+                                      value={member.name}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target = draft.teamMembers[memberIndex];
+                                          if (target) target.name = e.target.value;
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <label>
+                                    Tipo de agenda
+                                    <select
+                                      disabled={!editable}
+                                      value={member.availabilityMode}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target = draft.teamMembers[memberIndex];
+                                          if (target)
+                                            target.availabilityMode = e.target
+                                              .value as Member['availabilityMode'];
+                                        })
+                                      }
+                                    >
+                                      <option value="FIXED">Fixa (mesma agenda toda semana)</option>
+                                      <option value="HYBRID">
+                                        Híbrida (mistura fixo e combinado)
+                                      </option>
+                                      <option value="DYNAMIC">
+                                        Dinâmica (só entra quando confirmar)
+                                      </option>
+                                    </select>
+                                  </label>
+                                </div>
+                                <fieldset>
+                                  <legend>Competências desta pessoa</legend>
+                                  {config.skills.filter((s) => s.name).length === 0 && (
+                                    <p className="empty small">
+                                      Cadastre competências acima primeiro.
+                                    </p>
+                                  )}
+                                  {config.skills
+                                    .filter((s) => s.name)
+                                    .map((skill) => {
+                                      if (!skill.qualifierLabel) {
+                                        return (
+                                          <label className="check" key={skill.name}>
+                                            <input
+                                              type="checkbox"
+                                              disabled={!editable}
+                                              checked={member.skillNames.includes(skill.name)}
+                                              onChange={(e) =>
+                                                change((draft) => {
+                                                  const target = draft.teamMembers[memberIndex];
+                                                  if (!target) return;
+                                                  target.skillNames = e.target.checked
+                                                    ? [...target.skillNames, skill.name]
+                                                    : target.skillNames.filter(
+                                                        (name) => name !== skill.name
+                                                      );
+                                                })
+                                              }
+                                            />
+                                            {skill.name}
+                                          </label>
+                                        );
+                                      }
+                                      const coveredOptions = new Set(
+                                        member.skillQualifiers
+                                          .filter(
+                                            (q) => q.skillName === skill.name && q.optionLabel
+                                          )
+                                          .map((q) => q.optionLabel)
+                                      );
+                                      const customCoverage = member.skillQualifiers.find(
+                                        (q) =>
+                                          q.skillName === skill.name && q.customValue !== undefined
+                                      );
+                                      return (
+                                        <article className="nested" key={skill.name}>
+                                          <strong>
+                                            {skill.name}: {skill.qualifierLabel}
+                                          </strong>
+                                          <p className="hint small">
+                                            Marque quais {skill.qualifierLabel.toLowerCase()} esta
+                                            pessoa sabe fazer nesta competência.
+                                          </p>
+                                          {skill.qualifierOptions.map((option) => (
+                                            <label className="check" key={option}>
+                                              <input
+                                                type="checkbox"
+                                                disabled={!editable}
+                                                checked={coveredOptions.has(option)}
+                                                onChange={(e) =>
+                                                  change((draft) => {
+                                                    const target = draft.teamMembers[memberIndex];
+                                                    if (!target) return;
+                                                    if (e.target.checked) {
+                                                      target.skillQualifiers.push({
+                                                        skillName: skill.name,
+                                                        optionLabel: option,
+                                                      });
+                                                      if (!target.skillNames.includes(skill.name)) {
+                                                        target.skillNames.push(skill.name);
+                                                      }
+                                                    } else {
+                                                      target.skillQualifiers =
+                                                        target.skillQualifiers.filter(
+                                                          (q) =>
+                                                            !(
+                                                              q.skillName === skill.name &&
+                                                              q.optionLabel === option
+                                                            )
+                                                        );
+                                                      const stillCovers =
+                                                        target.skillQualifiers.some(
+                                                          (q) => q.skillName === skill.name
+                                                        );
+                                                      if (!stillCovers) {
+                                                        target.skillNames =
+                                                          target.skillNames.filter(
+                                                            (name) => name !== skill.name
+                                                          );
+                                                      }
+                                                    }
+                                                  })
+                                                }
+                                              />
+                                              {option}
+                                            </label>
+                                          ))}
+                                          {skill.qualifierAllowCustom && (
+                                            <label>
+                                              Outro (qual?)
+                                              <input
+                                                disabled={!editable}
+                                                value={customCoverage?.customValue ?? ''}
+                                                placeholder="Ex.: Arco-íris"
+                                                onChange={(e) =>
+                                                  change((draft) => {
+                                                    const target = draft.teamMembers[memberIndex];
+                                                    if (!target) return;
+                                                    const value = e.target.value;
+                                                    target.skillQualifiers =
+                                                      target.skillQualifiers.filter(
+                                                        (q) =>
+                                                          !(
+                                                            q.skillName === skill.name &&
+                                                            q.customValue !== undefined
+                                                          )
+                                                      );
+                                                    if (value.trim()) {
+                                                      target.skillQualifiers.push({
+                                                        skillName: skill.name,
+                                                        customValue: value,
+                                                      });
+                                                      if (!target.skillNames.includes(skill.name)) {
+                                                        target.skillNames.push(skill.name);
+                                                      }
+                                                    } else {
+                                                      const stillCovers =
+                                                        target.skillQualifiers.some(
+                                                          (q) => q.skillName === skill.name
+                                                        );
+                                                      if (!stillCovers) {
+                                                        target.skillNames =
+                                                          target.skillNames.filter(
+                                                            (name) => name !== skill.name
+                                                          );
+                                                      }
+                                                    }
+                                                  })
+                                                }
+                                              />
+                                            </label>
+                                          )}
+                                        </article>
+                                      );
+                                    })}
+                                </fieldset>
+                                {member.availabilityMode !== 'DYNAMIC' && (
+                                  <>
+                                    <div className="title minor">
+                                      <h4>Faixas de disponibilidade</h4>
+                                      <button
+                                        disabled={!editable}
+                                        onClick={() =>
+                                          change((draft) => {
+                                            const target = draft.teamMembers[memberIndex];
+                                            if (target)
+                                              target.availability.push({
+                                                weekday: 1,
+                                                startsAt: '09:00',
+                                                endsAt: '18:00',
+                                              });
+                                          })
+                                        }
+                                      >
+                                        Adicionar faixa
+                                      </button>
+                                    </div>
+                                    {member.availability.map((slot, slotIndex) => (
+                                      <div className="row slot" key={slotIndex}>
+                                        <select
+                                          disabled={!editable}
+                                          value={slot.weekday}
+                                          onChange={(e) =>
+                                            change((draft) => {
+                                              const target =
+                                                draft.teamMembers[memberIndex]?.availability[
+                                                  slotIndex
+                                                ];
+                                              if (target) target.weekday = Number(e.target.value);
+                                            })
+                                          }
+                                        >
+                                          {DAYS.map((day, i) => (
+                                            <option value={i} key={day}>
+                                              {day}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          type="time"
+                                          disabled={!editable}
+                                          value={slot.startsAt}
+                                          onChange={(e) =>
+                                            change((draft) => {
+                                              const target =
+                                                draft.teamMembers[memberIndex]?.availability[
+                                                  slotIndex
+                                                ];
+                                              if (target) target.startsAt = e.target.value;
+                                            })
+                                          }
+                                        />
+                                        <input
+                                          type="time"
+                                          disabled={!editable}
+                                          value={slot.endsAt}
+                                          onChange={(e) =>
+                                            change((draft) => {
+                                              const target =
+                                                draft.teamMembers[memberIndex]?.availability[
+                                                  slotIndex
+                                                ];
+                                              if (target) target.endsAt = e.target.value;
+                                            })
+                                          }
+                                        />
+                                        <button
+                                          className="danger"
+                                          disabled={!editable}
+                                          onClick={() =>
+                                            change((draft) =>
+                                              draft.teamMembers[memberIndex]?.availability.splice(
+                                                slotIndex,
+                                                1
+                                              )
+                                            )
+                                          }
+                                        >
+                                          Remover
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
+                              </div>
+                              {member.availabilityMode !== 'FIXED' && (
+                                <div className="member-detail-calendar">
+                                  <div className="title minor">
+                                    <h4>Calendário de disponibilidade Dinâmica</h4>
+                                  </div>
+                                  <p className="hint small">
+                                    Clique nos dias em que {member.name || 'esta pessoa'} vai
+                                    trabalhar. Eles ficam marcados em amarelo, igual você já faz na
+                                    sua agenda.
+                                  </p>
+                                  <DynamicShiftCalendar
+                                    shifts={member.dynamicShifts}
+                                    editable={editable}
+                                    onAddShift={(dateIso) =>
                                       change((draft) => {
                                         const target = draft.teamMembers[memberIndex];
                                         if (!target) return;
-                                        target.skillNames = e.target.checked
-                                          ? [...target.skillNames, skill.name]
-                                          : target.skillNames.filter((name) => name !== skill.name);
+                                        if (
+                                          target.dynamicShifts.some((s) => s.shiftDate === dateIso)
+                                        )
+                                          return;
+                                        target.dynamicShifts.push({
+                                          shiftDate: dateIso,
+                                          startsAt: '09:00',
+                                          endsAt: '18:00',
+                                        });
+                                      })
+                                    }
+                                    onUpdateShift={(dateIso, field, value) =>
+                                      change((draft) => {
+                                        const target = draft.teamMembers[
+                                          memberIndex
+                                        ]?.dynamicShifts.find((s) => s.shiftDate === dateIso);
+                                        if (target) target[field] = value;
+                                      })
+                                    }
+                                    onRemoveShift={(dateIso) =>
+                                      change((draft) => {
+                                        const target = draft.teamMembers[memberIndex];
+                                        if (!target) return;
+                                        target.dynamicShifts = target.dynamicShifts.filter(
+                                          (s) => s.shiftDate !== dateIso
+                                        );
                                       })
                                     }
                                   />
-                                  {skill.name}
-                                </label>
-                              );
-                            }
-                            const coveredOptions = new Set(
-                              member.skillQualifiers
-                                .filter((q) => q.skillName === skill.name && q.optionLabel)
-                                .map((q) => q.optionLabel)
-                            );
-                            const customCoverage = member.skillQualifiers.find(
-                              (q) => q.skillName === skill.name && q.customValue !== undefined
-                            );
-                            return (
-                              <article className="nested" key={skill.name}>
-                                <strong>
-                                  {skill.name}: {skill.qualifierLabel}
-                                </strong>
-                                <p className="hint small">
-                                  Marque quais {skill.qualifierLabel.toLowerCase()} esta pessoa
-                                  sabe fazer nesta competência.
-                                </p>
-                                {skill.qualifierOptions.map((option) => (
-                                  <label className="check" key={option}>
-                                    <input
-                                      type="checkbox"
-                                      disabled={!editable}
-                                      checked={coveredOptions.has(option)}
-                                      onChange={(e) =>
-                                        change((draft) => {
-                                          const target = draft.teamMembers[memberIndex];
-                                          if (!target) return;
-                                          if (e.target.checked) {
-                                            target.skillQualifiers.push({
-                                              skillName: skill.name,
-                                              optionLabel: option,
-                                            });
-                                            if (!target.skillNames.includes(skill.name)) {
-                                              target.skillNames.push(skill.name);
-                                            }
-                                          } else {
-                                            target.skillQualifiers = target.skillQualifiers.filter(
-                                              (q) => !(q.skillName === skill.name && q.optionLabel === option)
-                                            );
-                                            const stillCovers = target.skillQualifiers.some(
-                                              (q) => q.skillName === skill.name
-                                            );
-                                            if (!stillCovers) {
-                                              target.skillNames = target.skillNames.filter(
-                                                (name) => name !== skill.name
-                                              );
-                                            }
-                                          }
-                                        })
-                                      }
-                                    />
-                                    {option}
-                                  </label>
-                                ))}
-                                {skill.qualifierAllowCustom && (
-                                  <label>
-                                    Outro (qual?)
-                                    <input
-                                      disabled={!editable}
-                                      value={customCoverage?.customValue ?? ''}
-                                      placeholder="Ex.: Arco-íris"
-                                      onChange={(e) =>
-                                        change((draft) => {
-                                          const target = draft.teamMembers[memberIndex];
-                                          if (!target) return;
-                                          const value = e.target.value;
-                                          target.skillQualifiers = target.skillQualifiers.filter(
-                                            (q) => !(q.skillName === skill.name && q.customValue !== undefined)
-                                          );
-                                          if (value.trim()) {
-                                            target.skillQualifiers.push({
-                                              skillName: skill.name,
-                                              customValue: value,
-                                            });
-                                            if (!target.skillNames.includes(skill.name)) {
-                                              target.skillNames.push(skill.name);
-                                            }
-                                          } else {
-                                            const stillCovers = target.skillQualifiers.some(
-                                              (q) => q.skillName === skill.name
-                                            );
-                                            if (!stillCovers) {
-                                              target.skillNames = target.skillNames.filter(
-                                                (name) => name !== skill.name
-                                              );
-                                            }
-                                          }
-                                        })
-                                      }
-                                    />
-                                  </label>
-                                )}
-                              </article>
-                            );
-                          })}
-                      </fieldset>
-                      {member.availabilityMode !== 'DYNAMIC' && (
-                        <>
-                          <div className="title minor">
-                            <h4>Faixas de disponibilidade</h4>
-                            <button
-                              disabled={!editable}
-                              onClick={() =>
-                                change((draft) => {
-                                  const target = draft.teamMembers[memberIndex];
-                                  if (target)
-                                    target.availability.push({
-                                      weekday: 1,
-                                      startsAt: '09:00',
-                                      endsAt: '18:00',
-                                    });
-                                })
-                              }
-                            >
-                              Adicionar faixa
-                            </button>
-                          </div>
-                          {member.availability.map((slot, slotIndex) => (
-                            <div className="row slot" key={slotIndex}>
-                              <select
-                                disabled={!editable}
-                                value={slot.weekday}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target =
-                                      draft.teamMembers[memberIndex]?.availability[slotIndex];
-                                    if (target) target.weekday = Number(e.target.value);
-                                  })
-                                }
-                              >
-                                {DAYS.map((day, i) => (
-                                  <option value={i} key={day}>
-                                    {day}
-                                  </option>
-                                ))}
-                              </select>
-                              <input
-                                type="time"
-                                disabled={!editable}
-                                value={slot.startsAt}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target =
-                                      draft.teamMembers[memberIndex]?.availability[slotIndex];
-                                    if (target) target.startsAt = e.target.value;
-                                  })
-                                }
-                              />
-                              <input
-                                type="time"
-                                disabled={!editable}
-                                value={slot.endsAt}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target =
-                                      draft.teamMembers[memberIndex]?.availability[slotIndex];
-                                    if (target) target.endsAt = e.target.value;
-                                  })
-                                }
-                              />
-                              <button
-                                className="danger"
-                                disabled={!editable}
-                                onClick={() =>
-                                  change((draft) =>
-                                    draft.teamMembers[memberIndex]?.availability.splice(slotIndex, 1)
-                                  )
-                                }
-                              >
-                                Remover
-                              </button>
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </>
-                      )}
-                      </div>
-                      {member.availabilityMode !== 'FIXED' && (
-                        <div className="member-detail-calendar">
-                          <div className="title minor">
-                            <h4>Calendário de disponibilidade Dinâmica</h4>
-                          </div>
-                          <p className="hint small">
-                            Clique nos dias em que {member.name || 'esta pessoa'} vai trabalhar.
-                            Eles ficam marcados em amarelo, igual você já faz na sua agenda.
-                          </p>
-                          <DynamicShiftCalendar
-                            shifts={member.dynamicShifts}
-                            editable={editable}
-                            onAddShift={(dateIso) =>
-                              change((draft) => {
-                                const target = draft.teamMembers[memberIndex];
-                                if (!target) return;
-                                if (target.dynamicShifts.some((s) => s.shiftDate === dateIso)) return;
-                                target.dynamicShifts.push({
-                                  shiftDate: dateIso,
-                                  startsAt: '09:00',
-                                  endsAt: '18:00',
-                                });
-                              })
-                            }
-                            onUpdateShift={(dateIso, field, value) =>
-                              change((draft) => {
-                                const target = draft.teamMembers[memberIndex]?.dynamicShifts.find(
-                                  (s) => s.shiftDate === dateIso
-                                );
-                                if (target) target[field] = value;
-                              })
-                            }
-                            onRemoveShift={(dateIso) =>
-                              change((draft) => {
-                                const target = draft.teamMembers[memberIndex];
-                                if (!target) return;
-                                target.dynamicShifts = target.dynamicShifts.filter(
-                                  (s) => s.shiftDate !== dateIso
-                                );
-                              })
-                            }
-                          />
-                        </div>
-                      )}
-                      </div>
                             <div className="item-save-row">
                               <button
                                 className="primary"
@@ -2180,7 +2489,8 @@ export default function Configurator({ user }: { user: { displayName: string; em
                           <div className="item-summary-text">
                             <strong>{type.name || 'Novo tipo de recurso'}</strong>
                             <span className="item-badge">
-                              {type.resources.length} {type.resources.length === 1 ? 'item' : 'itens'}
+                              {type.resources.length}{' '}
+                              {type.resources.length === 1 ? 'item' : 'itens'}
                             </span>
                           </div>
                           <div className="item-summary-actions">
@@ -2268,7 +2578,10 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                   disabled={!editable}
                                   onClick={() =>
                                     change((draft) =>
-                                      draft.resourceTypes[typeIndex]?.resources.splice(resourceIndex, 1)
+                                      draft.resourceTypes[typeIndex]?.resources.splice(
+                                        resourceIndex,
+                                        1
+                                      )
                                     )
                                   }
                                 >
@@ -2336,617 +2649,664 @@ export default function Configurator({ user }: { user: { displayName: string; em
                   {config.services.map((service, serviceIndex) => {
                     const isOpen = expandedServices.has(serviceIndex);
                     return (
-                    <article className="nested item-card" key={serviceIndex}>
-                      <div className="item-summary">
-                        <div className="item-summary-text">
-                          <strong>{service.name || 'Novo serviço'}</strong>
-                          {service.basePriceMinor != null && (
-                            <span className="item-badge">{formatMoneyFromMinor(service.basePriceMinor)}</span>
-                          )}
-                          <span className="item-badge">
-                            {service.steps.length} {service.steps.length === 1 ? 'etapa' : 'etapas'}
-                          </span>
-                        </div>
-                        <div className="item-summary-actions">
-                          <button
-                            className="ghost"
-                            onClick={() => toggleExpanded(setExpandedServices, serviceIndex)}
-                          >
-                            {isOpen ? 'Fechar' : 'Detalhes'}
-                          </button>
-                          <button
-                            className="danger ghost"
-                            disabled={!editable}
-                            onClick={() => change((draft) => draft.services.splice(serviceIndex, 1))}
-                          >
-                            Remover
-                          </button>
-                        </div>
-                      </div>
-                      {isOpen && (
-                      <div className="item-details">
-                      <div className="grid two">
-                        <label>
-                          Serviço
-                          <input
-                            disabled={!editable}
-                            value={service.name}
-                            placeholder="Ex.: Progressiva sem formol"
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.services[serviceIndex];
-                                if (target) target.name = e.target.value;
-                              })
-                            }
-                          />
-                        </label>
-                        <label>
-                          Preço base (R$, em centavos)
-                          <input
-                            type="number"
-                            min={0}
-                            disabled={!editable}
-                            value={service.basePriceMinor ?? ''}
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target = draft.services[serviceIndex];
-                                if (target)
-                                  target.basePriceMinor =
-                                    e.target.value === '' ? null : Number(e.target.value);
-                              })
-                            }
-                          />
-                        </label>
-                      </div>
-
-                      <label className="check">
-                        <input
-                          type="checkbox"
-                          disabled={!editable}
-                          checked={service.requiresStrandTest}
-                          onChange={(e) =>
-                            change((draft) => {
-                              const target = draft.services[serviceIndex];
-                              if (target) target.requiresStrandTest = e.target.checked;
-                            })
-                          }
-                        />
-                        Exige teste de mechas antes do atendimento
-                      </label>
-                      {service.requiresStrandTest && (
-                        <article className="nested">
-                          <p className="hint small">
-                            O sistema tenta marcar o teste sozinho quando o atendimento principal é
-                            confirmado (qualquer profissional com a competência serve, em qualquer
-                            cadeira livre). Se não achar horário na janela, o atendimento principal
-                            não trava, só avisa que o teste precisa ser marcado por você.
-                          </p>
-                          <div className="grid two">
-                            <label>
-                              Com quantos dias de antecedência
-                              <input
-                                type="number"
-                                min={1}
-                                max={30}
-                                disabled={!editable}
-                                value={service.strandTestLeadDays}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target = draft.services[serviceIndex];
-                                    if (target)
-                                      target.strandTestLeadDays = Math.max(1, Number(e.target.value) || 7);
-                                  })
-                                }
-                              />
-                            </label>
-                            <label>
-                              Duração do teste (minutos)
-                              <input
-                                type="number"
-                                min={10}
-                                max={240}
-                                disabled={!editable}
-                                value={service.strandTestDurationMinutes}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target = draft.services[serviceIndex];
-                                    if (target)
-                                      target.strandTestDurationMinutes = Math.max(
-                                        10,
-                                        Number(e.target.value) || 60
-                                      );
-                                  })
-                                }
-                              />
-                            </label>
+                      <article className="nested item-card" key={serviceIndex}>
+                        <div className="item-summary">
+                          <div className="item-summary-text">
+                            <strong>{service.name || 'Novo serviço'}</strong>
+                            {service.basePriceMinor != null && (
+                              <span className="item-badge">
+                                {formatMoneyFromMinor(service.basePriceMinor)}
+                              </span>
+                            )}
+                            <span className="item-badge">
+                              {service.steps.length}{' '}
+                              {service.steps.length === 1 ? 'etapa' : 'etapas'}
+                            </span>
                           </div>
-                          <fieldset>
-                            <legend>Dias preferidos para o teste</legend>
-                            {DAYS.map((day, dayIndex) => (
-                              <label className="check" key={day}>
+                          <div className="item-summary-actions">
+                            <button
+                              className="ghost"
+                              onClick={() => toggleExpanded(setExpandedServices, serviceIndex)}
+                            >
+                              {isOpen ? 'Fechar' : 'Detalhes'}
+                            </button>
+                            <button
+                              className="danger ghost"
+                              disabled={!editable}
+                              onClick={() =>
+                                change((draft) => draft.services.splice(serviceIndex, 1))
+                              }
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        </div>
+                        {isOpen && (
+                          <div className="item-details">
+                            <div className="grid two">
+                              <label>
+                                Serviço
                                 <input
-                                  type="checkbox"
                                   disabled={!editable}
-                                  checked={service.strandTestPreferredWeekdays.includes(dayIndex)}
+                                  value={service.name}
+                                  placeholder="Ex.: Progressiva sem formol"
                                   onChange={(e) =>
                                     change((draft) => {
                                       const target = draft.services[serviceIndex];
-                                      if (!target) return;
-                                      target.strandTestPreferredWeekdays = e.target.checked
-                                        ? [...target.strandTestPreferredWeekdays, dayIndex].sort()
-                                        : target.strandTestPreferredWeekdays.filter((d) => d !== dayIndex);
+                                      if (target) target.name = e.target.value;
                                     })
                                   }
                                 />
-                                {day}
                               </label>
-                            ))}
-                          </fieldset>
-                        </article>
-                      )}
+                              <label>
+                                Preço base (R$, em centavos)
+                                <input
+                                  type="number"
+                                  min={0}
+                                  disabled={!editable}
+                                  value={service.basePriceMinor ?? ''}
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target = draft.services[serviceIndex];
+                                      if (target)
+                                        target.basePriceMinor =
+                                          e.target.value === '' ? null : Number(e.target.value);
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
 
-                      <div className="title minor">
-                        <h4>Variações (comprimento, volume, técnica…)</h4>
-                        <button
-                          disabled={!editable}
-                          onClick={() =>
-                            change((draft) =>
-                              draft.services[serviceIndex]?.variations.push({
-                                name: '',
-                                priceMinor: null,
-                              })
-                            )
-                          }
-                        >
-                          Adicionar variação
-                        </button>
-                      </div>
-                      <p className="hint small">
-                        Cada variação é livre: cadastre &ldquo;Cabelo longo&rdquo;, &ldquo;Volume
-                        muito&rdquo; ou qualquer critério seu, com o preço correspondente.
-                      </p>
-                      {service.variations.map((variation, variationIndex) => (
-                        <div className="row variation" key={variationIndex}>
-                          <input
-                            disabled={!editable}
-                            value={variation.name}
-                            placeholder="Ex.: Cabelo longo"
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target =
-                                  draft.services[serviceIndex]?.variations[variationIndex];
-                                if (target) target.name = e.target.value;
-                              })
-                            }
-                          />
-                          <input
-                            type="number"
-                            min={0}
-                            disabled={!editable}
-                            value={variation.priceMinor ?? ''}
-                            placeholder="Centavos"
-                            onChange={(e) =>
-                              change((draft) => {
-                                const target =
-                                  draft.services[serviceIndex]?.variations[variationIndex];
-                                if (target)
-                                  target.priceMinor =
-                                    e.target.value === '' ? null : Number(e.target.value);
-                              })
-                            }
-                          />
-                          <button
-                            className="danger"
-                            disabled={!editable}
-                            onClick={() =>
-                              change((draft) =>
-                                draft.services[serviceIndex]?.variations.splice(variationIndex, 1)
-                              )
-                            }
-                          >
-                            Remover
-                          </button>
-                        </div>
-                      ))}
-
-                      <div className="title minor">
-                        <h4>Etapas do atendimento</h4>
-                        <button
-                          disabled={!editable}
-                          onClick={() =>
-                            change((draft) => {
-                              const target = draft.services[serviceIndex];
-                              if (target)
-                                target.steps.push({
-                                  name: '',
-                                  position: target.steps.length + 1,
-                                  durationMinutes: 30,
-                                  kind: 'ACTIVE',
-                                  technicalCategory: 'OTHER',
-                                  minimumDurationMinutes: 30,
-                                  maximumDurationMinutes: 30,
-                                  professionalConfirmationRequired: false,
-                                  productRecordRequired: false,
-                                  productRequirements: [],
-                                  skillNames: [],
-                                  skillQualifiers: [],
-                                  resourceRequirements: [],
-                                });
-                            })
-                          }
-                        >
-                          Adicionar etapa
-                        </button>
-                      </div>
-                      {service.steps.map((step, stepIndex) => (
-                        <div className="step" key={stepIndex}>
-                          <div className="grid three">
-                            <label>
-                              Etapa
+                            <label className="check">
                               <input
+                                type="checkbox"
                                 disabled={!editable}
-                                value={step.name}
-                                placeholder="Ex.: Lavagem"
+                                checked={service.requiresStrandTest}
                                 onChange={(e) =>
                                   change((draft) => {
-                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                    if (target) target.name = e.target.value;
+                                    const target = draft.services[serviceIndex];
+                                    if (target) target.requiresStrandTest = e.target.checked;
                                   })
                                 }
                               />
+                              Exige teste de mechas antes do atendimento
                             </label>
-                            <label>
-                              Duração (min)
-                              <input
-                                type="number"
-                                min={1}
-                                disabled={!editable}
-                                value={step.durationMinutes}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                    if (target) target.durationMinutes = Number(e.target.value);
-                                  })
-                                }
-                              />
-                            </label>
-                            <label>
-                              Natureza
-                              <select
-                                disabled={!editable}
-                                value={step.kind}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                    if (target) target.kind = e.target.value as Step['kind'];
-                                  })
-                                }
-                              >
-                                <option value="ACTIVE">Ativa (ocupa o profissional)</option>
-                                <option value="PASSIVE">Passiva (ex.: pausa/espera)</option>
-                              </select>
-                            </label>
-                          </div>
-                          <div className="grid three">
-                            <label>
-                              Categoria técnica
-                              <select
-                                disabled={!editable}
-                                value={step.technicalCategory}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                    if (target)
-                                      target.technicalCategory = e.target.value as Step['technicalCategory'];
-                                  })
-                                }
-                              >
-                                <option value="ASSESS">Avaliar</option>
-                                <option value="PREPARE">Preparar</option>
-                                <option value="CLEANSE">Lavar</option>
-                                <option value="DRY">Pré-secar/secar</option>
-                                <option value="APPLY">Aplicar</option>
-                                <option value="PROCESS">Pausa/processar</option>
-                                <option value="RINSE">Enxaguar</option>
-                                <option value="NEUTRALIZE">Neutralizar</option>
-                                <option value="TREAT">Tratar</option>
-                                <option value="FINISH">Finalizar</option>
-                                <option value="STYLE">Escovar/modelar</option>
-                                <option value="OTHER">Outra</option>
-                              </select>
-                            </label>
-                            <label>
-                              Janela mínima (min)
-                              <input
-                                type="number"
-                                min={1}
-                                disabled={!editable}
-                                value={step.minimumDurationMinutes}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                    if (target)
-                                      target.minimumDurationMinutes = Math.max(
-                                        1,
-                                        Number(e.target.value) || target.durationMinutes
-                                      );
-                                  })
-                                }
-                              />
-                            </label>
-                            <label>
-                              Janela máxima (min)
-                              <input
-                                type="number"
-                                min={step.minimumDurationMinutes}
-                                disabled={!editable}
-                                value={step.maximumDurationMinutes}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                    if (target)
-                                      target.maximumDurationMinutes = Math.max(
-                                        target.minimumDurationMinutes,
-                                        Number(e.target.value) || target.durationMinutes
-                                      );
-                                  })
-                                }
-                              />
-                            </label>
-                          </div>
-                          <label className="check">
-                            <input
-                              type="checkbox"
-                              disabled={!editable}
-                              checked={step.professionalConfirmationRequired}
-                              onChange={(e) =>
-                                change((draft) => {
-                                  const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                  if (target) target.professionalConfirmationRequired = e.target.checked;
-                                })
-                              }
-                            />
-                            Exige confirmação profissional na execução
-                          </label>
-                          <label className="check">
-                            <input
-                              type="checkbox"
-                              disabled={!editable}
-                              checked={step.productRecordRequired}
-                              onChange={(e) =>
-                                change((draft) => {
-                                  const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                  if (target) target.productRecordRequired = e.target.checked;
-                                })
-                              }
-                            />
-                            Exige registro de produto/lote na execução
-                          </label>
-                          <fieldset>
-                            <legend>Quem pode fazer</legend>
-                            {config.skills.filter((s) => s.name).length === 0 && (
-                              <p className="empty small">Cadastre competências em Equipe primeiro.</p>
-                            )}
-                            {config.skills
-                              .filter((s) => s.name)
-                              .map((skill) => {
-                                if (!skill.qualifierLabel) {
-                                  return (
-                                    <label className="check" key={skill.name}>
+                            {service.requiresStrandTest && (
+                              <article className="nested">
+                                <p className="hint small">
+                                  O sistema tenta marcar o teste sozinho quando o atendimento
+                                  principal é confirmado (qualquer profissional com a competência
+                                  serve, em qualquer cadeira livre). Se não achar horário na janela,
+                                  o atendimento principal não trava, só avisa que o teste precisa
+                                  ser marcado por você.
+                                </p>
+                                <div className="grid two">
+                                  <label>
+                                    Com quantos dias de antecedência
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={30}
+                                      disabled={!editable}
+                                      value={service.strandTestLeadDays}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target = draft.services[serviceIndex];
+                                          if (target)
+                                            target.strandTestLeadDays = Math.max(
+                                              1,
+                                              Number(e.target.value) || 7
+                                            );
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <label>
+                                    Duração do teste (minutos)
+                                    <input
+                                      type="number"
+                                      min={10}
+                                      max={240}
+                                      disabled={!editable}
+                                      value={service.strandTestDurationMinutes}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target = draft.services[serviceIndex];
+                                          if (target)
+                                            target.strandTestDurationMinutes = Math.max(
+                                              10,
+                                              Number(e.target.value) || 60
+                                            );
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                </div>
+                                <fieldset>
+                                  <legend>Dias preferidos para o teste</legend>
+                                  {DAYS.map((day, dayIndex) => (
+                                    <label className="check" key={day}>
                                       <input
                                         type="checkbox"
                                         disabled={!editable}
-                                        checked={step.skillNames.includes(skill.name)}
+                                        checked={service.strandTestPreferredWeekdays.includes(
+                                          dayIndex
+                                        )}
                                         onChange={(e) =>
                                           change((draft) => {
-                                            const target = draft.services[serviceIndex]?.steps[stepIndex];
+                                            const target = draft.services[serviceIndex];
                                             if (!target) return;
-                                            target.skillNames = e.target.checked
-                                              ? [...target.skillNames, skill.name]
-                                              : target.skillNames.filter((name) => name !== skill.name);
+                                            target.strandTestPreferredWeekdays = e.target.checked
+                                              ? [
+                                                  ...target.strandTestPreferredWeekdays,
+                                                  dayIndex,
+                                                ].sort()
+                                              : target.strandTestPreferredWeekdays.filter(
+                                                  (d) => d !== dayIndex
+                                                );
                                           })
                                         }
                                       />
-                                      {skill.name}
+                                      {day}
                                     </label>
-                                  );
-                                }
-                                const currentChoice = step.skillQualifiers.find(
-                                  (q) => q.skillName === skill.name
-                                );
-                                const selectValue =
-                                  currentChoice?.optionLabel ?? (currentChoice?.customValue !== undefined ? '__custom__' : '');
-                                return (
-                                  <div className="row slot" key={skill.name}>
-                                    <span>
-                                      {skill.name}: {skill.qualifierLabel}
-                                    </span>
-                                    <select
-                                      disabled={!editable}
-                                      value={selectValue}
-                                      onChange={(e) =>
-                                        change((draft) => {
-                                          const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                          if (!target) return;
-                                          target.skillQualifiers = target.skillQualifiers.filter(
-                                            (q) => q.skillName !== skill.name
-                                          );
-                                          target.skillNames = target.skillNames.filter(
-                                            (name) => name !== skill.name
-                                          );
-                                          if (e.target.value === '') return;
-                                          if (e.target.value === '__custom__') {
-                                            target.skillQualifiers.push({ skillName: skill.name, customValue: '' });
-                                          } else {
-                                            target.skillQualifiers.push({
-                                              skillName: skill.name,
-                                              optionLabel: e.target.value,
-                                            });
-                                          }
-                                          target.skillNames.push(skill.name);
-                                        })
-                                      }
-                                    >
-                                      <option value="">Não exige esta competência</option>
-                                      {skill.qualifierOptions.map((option) => (
-                                        <option key={option} value={option}>
-                                          {option}
-                                        </option>
-                                      ))}
-                                      {skill.qualifierAllowCustom && (
-                                        <option value="__custom__">Outro (escrever)</option>
-                                      )}
-                                    </select>
-                                    {currentChoice?.customValue !== undefined && (
-                                      <input
-                                        disabled={!editable}
-                                        placeholder="Qual?"
-                                        value={currentChoice.customValue}
-                                        onChange={(e) =>
-                                          change((draft) => {
-                                            const target = draft.services[serviceIndex]?.steps[stepIndex];
-                                            const choice = target?.skillQualifiers.find(
-                                              (q) => q.skillName === skill.name
-                                            );
-                                            if (choice) choice.customValue = e.target.value;
-                                          })
-                                        }
-                                      />
-                                    )}
-                                  </div>
-                                );
-                              })}
-                          </fieldset>
-                          <div className="title minor">
-                            <h5>Recursos exigidos</h5>
-                            <button
-                              disabled={!editable || !config.resourceTypes.length}
-                              onClick={() =>
-                                change((draft) => {
-                                  const stepTarget = draft.services[serviceIndex]?.steps[stepIndex];
-                                  const firstType = draft.resourceTypes[0];
-                                  if (stepTarget && firstType)
-                                    stepTarget.resourceRequirements.push({
-                                      resourceTypeName: firstType.name,
-                                      quantity: 1,
-                                      retainUntilServiceEnd: false,
-                                    });
-                                })
-                              }
-                            >
-                              Adicionar recurso
-                            </button>
-                          </div>
-                          {step.resourceRequirements.map((requirement, requirementIndex) => (
-                            <div className="row requirement" key={requirementIndex}>
-                              <select
-                                disabled={!editable}
-                                value={requirement.resourceTypeName}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target =
-                                      draft.services[serviceIndex]?.steps[stepIndex]
-                                        ?.resourceRequirements[requirementIndex];
-                                    if (target) target.resourceTypeName = e.target.value;
-                                  })
-                                }
-                              >
-                                {config.resourceTypes
-                                  .filter((item) => item.name)
-                                  .map((item) => (
-                                    <option key={item.name}>{item.name}</option>
                                   ))}
-                              </select>
-                              <input
-                                type="number"
-                                min={1}
-                                disabled={!editable}
-                                value={requirement.quantity}
-                                onChange={(e) =>
-                                  change((draft) => {
-                                    const target =
-                                      draft.services[serviceIndex]?.steps[stepIndex]
-                                        ?.resourceRequirements[requirementIndex];
-                                    if (target) target.quantity = Number(e.target.value);
-                                  })
-                                }
-                              />
-                              <label className="check">
-                                <input
-                                  type="checkbox"
-                                  disabled={!editable}
-                                  checked={requirement.retainUntilServiceEnd}
-                                  onChange={(e) =>
-                                    change((draft) => {
-                                      const target =
-                                        draft.services[serviceIndex]?.steps[stepIndex]
-                                          ?.resourceRequirements[requirementIndex];
-                                      if (target) target.retainUntilServiceEnd = e.target.checked;
-                                    })
-                                  }
-                                />
-                                Reter até o fim do serviço
-                              </label>
+                                </fieldset>
+                              </article>
+                            )}
+
+                            <div className="title minor">
+                              <h4>Variações (comprimento, volume, técnica…)</h4>
                               <button
-                                className="danger"
                                 disabled={!editable}
                                 onClick={() =>
                                   change((draft) =>
-                                    draft.services[serviceIndex]?.steps[
-                                      stepIndex
-                                    ]?.resourceRequirements.splice(requirementIndex, 1)
+                                    draft.services[serviceIndex]?.variations.push({
+                                      name: '',
+                                      priceMinor: null,
+                                    })
                                   )
                                 }
                               >
-                                Remover
+                                Adicionar variação
                               </button>
                             </div>
-                          ))}
-                          <button
-                            className="danger ghost"
-                            disabled={!editable}
-                            onClick={() =>
-                              change((draft) => {
-                                const target = draft.services[serviceIndex];
-                                if (!target) return;
-                                target.steps.splice(stepIndex, 1);
-                                target.steps.forEach((item, index) => {
-                                  item.position = index + 1;
-                                });
-                              })
-                            }
-                          >
-                            Remover etapa
-                          </button>
-                        </div>
-                      ))}
-                      <div className="item-save-row">
-                        <button
-                          className="primary"
-                          disabled={!editable || busy || !dirty}
-                          onClick={() => void save()}
-                        >
-                          {busy ? 'Salvando…' : 'Salvar serviço'}
-                        </button>
-                      </div>
-                      </div>
-                      )}
-                    </article>
+                            <p className="hint small">
+                              Cada variação é livre: cadastre &ldquo;Cabelo longo&rdquo;,
+                              &ldquo;Volume muito&rdquo; ou qualquer critério seu, com o preço
+                              correspondente.
+                            </p>
+                            {service.variations.map((variation, variationIndex) => (
+                              <div className="row variation" key={variationIndex}>
+                                <input
+                                  disabled={!editable}
+                                  value={variation.name}
+                                  placeholder="Ex.: Cabelo longo"
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target =
+                                        draft.services[serviceIndex]?.variations[variationIndex];
+                                      if (target) target.name = e.target.value;
+                                    })
+                                  }
+                                />
+                                <input
+                                  type="number"
+                                  min={0}
+                                  disabled={!editable}
+                                  value={variation.priceMinor ?? ''}
+                                  placeholder="Centavos"
+                                  onChange={(e) =>
+                                    change((draft) => {
+                                      const target =
+                                        draft.services[serviceIndex]?.variations[variationIndex];
+                                      if (target)
+                                        target.priceMinor =
+                                          e.target.value === '' ? null : Number(e.target.value);
+                                    })
+                                  }
+                                />
+                                <button
+                                  className="danger"
+                                  disabled={!editable}
+                                  onClick={() =>
+                                    change((draft) =>
+                                      draft.services[serviceIndex]?.variations.splice(
+                                        variationIndex,
+                                        1
+                                      )
+                                    )
+                                  }
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            ))}
+
+                            <div className="title minor">
+                              <h4>Etapas do atendimento</h4>
+                              <button
+                                disabled={!editable}
+                                onClick={() =>
+                                  change((draft) => {
+                                    const target = draft.services[serviceIndex];
+                                    if (target)
+                                      target.steps.push({
+                                        name: '',
+                                        position: target.steps.length + 1,
+                                        durationMinutes: 30,
+                                        kind: 'ACTIVE',
+                                        technicalCategory: 'OTHER',
+                                        minimumDurationMinutes: 30,
+                                        maximumDurationMinutes: 30,
+                                        professionalConfirmationRequired: false,
+                                        productRecordRequired: false,
+                                        productRequirements: [],
+                                        skillNames: [],
+                                        skillQualifiers: [],
+                                        resourceRequirements: [],
+                                      });
+                                  })
+                                }
+                              >
+                                Adicionar etapa
+                              </button>
+                            </div>
+                            {service.steps.map((step, stepIndex) => (
+                              <div className="step" key={stepIndex}>
+                                <div className="grid three">
+                                  <label>
+                                    Etapa
+                                    <input
+                                      disabled={!editable}
+                                      value={step.name}
+                                      placeholder="Ex.: Lavagem"
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target =
+                                            draft.services[serviceIndex]?.steps[stepIndex];
+                                          if (target) target.name = e.target.value;
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <label>
+                                    Duração (min)
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      disabled={!editable}
+                                      value={step.durationMinutes}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target =
+                                            draft.services[serviceIndex]?.steps[stepIndex];
+                                          if (target)
+                                            target.durationMinutes = Number(e.target.value);
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <label>
+                                    Natureza
+                                    <select
+                                      disabled={!editable}
+                                      value={step.kind}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target =
+                                            draft.services[serviceIndex]?.steps[stepIndex];
+                                          if (target) target.kind = e.target.value as Step['kind'];
+                                        })
+                                      }
+                                    >
+                                      <option value="ACTIVE">Ativa (ocupa o profissional)</option>
+                                      <option value="PASSIVE">Passiva (ex.: pausa/espera)</option>
+                                    </select>
+                                  </label>
+                                </div>
+                                <div className="grid three">
+                                  <label>
+                                    Categoria técnica
+                                    <select
+                                      disabled={!editable}
+                                      value={step.technicalCategory}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target =
+                                            draft.services[serviceIndex]?.steps[stepIndex];
+                                          if (target)
+                                            target.technicalCategory = e.target
+                                              .value as Step['technicalCategory'];
+                                        })
+                                      }
+                                    >
+                                      <option value="ASSESS">Avaliar</option>
+                                      <option value="PREPARE">Preparar</option>
+                                      <option value="CLEANSE">Lavar</option>
+                                      <option value="DRY">Pré-secar/secar</option>
+                                      <option value="APPLY">Aplicar</option>
+                                      <option value="PROCESS">Pausa/processar</option>
+                                      <option value="RINSE">Enxaguar</option>
+                                      <option value="NEUTRALIZE">Neutralizar</option>
+                                      <option value="TREAT">Tratar</option>
+                                      <option value="FINISH">Finalizar</option>
+                                      <option value="STYLE">Escovar/modelar</option>
+                                      <option value="OTHER">Outra</option>
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Janela mínima (min)
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      disabled={!editable}
+                                      value={step.minimumDurationMinutes}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target =
+                                            draft.services[serviceIndex]?.steps[stepIndex];
+                                          if (target)
+                                            target.minimumDurationMinutes = Math.max(
+                                              1,
+                                              Number(e.target.value) || target.durationMinutes
+                                            );
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                  <label>
+                                    Janela máxima (min)
+                                    <input
+                                      type="number"
+                                      min={step.minimumDurationMinutes}
+                                      disabled={!editable}
+                                      value={step.maximumDurationMinutes}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target =
+                                            draft.services[serviceIndex]?.steps[stepIndex];
+                                          if (target)
+                                            target.maximumDurationMinutes = Math.max(
+                                              target.minimumDurationMinutes,
+                                              Number(e.target.value) || target.durationMinutes
+                                            );
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                </div>
+                                <label className="check">
+                                  <input
+                                    type="checkbox"
+                                    disabled={!editable}
+                                    checked={step.professionalConfirmationRequired}
+                                    onChange={(e) =>
+                                      change((draft) => {
+                                        const target =
+                                          draft.services[serviceIndex]?.steps[stepIndex];
+                                        if (target)
+                                          target.professionalConfirmationRequired =
+                                            e.target.checked;
+                                      })
+                                    }
+                                  />
+                                  Exige confirmação profissional na execução
+                                </label>
+                                <label className="check">
+                                  <input
+                                    type="checkbox"
+                                    disabled={!editable}
+                                    checked={step.productRecordRequired}
+                                    onChange={(e) =>
+                                      change((draft) => {
+                                        const target =
+                                          draft.services[serviceIndex]?.steps[stepIndex];
+                                        if (target) target.productRecordRequired = e.target.checked;
+                                      })
+                                    }
+                                  />
+                                  Exige registro de produto/lote na execução
+                                </label>
+                                <fieldset>
+                                  <legend>Quem pode fazer</legend>
+                                  {config.skills.filter((s) => s.name).length === 0 && (
+                                    <p className="empty small">
+                                      Cadastre competências em Equipe primeiro.
+                                    </p>
+                                  )}
+                                  {config.skills
+                                    .filter((s) => s.name)
+                                    .map((skill) => {
+                                      if (!skill.qualifierLabel) {
+                                        return (
+                                          <label className="check" key={skill.name}>
+                                            <input
+                                              type="checkbox"
+                                              disabled={!editable}
+                                              checked={step.skillNames.includes(skill.name)}
+                                              onChange={(e) =>
+                                                change((draft) => {
+                                                  const target =
+                                                    draft.services[serviceIndex]?.steps[stepIndex];
+                                                  if (!target) return;
+                                                  target.skillNames = e.target.checked
+                                                    ? [...target.skillNames, skill.name]
+                                                    : target.skillNames.filter(
+                                                        (name) => name !== skill.name
+                                                      );
+                                                })
+                                              }
+                                            />
+                                            {skill.name}
+                                          </label>
+                                        );
+                                      }
+                                      const currentChoice = step.skillQualifiers.find(
+                                        (q) => q.skillName === skill.name
+                                      );
+                                      const selectValue =
+                                        currentChoice?.optionLabel ??
+                                        (currentChoice?.customValue !== undefined
+                                          ? '__custom__'
+                                          : '');
+                                      return (
+                                        <div className="row slot" key={skill.name}>
+                                          <span>
+                                            {skill.name}: {skill.qualifierLabel}
+                                          </span>
+                                          <select
+                                            disabled={!editable}
+                                            value={selectValue}
+                                            onChange={(e) =>
+                                              change((draft) => {
+                                                const target =
+                                                  draft.services[serviceIndex]?.steps[stepIndex];
+                                                if (!target) return;
+                                                target.skillQualifiers =
+                                                  target.skillQualifiers.filter(
+                                                    (q) => q.skillName !== skill.name
+                                                  );
+                                                target.skillNames = target.skillNames.filter(
+                                                  (name) => name !== skill.name
+                                                );
+                                                if (e.target.value === '') return;
+                                                if (e.target.value === '__custom__') {
+                                                  target.skillQualifiers.push({
+                                                    skillName: skill.name,
+                                                    customValue: '',
+                                                  });
+                                                } else {
+                                                  target.skillQualifiers.push({
+                                                    skillName: skill.name,
+                                                    optionLabel: e.target.value,
+                                                  });
+                                                }
+                                                target.skillNames.push(skill.name);
+                                              })
+                                            }
+                                          >
+                                            <option value="">Não exige esta competência</option>
+                                            {skill.qualifierOptions.map((option) => (
+                                              <option key={option} value={option}>
+                                                {option}
+                                              </option>
+                                            ))}
+                                            {skill.qualifierAllowCustom && (
+                                              <option value="__custom__">Outro (escrever)</option>
+                                            )}
+                                          </select>
+                                          {currentChoice?.customValue !== undefined && (
+                                            <input
+                                              disabled={!editable}
+                                              placeholder="Qual?"
+                                              value={currentChoice.customValue}
+                                              onChange={(e) =>
+                                                change((draft) => {
+                                                  const target =
+                                                    draft.services[serviceIndex]?.steps[stepIndex];
+                                                  const choice = target?.skillQualifiers.find(
+                                                    (q) => q.skillName === skill.name
+                                                  );
+                                                  if (choice) choice.customValue = e.target.value;
+                                                })
+                                              }
+                                            />
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                </fieldset>
+                                <div className="title minor">
+                                  <h5>Recursos exigidos</h5>
+                                  <button
+                                    disabled={!editable || !config.resourceTypes.length}
+                                    onClick={() =>
+                                      change((draft) => {
+                                        const stepTarget =
+                                          draft.services[serviceIndex]?.steps[stepIndex];
+                                        const firstType = draft.resourceTypes[0];
+                                        if (stepTarget && firstType)
+                                          stepTarget.resourceRequirements.push({
+                                            resourceTypeName: firstType.name,
+                                            quantity: 1,
+                                            retainUntilServiceEnd: false,
+                                          });
+                                      })
+                                    }
+                                  >
+                                    Adicionar recurso
+                                  </button>
+                                </div>
+                                {step.resourceRequirements.map((requirement, requirementIndex) => (
+                                  <div className="row requirement" key={requirementIndex}>
+                                    <select
+                                      disabled={!editable}
+                                      value={requirement.resourceTypeName}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target =
+                                            draft.services[serviceIndex]?.steps[stepIndex]
+                                              ?.resourceRequirements[requirementIndex];
+                                          if (target) target.resourceTypeName = e.target.value;
+                                        })
+                                      }
+                                    >
+                                      {config.resourceTypes
+                                        .filter((item) => item.name)
+                                        .map((item) => (
+                                          <option key={item.name}>{item.name}</option>
+                                        ))}
+                                    </select>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      disabled={!editable}
+                                      value={requirement.quantity}
+                                      onChange={(e) =>
+                                        change((draft) => {
+                                          const target =
+                                            draft.services[serviceIndex]?.steps[stepIndex]
+                                              ?.resourceRequirements[requirementIndex];
+                                          if (target) target.quantity = Number(e.target.value);
+                                        })
+                                      }
+                                    />
+                                    <label className="check">
+                                      <input
+                                        type="checkbox"
+                                        disabled={!editable}
+                                        checked={requirement.retainUntilServiceEnd}
+                                        onChange={(e) =>
+                                          change((draft) => {
+                                            const target =
+                                              draft.services[serviceIndex]?.steps[stepIndex]
+                                                ?.resourceRequirements[requirementIndex];
+                                            if (target)
+                                              target.retainUntilServiceEnd = e.target.checked;
+                                          })
+                                        }
+                                      />
+                                      Reter até o fim do serviço
+                                    </label>
+                                    <button
+                                      className="danger"
+                                      disabled={!editable}
+                                      onClick={() =>
+                                        change((draft) =>
+                                          draft.services[serviceIndex]?.steps[
+                                            stepIndex
+                                          ]?.resourceRequirements.splice(requirementIndex, 1)
+                                        )
+                                      }
+                                    >
+                                      Remover
+                                    </button>
+                                  </div>
+                                ))}
+                                <button
+                                  className="danger ghost"
+                                  disabled={!editable}
+                                  onClick={() =>
+                                    change((draft) => {
+                                      const target = draft.services[serviceIndex];
+                                      if (!target) return;
+                                      target.steps.splice(stepIndex, 1);
+                                      target.steps.forEach((item, index) => {
+                                        item.position = index + 1;
+                                      });
+                                    })
+                                  }
+                                >
+                                  Remover etapa
+                                </button>
+                              </div>
+                            ))}
+                            <div className="item-save-row">
+                              <button
+                                className="primary"
+                                disabled={!editable || busy || !dirty}
+                                onClick={() => void save()}
+                              >
+                                {busy ? 'Salvando…' : 'Salvar serviço'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </article>
                     );
                   })}
                 </article>
               )}
 
-              {module === 'simulacao' && (
-                unitId ? (
+              {module === 'simulacao' &&
+                (unitId ? (
                   <SchedulingSimulator tenantId={tenantId} unitId={unitId} />
                 ) : (
                   <article className="card">
                     <h2>Simulação</h2>
                     <p className="empty">Carregando…</p>
                   </article>
-                )
-              )}
+                ))}
 
               {module === 'publicar' && (
                 <article className="card publish">
@@ -2960,9 +3320,9 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     </p>
                   ) : (
                     <p className="hint">
-                      Esta configuração está publicada e valendo para o atendimento agora. Pra
-                      mudar qualquer coisa, abra um rascunho novo. Ele começa com tudo que está
-                      publicado, você só edita por cima.
+                      Esta configuração está publicada e valendo para o atendimento agora. Pra mudar
+                      qualquer coisa, abra um rascunho novo. Ele começa com tudo que está publicado,
+                      você só edita por cima.
                     </p>
                   )}
                   {editable &&
@@ -2998,7 +3358,11 @@ export default function Configurator({ user }: { user: { displayName: string; em
                         </button>
                       </>
                     ) : (
-                      <button className="primary" disabled={busy} onClick={() => void startNewDraft()}>
+                      <button
+                        className="primary"
+                        disabled={busy}
+                        onClick={() => void startNewDraft()}
+                      >
                         {busy ? 'Abrindo…' : 'Editar de novo'}
                       </button>
                     )}
