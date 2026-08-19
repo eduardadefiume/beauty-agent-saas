@@ -181,7 +181,7 @@ Isto é importante tanto quanto a lista de problemas — **você pediu para não
 | E8 | **Dois sistemas de autorização divergentes** | RPCs autorizam por `app.site_identities`; RLS autoriza por `app.tenant_memberships`. Mesmos dados, regras diferentes. `tenant_memberships` tem **0 linhas**. |
 | E9 | **`app.conversations` tem `unique(tenant_id, contact_id)`** | Um contato **nunca** pode ter uma segunda conversa. Modelo errado para atendimento recorrente. |
 | E10 | **CI aplica DDL em push de branch de feature** | Sem gate de aprovação, num banco compartilhado. E `g3-whatsapp-inbox-dev.yml` roda `pnpm install \|\| npm install` **sem instalar o pnpm** — sempre cai no `npm`, ignorando o lockfile. |
-| E11 | **`main` e `dev` abandonados** | Todo o trabalho vive em `feature/saas-com-dashboard-completo`, que é a branch de produção da Vercel. Sem PR, sem revisão, sem histórico limpo. |
+| E11 | **Nenhuma branch do repositório publica em produção** | `main` tem **1 commit** ("Initial commit") e `dev` está parado. Todo o trabalho vive em `feature/saas-com-dashboard-completo` — que, ao contrário do que este documento afirmava, **não** é a Production Branch da Vercel: push nessa branch gera *preview*, não produção. Os dois únicos deploys com `target: production` são **redeploys manuais** do commit `83ac80b`. Evidência e correção em [`operations/pipeline-deploy-vercel.md`](operations/pipeline-deploy-vercel.md). |
 | E12 | **Sem ambiente local** | Não há `supabase/config.toml` nem seed. Toda validação roda contra o DEV compartilhado. |
 
 ---
