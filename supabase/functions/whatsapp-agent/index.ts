@@ -99,6 +99,24 @@ async function rpc(url: string, key: string, fn: string, args: unknown): Promise
   return await resposta.json();
 }
 
+// Segundo fator, alem do verify_jwt.
+//
+// verify_jwt so garante que o token e assinado por este projeto -- e a chave
+// anon satisfaz isso e e publica, embutida no JavaScript do site. Sem este
+// cheque, qualquer visitante poderia disparar o worker. O token vive no Vault:
+// quem chama e quem confere leem da mesma fonte, e ele nunca precisa passar
+// pela mao de ninguem.
+async function autorizado(req: Request, url: string, key: string): Promise<boolean> {
+  const token = req.headers.get('x-worker-token');
+  if (!token) return false;
+  try {
+    return (await rpc(url, key, 'verify_worker_token', { p_token: token })) === true;
+  } catch (erro) {
+    console.error(JSON.stringify({ event: 'worker_token_check_failed', erro: String(erro) }));
+    return false;
+  }
+}
+
 // O prompt de sistema carrega a persona e as proibicoes; o contexto vai na
 // mensagem do usuario. A separacao nao e estetica: o prompt e identico em toda
 // chamada e o contexto muda a cada uma, o que e exatamente o formato que o
@@ -178,6 +196,11 @@ Deno.serve(async (req) => {
 
   if (!supabaseUrl || !serviceKey) {
     return json(500, { ok: false, reason: 'SUPABASE_ENV_MISSING' });
+  }
+  // Autorizacao antes de qualquer outra coisa: quem nao passou daqui nao
+  // descobre nem se a chave da Anthropic esta configurada.
+  if (!(await autorizado(req, supabaseUrl, serviceKey))) {
+    return json(401, { ok: false, reason: 'WORKER_TOKEN_INVALID' });
   }
   if (!anthropicKey) {
     return json(500, { ok: false, reason: 'ANTHROPIC_API_KEY_MISSING' });

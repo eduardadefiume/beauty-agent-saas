@@ -71,6 +71,12 @@ verify_jwt = false
 # gasta token de LLM e escreve na fila que fala com clientes reais pelo número
 # do William. Uma função dessas aberta é um endpoint que qualquer um usa para
 # queimar orçamento e mandar mensagem em nome do salão.
+#
+# ATENÇÃO: `verify_jwt = true` sozinho NÃO basta aqui. Ele só verifica que o
+# JWT foi assinado por este projeto — e a chave anon é um JWT assinado por este
+# projeto, embutida no JavaScript que qualquer visitante baixa. Por isso as duas
+# exigem também o cabeçalho `x-worker-token`, conferido contra o Vault
+# (migração 20260820180000). Nunca remover um sem remover o outro.
 [functions.whatsapp-sender]
 verify_jwt = true
 
