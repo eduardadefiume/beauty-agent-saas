@@ -60,3 +60,19 @@ verify_jwt = true
 # da trilha A do plano estratégico. Não usar em nada novo.
 [functions.site-configurator-api]
 verify_jwt = false
+
+# --- Trabalhadores de fila (WhatsApp) ----------------------------------------
+#
+# Nenhum dos dois é chamado por um navegador: quem invoca é um agendador com a
+# chave de service role, ou a Duda em teste manual. `verify_jwt = true` é o
+# padrão correto — sem sessão, ninguém entra.
+#
+# O risco aqui não é vazamento de dado, é custo e reputação: o `whatsapp-agent`
+# gasta token de LLM e escreve na fila que fala com clientes reais pelo número
+# do William. Uma função dessas aberta é um endpoint que qualquer um usa para
+# queimar orçamento e mandar mensagem em nome do salão.
+[functions.whatsapp-sender]
+verify_jwt = true
+
+[functions.whatsapp-agent]
+verify_jwt = true
