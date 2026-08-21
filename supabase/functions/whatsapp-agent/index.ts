@@ -23,12 +23,16 @@
 //    joga a responsabilidade de volta para a cliente. Uma recepcionista que
 //    nao sabe o preco nao anuncia que vai perguntar: ela vira e pergunta.
 //
-// 3. ELE NAO AGENDA SOZINHO -- AINDA.
-//    O motor de disponibilidade existe (packages/scheduling-engine) mas nao
-//    esta ligado aqui. Ate estar, pedido de horario vira pergunta ao dono, com
-//    o dia e o servico ja formulados. A dona responde "sabado 9h ou 14h" e o
-//    agente devolve isso a cliente como se sempre soubesse. Funciona, e e
-//    honesto: quem tem a agenda hoje e a pessoa.
+// 3. ELE ENXERGA A AGENDA, E POR ISSO O TURNO E UM LACO.
+//    O motor de disponibilidade vive na scheduling-api e continua sendo o
+//    unico -- o agente consulta, nao recalcula. Para isso o turno deixou de ser
+//    uma chamada so: o modelo pede horarios, recebe, e ai decide o que falar.
+//    Ferramenta em vez de contexto pre-carregado porque nao da para adivinhar,
+//    antes de ler a mensagem, qual servico e qual dia a cliente quer.
+//    Duas travas no que ele diz: a conversao de milissegundos para "sabado as
+//    8h" acontece aqui no codigo, nunca no modelo; e reservar recebe o NUMERO
+//    da opcao consultada, nunca uma data digitada -- ele nao consegue marcar um
+//    horario que nao viu livre.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
