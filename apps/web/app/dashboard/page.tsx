@@ -53,10 +53,22 @@ const heroImage = "https://images.unsplash.com/photo-1560066984-138dadb4c035?aut
 const textureImage = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800";
 const detailImage = "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&q=80&w=800";
 
-const navItems = [
+type NavItem = {
+  label: string;
+  icon: typeof LayoutDashboard;
+  target: string;
+  // Quando presente, o item leva para outra página em vez de rolar até uma
+  // seção desta.
+  href?: string;
+};
+
+const navItems: NavItem[] = [
   { label: "Visão geral", icon: LayoutDashboard, target: "overview" },
   { label: "Integrações", icon: Network, target: "integrations" },
   { label: "Timeline e Logs", icon: Radio, target: "timeline" },
+  // Único item que sai do dashboard: o console de WhatsApp é uma tela própria,
+  // porque atualiza sozinha e tem o botão de parada de emergência.
+  { label: "WhatsApp ao vivo", icon: Inbox, target: "whatsapp", href: "/whatsapp" },
   { label: "Serviços e Agenda", icon: CalendarDays, target: "schedule" },
   { label: "Evidências", icon: FileCheck2, target: "evidence" },
 ];
@@ -210,7 +222,11 @@ export default function DashboardPilotoWilliamPage() {
     );
   }
 
-  const handleNav = (target: string) => {
+  const handleNav = (target: string, href?: string) => {
+    if (href) {
+      window.location.assign(href);
+      return;
+    }
     setActiveNav(target);
     setMobileNavOpen(false);
     document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -253,7 +269,7 @@ export default function DashboardPilotoWilliamPage() {
               <button
                 key={item.target}
                 className={`${styles.navItem} ${active ? styles.navItemActive : ""}`}
-                onClick={() => handleNav(item.target)}
+                onClick={() => handleNav(item.target, item.href)}
                 aria-current={active ? "page" : undefined}
               >
                 <Icon size={17} strokeWidth={active ? 2.2 : 1.7} />
@@ -376,7 +392,7 @@ export default function DashboardPilotoWilliamPage() {
                 <div className={styles.evidenceTopline}><span className={styles.eyebrow}>próxima prova</span><span className={styles.evidenceIndex}>02 / 04</span></div>
                 <h3>Uma mensagem.<br /><em>Um evento real.</em></h3>
                 <p>Conecte o número WhatsApp do seu negócio para iniciar a ingestão segura das conversas na inbox operacional.</p>
-                <button className={styles.inkButton} onClick={() => toast("Inbox atualizada", { description: "Nenhum novo evento pendente na API." })}>atualizar inbox <ArrowUpRight size={16} /></button>
+                <button className={styles.inkButton} onClick={() => window.location.assign("/whatsapp")}>abrir conversas ao vivo <ArrowUpRight size={16} /></button>
               </div>
             </aside>
           </div>

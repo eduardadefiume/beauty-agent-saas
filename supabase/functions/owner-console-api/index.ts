@@ -24,6 +24,10 @@ const ACTION_RPC = {
   listCalendarShifts: 'site_list_calendar_shifts',
   listCalendarConnectionsForSync: 'site_list_calendar_connections_for_sync',
   recordCalendarShiftSync: 'site_record_calendar_shift_sync',
+  // Console de WhatsApp: o que a dona vê acontecendo e o botão que desliga a
+  // resposta automática.
+  whatsappConsole: 'site_whatsapp_console',
+  setAgentAutomation: 'site_set_agent_automation',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -206,6 +210,26 @@ Deno.serve(async (request: Request) => {
         target_new_token_expires_at:
           typeof input.newTokenExpiresAt === 'string' ? input.newTokenExpiresAt : null,
         target_error: typeof input.syncError === 'string' ? input.syncError : null,
+      };
+      break;
+    case 'whatsappConsole':
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_limit: Number.isInteger(input.limit) ? input.limit : 20,
+      };
+      break;
+    case 'setAgentAutomation':
+      // `enabled` tem que vir booleano de verdade. Aceitar "false" em texto
+      // aqui seria aceitar que um erro de digitação ligue o agente.
+      if (typeof input.enabled !== 'boolean') {
+        return json(400, { error: 'INVALID_AUTOMATION_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_enabled: input.enabled,
+        target_reason: typeof input.reason === 'string' ? input.reason : null,
       };
       break;
   }

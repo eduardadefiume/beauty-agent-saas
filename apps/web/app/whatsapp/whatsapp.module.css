@@ -1,0 +1,379 @@
+/* Mesma paleta do dashboard (dashboard.module.css). A tela é nova, a
+   identidade não muda. */
+
+.shell {
+  --ink: #1e2b2a;
+  --paper: #f4f0e8;
+  --olive: #6e7a4a;
+  --lime: #a5b47a;
+  --muted: #858a80;
+  --alerta: #a8412f;
+  min-height: 100vh;
+  padding: clamp(20px, 4vw, 44px);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Manrope, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.estado {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 28px;
+  background: #f4f0e8;
+  color: #1e2b2a;
+  font-family: Manrope, Arial, sans-serif;
+}
+.estadoCard {
+  width: min(100%, 550px);
+  padding: clamp(30px, 6vw, 58px);
+  border: 1px solid rgba(30, 43, 42, 0.14);
+  background: rgba(255, 255, 255, 0.46);
+}
+.estadoCard h1 {
+  margin: 18px 0 0;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(30px, 5vw, 46px);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+.estadoCard p {
+  margin: 16px 0 0;
+  color: #6c7066;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.eyebrow {
+  display: block;
+  color: var(--olive);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.topo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.topo h1 {
+  margin: 8px 0 0;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+.frescor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* --- Parada de emergência ------------------------------------------------ */
+
+.chaveLigada,
+.chaveDesligada {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid rgba(30, 43, 42, 0.14);
+}
+.chaveLigada {
+  border-left: 5px solid var(--olive);
+  background: rgba(165, 180, 122, 0.16);
+}
+.chaveDesligada {
+  border-left: 5px solid rgba(30, 43, 42, 0.3);
+  background: rgba(255, 255, 255, 0.5);
+}
+.chaveTexto {
+  max-width: 620px;
+}
+.chaveTexto strong {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+.chaveTexto p {
+  margin: 8px 0 0;
+  color: #5f6459;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.chaveTexto small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Vermelho e grande. O botão de parada não disputa atenção com nada. */
+.parar {
+  padding: 16px 30px;
+  border: 0;
+  background: var(--alerta);
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.parar:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.ligar {
+  padding: 12px 22px;
+  border: 0;
+  background: var(--ink);
+  color: #f4f0e8;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.ghost {
+  padding: 10px 16px;
+  border: 1px solid rgba(30, 43, 42, 0.2);
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.confirmar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.aviso {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--alerta);
+  background: rgba(168, 65, 47, 0.08);
+  color: #7d3325;
+  font-size: 12px;
+}
+
+/* --- Conexão e contadores ------------------------------------------------ */
+
+.conexao {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.pill,
+.pillAlerta {
+  padding: 5px 12px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.pill {
+  border: 1px solid var(--olive);
+  color: var(--olive);
+}
+.pillAlerta {
+  border: 1px solid var(--alerta);
+  color: var(--alerta);
+}
+
+.contadores {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-top: 20px;
+  border: 1px solid rgba(30, 43, 42, 0.12);
+  background: rgba(30, 43, 42, 0.12);
+}
+.contador {
+  padding: 16px 18px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.contador strong {
+  display: block;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 30px;
+  font-weight: 400;
+}
+.contador span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* --- Painel de conversas ------------------------------------------------- */
+
+.painel {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  margin-top: 24px;
+}
+@media (max-width: 860px) {
+  .painel {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 1px solid rgba(30, 43, 42, 0.12);
+  background: rgba(30, 43, 42, 0.12);
+}
+.item,
+.itemAtivo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.item {
+  background: rgba(255, 255, 255, 0.55);
+}
+.itemAtivo {
+  background: rgba(165, 180, 122, 0.28);
+}
+.item strong,
+.itemAtivo strong {
+  font-size: 13px;
+}
+.itemPrevia {
+  color: #5f6459;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.janelaAberta {
+  color: var(--olive);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.janelaFechada {
+  color: var(--alerta);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.conversa {
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+  border: 1px solid rgba(30, 43, 42, 0.12);
+  background: rgba(255, 255, 255, 0.55);
+}
+.conversaTopo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(30, 43, 42, 0.12);
+}
+.conversaTopo strong {
+  display: block;
+  font-size: 14px;
+}
+.conversaTopo span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.baloes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  overflow-y: auto;
+}
+.balaoEntra,
+.balaoSai {
+  max-width: 78%;
+  padding: 10px 14px;
+  border: 1px solid rgba(30, 43, 42, 0.1);
+}
+.balaoEntra {
+  margin-right: auto;
+  background: #fff;
+}
+.balaoSai {
+  margin-left: auto;
+  background: rgba(165, 180, 122, 0.22);
+}
+.balaoEntra p,
+.balaoSai p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.autor {
+  color: var(--olive);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.balaoEntra time,
+.balaoSai time {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.decisaoOk,
+.decisaoPassou {
+  max-width: 78%;
+  margin: 4px auto 0 0;
+  padding-left: 8px;
+  font-size: 10px;
+  font-style: italic;
+  line-height: 1.5;
+}
+.decisaoOk {
+  border-left: 2px solid var(--olive);
+  color: var(--olive);
+}
+.decisaoPassou {
+  border-left: 2px solid var(--alerta);
+  color: #7d3325;
+}
+
+.vazio {
+  padding: 26px;
+  color: var(--muted);
+  font-size: 13px;
+}
