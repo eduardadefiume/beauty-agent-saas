@@ -13,7 +13,12 @@ export const dynamic = 'force-dynamic';
 // A sessão do Supabase é lida no servidor e o JWT do usuário vai para a Edge
 // Function, que resolve o tenant a partir do e-mail assinado. O navegador nunca
 // escolhe em nome de quem age.
-const ACTIONS = new Set(['whatsappConsole', 'setAgentAutomation']);
+const ACTIONS = new Set([
+  'whatsappConsole',
+  'setAgentAutomation',
+  'answerOwnerQuestion',
+  'dismissOwnerQuestion',
+]);
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -70,6 +75,8 @@ export async function POST(request: Request): Promise<Response> {
       limit: typeof input.limit === 'number' ? input.limit : undefined,
       enabled: typeof input.enabled === 'boolean' ? input.enabled : undefined,
       reason: typeof input.reason === 'string' ? input.reason : undefined,
+      questionId: typeof input.questionId === 'string' ? input.questionId : undefined,
+      answer: typeof input.answer === 'string' ? input.answer : undefined,
     }),
   });
 

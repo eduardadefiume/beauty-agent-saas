@@ -28,6 +28,8 @@ const ACTION_RPC = {
   // resposta automática.
   whatsappConsole: 'site_whatsapp_console',
   setAgentAutomation: 'site_set_agent_automation',
+  answerOwnerQuestion: 'site_answer_owner_question',
+  dismissOwnerQuestion: 'site_dismiss_owner_question',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -230,6 +232,27 @@ Deno.serve(async (request: Request) => {
         target_tenant_id: tenantId,
         target_enabled: input.enabled,
         target_reason: typeof input.reason === 'string' ? input.reason : null,
+      };
+      break;
+    case 'answerOwnerQuestion':
+      if (typeof input.questionId !== 'string' || typeof input.answer !== 'string') {
+        return json(400, { error: 'INVALID_ANSWER_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_question_id: input.questionId,
+        target_answer: input.answer,
+      };
+      break;
+    case 'dismissOwnerQuestion':
+      if (typeof input.questionId !== 'string') {
+        return json(400, { error: 'INVALID_DISMISS_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_question_id: input.questionId,
       };
       break;
   }

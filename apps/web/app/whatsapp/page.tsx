@@ -46,6 +46,17 @@ type Conversa = {
   messages: Mensagem[];
 };
 
+type PerguntaAoDono = {
+  id: string;
+  conversationId: string;
+  contactName: string | null;
+  whatsapp: string | null;
+  question: string;
+  contextSummary: string | null;
+  createdAt: string;
+  waitingSeconds: number;
+};
+
 type Console = {
   automation: {
     enabled: boolean;
@@ -61,6 +72,7 @@ type Console = {
     status: string;
     lastWebhookAt: string | null;
   } | null;
+  ownerQuestions: PerguntaAoDono[];
   counters: {
     conversationsOpen: number;
     windowOpen: number;
@@ -68,6 +80,7 @@ type Console = {
     outboxPending: number;
     outboxFailed: number;
     agentReplies24h: number;
+    ownerQuestionsPending: number;
     handoffs24h: number;
   };
   conversations: Conversa[];
@@ -119,6 +132,10 @@ export default function WhatsAppConsole() {
   const [aoVivo, setAoVivo] = useState(true);
   const [salvandoChave, setSalvandoChave] = useState(false);
   const [confirmandoLigar, setConfirmandoLigar] = useState(false);
+  // Rascunho por pergunta. Fica no componente e não no servidor: é texto que a
+  // pessoa está digitando, não estado do sistema.
+  const [respostas, setRespostas] = useState<Record<string, string>>({});
+  const [enviandoResposta, setEnviandoResposta] = useState<string | null>(null);
   const tenantRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -210,6 +227,50 @@ export default function WhatsAppConsole() {
       setErro("Não foi possível mudar a chave. Tente de novo.");
     } finally {
       setSalvandoChave(false);
+    }
+  }
+
+  async function responderPergunta(questionId: string) {
+    const tenantId = tenantRef.current;
+    const texto = (respostas[questionId] ?? '').trim();
+    if (!tenantId || texto.length === 0) return;
+    setEnviandoResposta(questionId);
+    try {
+      const r = await fetch("/api/whatsapp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "answerOwnerQuestion", tenantId, questionId, answer: texto }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? "FALHA");
+      setRespostas((atual) => {
+        const proximo = { ...atual };
+        delete proximo[questionId];
+        return proximo;
+      });
+      await buscar();
+    } catch {
+      setErro("Não foi possível salvar a resposta. Tente de novo.");
+    } finally {
+      setEnviandoResposta(null);
+    }
+  }
+
+  async function descartarPergunta(questionId: string) {
+    const tenantId = tenantRef.current;
+    if (!tenantId) return;
+    setEnviandoResposta(questionId);
+    try {
+      await fetch("/api/whatsapp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "dismissOwnerQuestion", tenantId, questionId }),
+      });
+      await buscar();
+    } catch {
+      setErro("Não foi possível descartar. Tente de novo.");
+    } finally {
+      setEnviandoResposta(null);
     }
   }
 
@@ -312,6 +373,62 @@ export default function WhatsAppConsole() {
 
       {erro && <p className={styles.aviso}>{erro}</p>}
 
+      {/* As perguntas do agente. Ficam logo abaixo do botão de parada porque
+          cada linha parada aqui é uma cliente esperando sem saber que espera.
+          Responder é digitar uma frase — nada de formulário: quem atende está
+          entre uma cliente e outra, e pergunta que exige três campos não é
+          respondida, vira fila. */}
+      {(dados.ownerQuestions ?? []).length > 0 && (
+        <section className={styles.perguntas}>
+          <header className={styles.perguntasTopo}>
+            <strong>O agente precisa de você</strong>
+            <span>
+              {dados.ownerQuestions.length}{" "}
+              {dados.ownerQuestions.length === 1 ? "cliente esperando" : "clientes esperando"}
+            </span>
+          </header>
+
+          {dados.ownerQuestions.map((p) => (
+            <article key={p.id} className={styles.pergunta}>
+              <div className={styles.perguntaCabeca}>
+                <strong>{p.contactName ?? p.whatsapp ?? "Sem nome"}</strong>
+                <span>esperando {desde(p.createdAt)}</span>
+              </div>
+              <p className={styles.perguntaTexto}>{p.question}</p>
+              {p.contextSummary && <p className={styles.perguntaContexto}>{p.contextSummary}</p>}
+              <div className={styles.perguntaAcoes}>
+                <input
+                  className={styles.perguntaCampo}
+                  placeholder="Responda em uma frase…"
+                  value={respostas[p.id] ?? ""}
+                  disabled={enviandoResposta === p.id}
+                  onChange={(e) =>
+                    setRespostas((atual) => ({ ...atual, [p.id]: e.target.value }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void responderPergunta(p.id);
+                  }}
+                />
+                <button
+                  className={styles.ligar}
+                  disabled={enviandoResposta === p.id || !(respostas[p.id] ?? "").trim()}
+                  onClick={() => void responderPergunta(p.id)}
+                >
+                  {enviandoResposta === p.id ? "enviando…" : "responder"}
+                </button>
+                <button
+                  className={styles.ghost}
+                  disabled={enviandoResposta === p.id}
+                  onClick={() => void descartarPergunta(p.id)}
+                >
+                  descartar
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+
       <section className={styles.conexao}>
         {dados.connection ? (
           <>
@@ -330,6 +447,7 @@ export default function WhatsAppConsole() {
           ["dentro da janela de 24h", dados.counters.windowOpen],
           ["mensagens em 24h", dados.counters.messages24h],
           ["respostas do agente em 24h", dados.counters.agentReplies24h],
+          ["esperando você responder", dados.counters.ownerQuestionsPending],
           ["passadas para a equipe", dados.counters.handoffs24h],
           ["na fila de envio", dados.counters.outboxPending],
           ["falhas de envio", dados.counters.outboxFailed],
