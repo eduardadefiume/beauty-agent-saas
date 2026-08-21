@@ -64,44 +64,94 @@ type Decisao = {
   reason: string;
 };
 
-const FERRAMENTA: Anthropic.Tool = {
-  name: 'atender',
-  description: 'Registra o que fazer nesta conversa.',
-  strict: true,
-  input_schema: {
-    type: 'object',
-    properties: {
-      action: {
-        type: 'string',
-        enum: ['REPLY', 'ASK_OWNER', 'HANDOFF'],
-        description:
-          'REPLY: você sabe a resposta e vai falar com a cliente agora. ASK_OWNER: falta uma informação que só a dona tem (preço, horário livre, confirmar agendamento) — a cliente NÃO recebe nada. HANDOFF: assunto delicado que uma pessoa precisa conduzir (reclamação, problema no resultado, cobrança).',
+// Duas ferramentas de agenda e uma de desfecho.
+//
+// POR QUE FERRAMENTA E NAO CONTEXTO PRE-CARREGADO. Nao da para adivinhar antes
+// de ler a mensagem qual servico e qual dia a cliente quer; carregar a agenda
+// inteira de trinta dias em toda conversa seria caro e inutil. Com ferramenta,
+// o modelo pede exatamente o que precisa e so quando precisa -- e a segunda
+// chamada reaproveita o mesmo prefixo cacheado, entao custa quase so a saida.
+const FERRAMENTAS: Anthropic.Tool[] = [
+  {
+    name: 'consultar_horarios',
+    description:
+      'Consulta a agenda real e devolve os horários livres para um serviço. Use antes de falar qualquer horário — você não sabe a agenda de cabeça.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        servicoId: { type: 'string', description: 'O id do serviço, como está no catálogo.' },
+        aPartirDe: {
+          type: 'string',
+          description:
+            'Data de início da busca, no formato AAAA-MM-DD. Use a data de hoje quando a cliente não disser um dia.',
+        },
+        dias: {
+          type: 'integer',
+          description:
+            'Quantos dias procurar a partir dali. Use 1 para um dia específico, 7 para "essa semana".',
+        },
       },
-      messages: {
-        type: 'array',
-        items: { type: 'string' },
-        description:
-          'As mensagens para a cliente, uma por balão de WhatsApp. Vazio quando action não for REPLY.',
-      },
-      ownerQuestion: {
-        type: 'string',
-        description:
-          'Só quando action for ASK_OWNER. A pergunta para a dona, direta e específica, do jeito que se pergunta para alguém ocupada: "Quanto custa a progressiva japonesa?" ou "Tem horário sábado 29/08 para mechas loiras?". Vazio nos outros casos.',
-      },
-      contextSummary: {
-        type: 'string',
-        description:
-          'Só quando action for ASK_OWNER. Uma frase dizendo o que a cliente quer, para a dona responder sem abrir a conversa. Vazio nos outros casos.',
-      },
-      reason: {
-        type: 'string',
-        description: 'Uma frase curta para o painel da equipe. Nunca é enviada à cliente.',
-      },
+      required: ['servicoId', 'aPartirDe', 'dias'],
+      additionalProperties: false,
     },
-    required: ['action', 'messages', 'ownerQuestion', 'contextSummary', 'reason'],
-    additionalProperties: false,
   },
-};
+  {
+    name: 'reservar_horario',
+    description:
+      'Marca o horário de verdade na agenda. Só use depois de a cliente aceitar um horário específico que VOCÊ ofereceu na consulta anterior. Nunca use para um horário que a cliente propôs e você não consultou.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        opcao: {
+          type: 'integer',
+          description: 'O número da opção na última consulta de horários (1, 2, 3...).',
+        },
+      },
+      required: ['opcao'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'atender',
+    description: 'Registra o que fazer nesta conversa.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['REPLY', 'ASK_OWNER', 'HANDOFF'],
+          description:
+            'REPLY: você sabe a resposta e vai falar com a cliente agora. ASK_OWNER: falta uma informação que só a dona tem (preço, horário livre, confirmar agendamento) — a cliente NÃO recebe nada. HANDOFF: assunto delicado que uma pessoa precisa conduzir (reclamação, problema no resultado, cobrança).',
+        },
+        messages: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'As mensagens para a cliente, uma por balão de WhatsApp. Vazio quando action não for REPLY.',
+        },
+        ownerQuestion: {
+          type: 'string',
+          description:
+            'Só quando action for ASK_OWNER. A pergunta para a dona, direta e específica, do jeito que se pergunta para alguém ocupada: "Quanto custa a progressiva japonesa?" ou "Tem horário sábado 29/08 para mechas loiras?". Vazio nos outros casos.',
+        },
+        contextSummary: {
+          type: 'string',
+          description:
+            'Só quando action for ASK_OWNER. Uma frase dizendo o que a cliente quer, para a dona responder sem abrir a conversa. Vazio nos outros casos.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Uma frase curta para o painel da equipe. Nunca é enviada à cliente.',
+        },
+      },
+      required: ['action', 'messages', 'ownerQuestion', 'contextSummary', 'reason'],
+      additionalProperties: false,
+    },
+  },
+];
 
 // As regras. Ficam antes dos dados do salão no prompt de sistema, e as duas
 // coisas juntas formam o prefixo cacheado.
@@ -134,11 +184,21 @@ const REGRAS = [
   'agradece. Fique feliz. "Ai, que bom que você gostou! Fico muito feliz mesmo 🥰". Nunca',
   'responda elogio com informação de catálogo.',
   '',
+  'A AGENDA VOCÊ CONSULTA SOZINHA',
+  'Você tem a ferramenta consultar_horarios. Quando a cliente quiser marcar, ou perguntar se tem',
+  'vaga, você consulta e responde com os horários de verdade. Nunca diga um horário sem ter',
+  'consultado, e nunca peça horário à dona — a agenda é sua.',
+  'Ofereça no máximo três opções, as mais próximas do que ela pediu. Se não houver nada no dia',
+  'que ela quer, diga isso e ofereça o que existe perto.',
+  'Quando ela aceitar um horário que VOCÊ ofereceu, use reservar_horario com o número da opção,',
+  'e só depois confirme para ela. Nunca diga que está marcado antes de a ferramenta confirmar.',
+  'Se ela propuser um horário que você não consultou, consulte antes de responder qualquer coisa.',
+  '',
   'QUANDO USAR ASK_OWNER (e não mandar nada para a cliente)',
   '- Preço que não está no catálogo, ou que está como null.',
-  '- Horário disponível: você não enxerga a agenda. Pergunte à dona o dia e o serviço.',
-  '- Confirmar um agendamento que a cliente aceitou.',
+  '- Serviço que a cliente pede e não existe no catálogo.',
   '- Qualquer coisa sobre este negócio que não esteja nos dados que você recebeu.',
+  '- Quando a consulta de agenda falhar. Aí não invente horário: pergunte à dona.',
   'Escreva a pergunta como se perguntasse para a dona no meio do salão: curta e específica.',
   '',
   'QUANDO A DONA JÁ TE RESPONDEU',
@@ -161,6 +221,11 @@ const REGRAS = [
   '',
   'EXEMPLOS DO TOM CERTO',
   '',
+  'Cliente: "Queria marcar mechas loiras pro sábado que vem"',
+  'Você: consulta_horarios primeiro. Depois: "Oi, Bruna! 😊" / "Pro sábado dia 29 tenho às 8h."',
+  '/ "Como é sábado, o teste de mecha precisa ser antes, na quinta ou sexta. Quer que eu marque?"',
+  '(Errado seria dizer "vou ver a agenda" ou chutar um horário sem consultar.)',
+  '',
   'Cliente: "Quanto tempo demora a progressiva sem formol? Meu cabelo é médio"',
   'Você: "Oi, Camila! Boa tarde 😊" / "A progressiva sem formol em cabelo médio leva cerca de',
   '3h30." / "Gostaria de agendar um horário?"',
@@ -173,7 +238,8 @@ const REGRAS = [
   'Você: "Aaah, que alegria ler isso! 🥰" / "Fico muito feliz que tenha ficado do jeito que você',
   'queria." — e nada de catálogo.',
   '',
-  'Registre sua decisão chamando a ferramenta atender.',
+  'SEMPRE termine chamando a ferramenta atender — é ela que registra o desfecho. As ferramentas',
+  'de agenda são passos do caminho, não o fim.',
 ].join('\n');
 
 function json(status: number, body: unknown): Response {
@@ -224,53 +290,257 @@ type Uso = {
   cache_read_input_tokens?: number;
 };
 
+// Chama a scheduling-api com o crachá de worker. O motor de disponibilidade
+// vive lá e continua sendo o único — o agente consulta, não recalcula.
+async function agenda(
+  supabaseUrl: string,
+  serviceKey: string,
+  workerToken: string,
+  corpo: Record<string, unknown>
+): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+  const r = await fetch(`${supabaseUrl}/functions/v1/scheduling-api`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      'x-worker-token': workerToken,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(corpo),
+  });
+  const body = (await r.json().catch(() => ({}))) as { data?: unknown; error?: string };
+  if (!r.ok) return { ok: false, error: body.error ?? `HTTP ${r.status}` };
+  return { ok: true, data: body.data };
+}
+
+// Horário legível para uma pessoa em São Paulo. A conversão fica aqui e não no
+// modelo: pedir para um modelo transformar milissegundos em "sábado às 8h" é
+// convidar um erro que a cliente lê como horário confirmado.
+function horarioLocal(ms: number): string {
+  return new Date(ms).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+type Candidato = {
+  startMs: number;
+  endMs: number;
+  steps: unknown[];
+};
+
+type EstadoDaConversa = {
+  configurationVersionId?: string;
+  serviceId?: string;
+  candidatos: Candidato[];
+};
+
+// O laço.
+//
+// O modelo é obrigado a chamar alguma ferramenta a cada passo (tool_choice
+// 'any'). Ferramenta de agenda devolve resultado e o laço continua; `atender`
+// encerra. O teto de voltas existe para o caso de o modelo insistir em
+// consultar sem nunca decidir -- sem ele, uma conversa confusa viraria uma
+// sequência infinita de chamadas pagas.
+const MAX_VOLTAS = 4;
+
 async function decidir(
   anthropic: Anthropic,
   estavel: unknown,
   volatil: unknown,
-): Promise<{ decisao: Decisao | null; usage: Uso; motivoFalha?: string }> {
-  const resposta = await anthropic.messages.create({
-    model: MODELO,
-    max_tokens: 2000,
-    thinking: { type: 'adaptive' },
-    output_config: { effort: ESFORCO },
-    // Dois blocos, e a marca de cache no segundo. Tudo que vem antes da marca
-    // entra no prefixo cacheado: as regras (fixas) e os dados do salao (fixos
-    // enquanto ninguem republicar o catalogo).
-    system: [
-      { type: 'text', text: REGRAS },
-      {
-        type: 'text',
-        text: 'DADOS DESTE NEGÓCIO (JSON):\n' + JSON.stringify(estavel),
-        cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
-      },
-    ],
-    tools: [FERRAMENTA],
-    tool_choice: { type: 'tool', name: 'atender' },
-    messages: [
-      {
-        role: 'user',
-        content:
-          'Esta conversa (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
-          JSON.stringify(volatil),
-      },
-    ],
-  });
+  ambiente: {
+    supabaseUrl: string;
+    serviceKey: string;
+    workerToken: string;
+    tenantId: string;
+    unitId: string;
+    clientePhone: string | null;
+    clienteNome: string | null;
+  }
+): Promise<{
+  decisao: Decisao | null;
+  usage: Uso;
+  motivoFalha?: string;
+  agendou?: { quando: string; appointmentId: string } | null;
+}> {
+  const mensagens: Anthropic.MessageParam[] = [
+    {
+      role: 'user',
+      content:
+        'Esta conversa (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
+        JSON.stringify(volatil),
+    },
+  ];
 
-  const usage = (resposta.usage ?? {}) as Uso;
+  const estado: EstadoDaConversa = { candidatos: [] };
+  const usage: Uso = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+  };
+  let agendou: { quando: string; appointmentId: string } | null = null;
 
-  if (resposta.stop_reason === 'refusal') {
-    return { decisao: null, usage, motivoFalha: 'MODEL_REFUSAL' };
+  for (let volta = 0; volta < MAX_VOLTAS; volta++) {
+    const resposta = await anthropic.messages.create({
+      model: MODELO,
+      max_tokens: 2000,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: ESFORCO },
+      system: [
+        { type: 'text', text: REGRAS },
+        {
+          type: 'text',
+          text: 'DADOS DESTE NEGÓCIO (JSON):\n' + JSON.stringify(estavel),
+          cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
+        },
+      ],
+      tools: FERRAMENTAS,
+      tool_choice: { type: 'any' },
+      messages: mensagens,
+    });
+
+    const u = (resposta.usage ?? {}) as Uso;
+    usage.input_tokens! += u.input_tokens ?? 0;
+    usage.output_tokens! += u.output_tokens ?? 0;
+    usage.cache_creation_input_tokens! += u.cache_creation_input_tokens ?? 0;
+    usage.cache_read_input_tokens! += u.cache_read_input_tokens ?? 0;
+
+    if (resposta.stop_reason === 'refusal') {
+      return { decisao: null, usage, motivoFalha: 'MODEL_REFUSAL' };
+    }
+
+    const chamadas = resposta.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
+    );
+    if (chamadas.length === 0) {
+      return { decisao: null, usage, motivoFalha: 'NO_TOOL_CALL' };
+    }
+
+    // `atender` encerra, mesmo que o modelo tenha pedido outras coisas junto.
+    const desfecho = chamadas.find((c) => c.name === 'atender');
+    if (desfecho) {
+      return { decisao: desfecho.input as Decisao, usage, agendou };
+    }
+
+    mensagens.push({ role: 'assistant', content: resposta.content });
+
+    const resultados: Anthropic.ToolResultBlockParam[] = [];
+
+    for (const chamada of chamadas) {
+      let texto: string;
+
+      if (chamada.name === 'consultar_horarios') {
+        const args = chamada.input as { servicoId: string; aPartirDe: string; dias: number };
+        const busca = await agenda(
+          ambiente.supabaseUrl,
+          ambiente.serviceKey,
+          ambiente.workerToken,
+          {
+            action: 'searchSlots',
+            tenantId: ambiente.tenantId,
+            unitId: ambiente.unitId,
+            serviceId: args.servicoId,
+            searchFrom: `${args.aPartirDe}T00:00:00-03:00`,
+            searchDays: Math.min(Math.max(args.dias ?? 7, 1), 30),
+            clientPhoneDigits: ambiente.clientePhone,
+            clientName: ambiente.clienteNome,
+          }
+        );
+
+        if (!busca.ok) {
+          texto = `Não foi possível consultar a agenda: ${busca.error}. Não invente horário — use ASK_OWNER.`;
+        } else {
+          const dados = busca.data as {
+            configurationVersionId: string;
+            serviceId: string;
+            candidates: Candidato[];
+          };
+          estado.configurationVersionId = dados.configurationVersionId;
+          estado.serviceId = dados.serviceId;
+          estado.candidatos = dados.candidates ?? [];
+
+          texto =
+            estado.candidatos.length === 0
+              ? 'Nenhum horário livre nesse período.'
+              : 'Horários livres:\n' +
+                estado.candidatos
+                  .map(
+                    (c, i) =>
+                      `${i + 1}. ${horarioLocal(c.startMs)} (termina ${horarioLocal(c.endMs)})`
+                  )
+                  .join('\n');
+        }
+      } else if (chamada.name === 'reservar_horario') {
+        const args = chamada.input as { opcao: number };
+        const escolhido = estado.candidatos[(args.opcao ?? 1) - 1];
+
+        if (!escolhido || !estado.configurationVersionId || !estado.serviceId) {
+          texto = 'Essa opção não existe. Consulte os horários antes de reservar.';
+        } else {
+          // Reserva temporária e confirmação, na sequência. O hold existe para
+          // segurar a vaga enquanto se confirma; aqui os dois passos são
+          // imediatos, então o que ele protege é a corrida entre duas clientes
+          // pedindo o mesmo horário no mesmo segundo.
+          const hold = await agenda(
+            ambiente.supabaseUrl,
+            ambiente.serviceKey,
+            ambiente.workerToken,
+            {
+              action: 'createHold',
+              tenantId: ambiente.tenantId,
+              unitId: ambiente.unitId,
+              configurationVersionId: estado.configurationVersionId,
+              serviceId: estado.serviceId,
+              startsAt: new Date(escolhido.startMs).toISOString(),
+              endsAt: new Date(escolhido.endMs).toISOString(),
+              plan: { steps: escolhido.steps },
+              idempotencyKey: `agente:${ambiente.tenantId}:${escolhido.startMs}:${estado.serviceId}`,
+            }
+          );
+
+          if (!hold.ok) {
+            texto = `Não deu para segurar esse horário: ${hold.error}. Consulte de novo e ofereça outro.`;
+          } else {
+            const holdId = (hold.data as { holdId?: string }).holdId;
+            const confirmacao = await agenda(
+              ambiente.supabaseUrl,
+              ambiente.serviceKey,
+              ambiente.workerToken,
+              {
+                action: 'confirmHold',
+                tenantId: ambiente.tenantId,
+                unitId: ambiente.unitId,
+                holdId,
+                customerLabel: ambiente.clienteNome,
+              }
+            );
+            if (!confirmacao.ok) {
+              texto = `A reserva não foi confirmada: ${confirmacao.error}. Não diga que está marcado.`;
+            } else {
+              const dados = confirmacao.data as { appointmentId?: string };
+              agendou = {
+                quando: horarioLocal(escolhido.startMs),
+                appointmentId: dados.appointmentId ?? '',
+              };
+              texto = `Marcado com sucesso para ${horarioLocal(escolhido.startMs)}. Confirme para a cliente.`;
+            }
+          }
+        }
+      } else {
+        texto = 'Ferramenta desconhecida.';
+      }
+
+      resultados.push({ type: 'tool_result', tool_use_id: chamada.id, content: texto });
+    }
+
+    mensagens.push({ role: 'user', content: resultados });
   }
 
-  const bloco = resposta.content.find(
-    (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === 'atender',
-  );
-  if (!bloco) {
-    return { decisao: null, usage, motivoFalha: 'NO_TOOL_CALL' };
-  }
-
-  return { decisao: bloco.input as Decisao, usage };
+  return { decisao: null, usage, motivoFalha: 'MAX_VOLTAS_ATINGIDO', agendou };
 }
 
 Deno.serve(async (req) => {
@@ -317,7 +587,14 @@ Deno.serve(async (req) => {
   }
 
   if (!Array.isArray(fila) || fila.length === 0) {
-    return json(200, { ok: true, aguardando: 0, respondidas: 0, perguntadas: 0, repassadas: 0, falhas: 0 });
+    return json(200, {
+      ok: true,
+      aguardando: 0,
+      respondidas: 0,
+      perguntadas: 0,
+      repassadas: 0,
+      falhas: 0,
+    });
   }
 
   const anthropic = new Anthropic({ apiKey: anthropicKey });
@@ -338,16 +615,34 @@ Deno.serve(async (req) => {
       const contexto = (await rpc(supabaseUrl, serviceKey, 'build_agent_context', {
         p_conversation_id: item.conversation_id,
         p_history_limit: 20,
-      })) as { ok?: boolean; reason?: string; stable?: unknown; volatile?: unknown };
+      })) as {
+        ok?: boolean;
+        reason?: string;
+        unitId?: string;
+        stable?: unknown;
+        volatile?: unknown;
+      };
 
       if (!contexto?.ok) {
         throw new Error(`contexto indisponivel: ${contexto?.reason ?? 'desconhecido'}`);
       }
 
-      const { decisao, usage, motivoFalha } = await decidir(
+      const volatilTipado = contexto.volatile as
+        { contact?: { whatsapp?: string | null; displayName?: string | null } } | undefined;
+
+      const { decisao, usage, motivoFalha, agendou } = await decidir(
         anthropic,
         contexto.stable,
         contexto.volatile,
+        {
+          supabaseUrl,
+          serviceKey,
+          workerToken: req.headers.get('x-worker-token') ?? '',
+          tenantId: item.tenant_id,
+          unitId: contexto.unitId ?? '',
+          clientePhone: volatilTipado?.contact?.whatsapp ?? null,
+          clienteNome: volatilTipado?.contact?.displayName ?? null,
+        }
       );
 
       somaUso.input_tokens! += usage.input_tokens ?? 0;
@@ -379,6 +674,7 @@ Deno.serve(async (req) => {
           messages: textos,
           ownerQuestion: acao === 'ASK_OWNER' ? decisao.ownerQuestion : undefined,
           contextSummary: acao === 'ASK_OWNER' ? decisao.contextSummary : undefined,
+          agendou: agendou ?? undefined,
           usage,
           dryRun: true,
         });
@@ -399,7 +695,7 @@ Deno.serve(async (req) => {
               // a retomada depois da resposta da dona e um envio novo e legitimo
               // sobre a mesma mensagem, entao a chave precisa distingui-los.
               p_idempotency_key: `agent:${item.last_inbound_message_id}:${item.trigger}:${i}`,
-            }),
+            })
           );
         }
         // A resposta da dona foi usada; não traz a conversa de volta à fila.
@@ -438,6 +734,7 @@ Deno.serve(async (req) => {
         reason: decisao.reason,
         messages: textos,
         ownerQuestion: acao === 'ASK_OWNER' ? decisao.ownerQuestion : undefined,
+        agendou: agendou ?? undefined,
         enfileirados: enviados,
         usage,
       });
@@ -449,7 +746,7 @@ Deno.serve(async (req) => {
           event: 'agent_turn_failed',
           conversationId: item.conversation_id,
           erro: detalhe,
-        }),
+        })
       );
 
       // Falha do modelo (recusa, formato) é definitiva para esta mensagem:
@@ -487,7 +784,7 @@ Deno.serve(async (req) => {
       falhas,
       dryRun,
       uso: somaUso,
-    }),
+    })
   );
 
   return json(200, {

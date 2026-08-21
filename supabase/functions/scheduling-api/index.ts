@@ -29,6 +29,10 @@ const JSON_HEADERS = {
 
 const SITE_PROJECT_ID = 'owner-console-v1';
 
+// Identidade de serviço do agente em app.site_identities. Não tem login: só
+// existe como linha de autorização, e só vale acompanhada do token de worker.
+const AGENT_IDENTITY_EMAIL = 'agente@sistema.interno';
+
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
@@ -511,7 +515,34 @@ Deno.serve(async (request: Request) => {
     return json(405, { error: 'METHOD_NOT_ALLOWED' });
   }
 
-  const userEmail = emailFromVerifiedJwt(request.headers.get('authorization'));
+  // Duas identidades chegam aqui, e nunca pela mesma porta.
+  //
+  // Pessoa: o e-mail vem assinado no JWT que o Supabase já verificou.
+  //
+  // Agente: não tem e-mail nenhum (roda como worker), então se apresenta com o
+  // token que vive no Vault e recebe a identidade de serviço. E a recíproca é
+  // trancada: um JWT de pessoa que diga ser agente@sistema.interno é recusado.
+  // Sem essa segunda metade, bastaria alguém conseguir um token com esse e-mail
+  // para virar o agente — e o crachá do agente é o que abre a agenda.
+  const workerToken = request.headers.get('x-worker-token');
+  const jwtEmail = emailFromVerifiedJwt(request.headers.get('authorization'));
+
+  let userEmail: string | null = jwtEmail;
+
+  if (workerToken) {
+    const supabaseUrlForAuth = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceKeyForAuth = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const check = await callRpc(supabaseUrlForAuth, serviceKeyForAuth, 'verify_worker_token', {
+      p_token: workerToken,
+    });
+    if (!check.ok || check.data !== true) {
+      return json(401, { error: 'WORKER_TOKEN_INVALID' });
+    }
+    userEmail = AGENT_IDENTITY_EMAIL;
+  } else if (jwtEmail === AGENT_IDENTITY_EMAIL) {
+    return json(403, { error: 'AGENT_IDENTITY_REQUIRES_WORKER_TOKEN' });
+  }
+
   if (!userEmail) {
     return json(401, { error: 'UNAUTHENTICATED' });
   }
