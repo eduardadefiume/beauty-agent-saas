@@ -5,7 +5,7 @@
 //   whatsapp-webhook -> inbox_events -> project_inbox_events -> crm_messages
 //   -> [aqui] -> outbox_messages -> whatsapp-sender -> Cloud API
 //
-// TRES DECISOES QUE MOLDAM ESTE ARQUIVO:
+// QUATRO DECISOES QUE MOLDAM ESTE ARQUIVO:
 //
 // 1. O PROMPT E PARTIDO EM DOIS, E ISSO E ECONOMIA, NAO ESTETICA.
 //    A primeira versao mandava catalogo e historico juntos na mensagem do
@@ -33,6 +33,16 @@
 //    8h" acontece aqui no codigo, nunca no modelo; e reservar recebe o NUMERO
 //    da opcao consultada, nunca uma data digitada -- ele nao consegue marcar um
 //    horario que nao viu livre.
+
+// 4. FALHAR TEM CUSTO, ENTAO FALHAR TEM TETO.
+//    Falha de rede ou de banco nao marca decisao, de proposito: a conversa
+//    volta e ele tenta de novo. Enquanto alguem chamava o worker a mao isso
+//    bastava. Com o agendador de minuto em minuto, "de novo" sem fim virou
+//    torneira aberta -- uma falha depois da chamada ao modelo gastaria token a
+//    cada volta. Agora toda falha e registrada: a tentativa seguinte se afasta
+//    (2, 4, 8, 16 minutos) e no quinto tropeco a conversa e estacionada. E
+//    estacionar nao e silencioso: a conversa vai para a tela como algo que uma
+//    pessoa precisa resolver, porque do outro lado tem uma cliente esperando.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
@@ -727,6 +737,17 @@ Deno.serve(async (req) => {
         p_reason: decisao.reason,
       });
 
+      // Deu certo: zera o histórico de falha desta conversa. Uma queda de rede
+      // de ontem não pode contar para o teto de hoje.
+      try {
+        await rpc(supabaseUrl, serviceKey, 'clear_agent_failures', {
+          p_tenant_id: item.tenant_id,
+          p_conversation_id: item.conversation_id,
+        });
+      } catch (erroLimpeza) {
+        console.error(JSON.stringify({ event: 'clear_failures_failed', erro: String(erroLimpeza) }));
+      }
+
       if (acao === 'REPLY') respondidas++;
       else if (acao === 'ASK_OWNER') perguntadas++;
       else repassadas++;
@@ -753,10 +774,29 @@ Deno.serve(async (req) => {
         })
       );
 
-      // Falha do modelo (recusa, formato) é definitiva para esta mensagem:
-      // repetir gastaria token para o mesmo resultado. Falha de rede ou de
-      // banco não marca nada e volta na próxima rodada.
-      if (detalhe.includes('MODEL_REFUSAL') || detalhe.includes('NO_TOOL_CALL')) {
+      // Falha do modelo (recusa, formato) é definitiva para ESTA mensagem:
+      // repetir gastaria token para chegar ao mesmo lugar. Falha de rede ou de
+      // banco é passageira e merece nova tentativa.
+      const definitiva = detalhe.includes('MODEL_REFUSAL') || detalhe.includes('NO_TOOL_CALL');
+
+      // Toda falha é registrada, definitiva ou não. É esse registro que afasta
+      // a próxima tentativa (2, 4, 8, 16 minutos) e estaciona a conversa no
+      // quinto tropeço. Sem ele, o relógio reprocessaria a mesma conversa a
+      // cada minuto para sempre -- e uma falha que aconteça depois da chamada
+      // ao modelo gastaria token em cada volta.
+      let parada: { failures?: number; parked?: boolean } = {};
+      try {
+        parada = (await rpc(supabaseUrl, serviceKey, 'record_agent_failure', {
+          p_tenant_id: item.tenant_id,
+          p_conversation_id: item.conversation_id,
+          p_detail: detalhe.slice(0, 800),
+          p_definitive: definitiva,
+        })) as { failures?: number; parked?: boolean };
+      } catch (erroRegistro) {
+        console.error(JSON.stringify({ event: 'record_failure_failed', erro: String(erroRegistro) }));
+      }
+
+      if (definitiva) {
         try {
           await rpc(supabaseUrl, serviceKey, 'mark_agent_decision', {
             p_tenant_id: item.tenant_id,
@@ -773,6 +813,10 @@ Deno.serve(async (req) => {
         conversationId: item.conversation_id,
         action: 'ERROR',
         detail: detalhe.slice(0, 400),
+        falhasSeguidas: parada.failures,
+        // Estacionada = o agente desistiu e a conversa espera uma pessoa. Vai
+        // para a tela de WhatsApp; não vira abandono silencioso.
+        estacionada: parada.parked === true ? true : undefined,
       });
     }
   }
