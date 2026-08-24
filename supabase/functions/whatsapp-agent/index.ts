@@ -745,7 +745,9 @@ Deno.serve(async (req) => {
           p_conversation_id: item.conversation_id,
         });
       } catch (erroLimpeza) {
-        console.error(JSON.stringify({ event: 'clear_failures_failed', erro: String(erroLimpeza) }));
+        console.error(
+          JSON.stringify({ event: 'clear_failures_failed', erro: String(erroLimpeza) })
+        );
       }
 
       if (acao === 'REPLY') respondidas++;
@@ -793,7 +795,9 @@ Deno.serve(async (req) => {
           p_definitive: definitiva,
         })) as { failures?: number; parked?: boolean };
       } catch (erroRegistro) {
-        console.error(JSON.stringify({ event: 'record_failure_failed', erro: String(erroRegistro) }));
+        console.error(
+          JSON.stringify({ event: 'record_failure_failed', erro: String(erroRegistro) })
+        );
       }
 
       if (definitiva) {

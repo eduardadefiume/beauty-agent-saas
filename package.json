@@ -13,6 +13,7 @@
     "test": "turbo test",
     "typecheck": "turbo typecheck",
     "format:check": "prettier --check .",
+    "format": "prettier --write .",
     "guardrails": "node scripts/guardrails.mjs",
     "backup:check": "node scripts/backup/check-backup-kit.mjs",
     "quality": "pnpm guardrails && pnpm backup:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm format:check"
