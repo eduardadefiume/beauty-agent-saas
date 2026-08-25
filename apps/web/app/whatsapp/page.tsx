@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 // Console de WhatsApp.
 //
@@ -17,14 +17,14 @@
 // sondagem não depende de conexão persistente nem de política de RLS em canal
 // -- é menos coisa para quebrar no dia do teste.
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import styles from "./whatsapp.module.css";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import styles from './whatsapp.module.css';
 
 const INTERVALO_MS = 5000;
 
 type Mensagem = {
   id: string;
-  direction: "INBOUND" | "OUTBOUND";
+  direction: 'INBOUND' | 'OUTBOUND';
   text: string | null;
   at: string;
   actor: string | null;
@@ -44,6 +44,19 @@ type Conversa = {
   windowOpen: boolean;
   minutesRemaining: number;
   messages: Mensagem[];
+};
+
+// Conversa que o agente desistiu de atender depois de cinco tropecos. Do outro
+// lado tem uma cliente que escreveu e nao recebeu nada -- por isso isto aparece
+// na tela em vez de morrer num log.
+type ConversaEstacionada = {
+  conversationId: string;
+  contactName: string | null;
+  whatsapp: string | null;
+  failures: number;
+  lastError: string | null;
+  parkedAt: string;
+  lastInboundAt: string | null;
 };
 
 type PerguntaAoDono = {
@@ -89,17 +102,17 @@ type Console = {
 type Workspace = { tenantId: string; tenantName: string; timezone: string };
 
 function hora(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
 function desde(iso: string | null): string {
-  if (!iso) return "nunca";
+  if (!iso) return 'nunca';
   const segundos = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
   if (segundos < 60) return `há ${segundos}s`;
   if (segundos < 3600) return `há ${Math.floor(segundos / 60)}min`;
@@ -108,7 +121,7 @@ function desde(iso: string | null): string {
 }
 
 function janela(minutos: number): string {
-  if (minutos <= 0) return "fechada";
+  if (minutos <= 0) return 'fechada';
   const h = Math.floor(minutos / 60);
   return h > 0 ? `${h}h restantes` : `${minutos}min restantes`;
 }
@@ -116,10 +129,10 @@ function janela(minutos: number): string {
 // Rótulo de quem escreveu. O banco guarda o ator em metadata; aqui ele vira
 // uma palavra que a Duda lê sem traduzir.
 function quemFalou(m: Mensagem): string {
-  if (m.direction === "INBOUND") return "Cliente";
-  if (m.actor === "AGENT") return "Agente";
-  if (m.actor === "HUMAN") return "Equipe";
-  return "Sistema";
+  if (m.direction === 'INBOUND') return 'Cliente';
+  if (m.actor === 'AGENT') return 'Agente';
+  if (m.actor === 'HUMAN') return 'Equipe';
+  return 'Sistema';
 }
 
 export default function WhatsAppConsole() {
@@ -134,19 +147,21 @@ export default function WhatsAppConsole() {
   const [confirmandoLigar, setConfirmandoLigar] = useState(false);
   // Rascunho por pergunta. Fica no componente e não no servidor: é texto que a
   // pessoa está digitando, não estado do sistema.
+  const [estacionadas, setEstacionadas] = useState<ConversaEstacionada[]>([]);
+  const [retomando, setRetomando] = useState<string | null>(null);
   const [respostas, setRespostas] = useState<Record<string, string>>({});
   const [enviandoResposta, setEnviandoResposta] = useState<string | null>(null);
   const tenantRef = useRef<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    const pedido = new URLSearchParams(window.location.search).get("tenantId");
-    fetch(`/api/dashboard-context${pedido ? `?tenantId=${encodeURIComponent(pedido)}` : ""}`, {
+    const pedido = new URLSearchParams(window.location.search).get('tenantId');
+    fetch(`/api/dashboard-context${pedido ? `?tenantId=${encodeURIComponent(pedido)}` : ''}`, {
       signal: controller.signal,
     })
       .then(async (r) => {
         const body = await r.json();
-        if (!r.ok) throw new Error(r.status === 401 ? "AUTH" : (body.error ?? "CONTEXTO"));
+        if (!r.ok) throw new Error(r.status === 401 ? 'AUTH' : (body.error ?? 'CONTEXTO'));
         return body;
       })
       .then((body) => {
@@ -155,12 +170,12 @@ export default function WhatsAppConsole() {
         setWorkspace(w);
       })
       .catch((e: unknown) => {
-        if (e instanceof DOMException && e.name === "AbortError") return;
-        if (e instanceof Error && e.message === "AUTH") {
-          window.location.assign("/login");
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        if (e instanceof Error && e.message === 'AUTH') {
+          window.location.assign('/login');
           return;
         }
-        setErro("Não foi possível resolver o negócio desta sessão.");
+        setErro('Não foi possível resolver o negócio desta sessão.');
         setCarregando(false);
       });
     return () => controller.abort();
@@ -170,20 +185,36 @@ export default function WhatsAppConsole() {
     const tenantId = tenantRef.current;
     if (!tenantId) return;
     try {
-      const r = await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "whatsappConsole", tenantId, limit: 20 }),
-      });
+      // As duas leituras saem juntas: o console e a lista de conversas que o
+      // agente abandonou. Sao chamadas separadas de proposito -- estacionar uma
+      // conversa nao e um contador a mais do console, e uma fila de resgate com
+      // vida propria.
+      const [r, rEstacionadas] = await Promise.all([
+        fetch('/api/whatsapp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'whatsappConsole', tenantId, limit: 20 }),
+        }),
+        fetch('/api/whatsapp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'agentParkedConversations', tenantId, limit: 50 }),
+        }),
+      ]);
       const body = await r.json();
-      if (!r.ok) throw new Error(body.error ?? "CONSOLE_INDISPONIVEL");
+      if (!r.ok) throw new Error(body.error ?? 'CONSOLE_INDISPONIVEL');
       setDados(body.data as Console);
+      // Falha so na lista de estacionadas nao derruba o console inteiro.
+      if (rEstacionadas.ok) {
+        const corpo = await rEstacionadas.json();
+        setEstacionadas((corpo.data ?? []) as ConversaEstacionada[]);
+      }
       setAtualizadoEm(new Date().toISOString());
       setErro(null);
     } catch {
       // Falha de rede não apaga a tela: o operador continua vendo a última foto
       // e o aviso de que ela envelheceu.
-      setErro("Falha ao atualizar. Mostrando a última leitura.");
+      setErro('Falha ao atualizar. Mostrando a última leitura.');
     } finally {
       setCarregando(false);
     }
@@ -209,22 +240,22 @@ export default function WhatsAppConsole() {
     if (!tenantId) return;
     setSalvandoChave(true);
     try {
-      const r = await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+      const r = await fetch('/api/whatsapp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          action: "setAgentAutomation",
+          action: 'setAgentAutomation',
           tenantId,
           enabled: ligar,
-          reason: ligar ? "Ligado pelo console." : "Parada de emergência pelo console.",
+          reason: ligar ? 'Ligado pelo console.' : 'Parada de emergência pelo console.',
         }),
       });
       const body = await r.json();
-      if (!r.ok) throw new Error(body.error ?? "FALHA");
+      if (!r.ok) throw new Error(body.error ?? 'FALHA');
       await buscar();
       setConfirmandoLigar(false);
     } catch {
-      setErro("Não foi possível mudar a chave. Tente de novo.");
+      setErro('Não foi possível mudar a chave. Tente de novo.');
     } finally {
       setSalvandoChave(false);
     }
@@ -236,13 +267,18 @@ export default function WhatsAppConsole() {
     if (!tenantId || texto.length === 0) return;
     setEnviandoResposta(questionId);
     try {
-      const r = await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "answerOwnerQuestion", tenantId, questionId, answer: texto }),
+      const r = await fetch('/api/whatsapp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'answerOwnerQuestion',
+          tenantId,
+          questionId,
+          answer: texto,
+        }),
       });
       const body = await r.json();
-      if (!r.ok) throw new Error(body.error ?? "FALHA");
+      if (!r.ok) throw new Error(body.error ?? 'FALHA');
       setRespostas((atual) => {
         const proximo = { ...atual };
         delete proximo[questionId];
@@ -250,7 +286,7 @@ export default function WhatsAppConsole() {
       });
       await buscar();
     } catch {
-      setErro("Não foi possível salvar a resposta. Tente de novo.");
+      setErro('Não foi possível salvar a resposta. Tente de novo.');
     } finally {
       setEnviandoResposta(null);
     }
@@ -261,16 +297,40 @@ export default function WhatsAppConsole() {
     if (!tenantId) return;
     setEnviandoResposta(questionId);
     try {
-      await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "dismissOwnerQuestion", tenantId, questionId }),
+      await fetch('/api/whatsapp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'dismissOwnerQuestion', tenantId, questionId }),
       });
       await buscar();
     } catch {
-      setErro("Não foi possível descartar. Tente de novo.");
+      setErro('Não foi possível descartar. Tente de novo.');
     } finally {
       setEnviandoResposta(null);
+    }
+  }
+
+  // Devolver a conversa ao agente e ato humano e deliberado: alguem olhou,
+  // entendeu o que travou e decidiu tentar de novo. Por isso tem confirmacao --
+  // se a causa nao foi resolvida, ela vai estacionar de novo em meia hora.
+  async function retomarConversa(conversationId: string, nome: string | null) {
+    const tenantId = tenantRef.current;
+    if (!tenantId) return;
+    const quem = nome ?? 'esta cliente';
+    if (!window.confirm(`Devolver a conversa de ${quem} para o agente tentar de novo?`)) return;
+    setRetomando(conversationId);
+    try {
+      const r = await fetch('/api/whatsapp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'resumeParkedConversation', tenantId, conversationId }),
+      });
+      if (!r.ok) throw new Error('RETOMADA_FALHOU');
+      await buscar();
+    } catch {
+      setErro('Não foi possível devolver a conversa ao agente. Tente de novo.');
+    } finally {
+      setRetomando(null);
     }
   }
 
@@ -292,7 +352,7 @@ export default function WhatsAppConsole() {
         <section className={styles.estadoCard}>
           <span className={styles.eyebrow}>whatsapp</span>
           <h1>Console indisponível.</h1>
-          <p>{erro ?? "Não foi possível carregar os dados do canal."}</p>
+          <p>{erro ?? 'Não foi possível carregar os dados do canal.'}</p>
         </section>
       </main>
     );
@@ -306,7 +366,7 @@ export default function WhatsAppConsole() {
     <main className={styles.shell}>
       <header className={styles.topo}>
         <div>
-          <span className={styles.eyebrow}>whatsapp · {workspace?.tenantName ?? ""}</span>
+          <span className={styles.eyebrow}>whatsapp · {workspace?.tenantName ?? ''}</span>
           <h1>Conversas e agente</h1>
         </div>
         <div className={styles.frescor}>
@@ -315,7 +375,7 @@ export default function WhatsAppConsole() {
             onClick={() => setAoVivo((v) => !v)}
             aria-pressed={aoVivo}
           >
-            {aoVivo ? "ao vivo" : "pausado"}
+            {aoVivo ? 'ao vivo' : 'pausado'}
           </button>
           <span>atualizado {desde(atualizadoEm)}</span>
         </div>
@@ -324,18 +384,16 @@ export default function WhatsAppConsole() {
       {/* A parada de emergência. Primeira coisa da página, sempre. */}
       <section className={ligado ? styles.chaveLigada : styles.chaveDesligada}>
         <div className={styles.chaveTexto}>
-          <strong>
-            {ligado ? "Resposta automática LIGADA" : "Resposta automática DESLIGADA"}
-          </strong>
+          <strong>{ligado ? 'Resposta automática LIGADA' : 'Resposta automática DESLIGADA'}</strong>
           <p>
             {ligado
-              ? "O agente está respondendo sozinho as clientes liberadas. Parar cala o agente na hora — a equipe continua respondendo normalmente."
-              : "Nenhuma mensagem sai em nome do agente. A equipe continua respondendo normalmente pelo aplicativo."}
+              ? 'O agente está respondendo sozinho as clientes liberadas. Parar cala o agente na hora — a equipe continua respondendo normalmente.'
+              : 'Nenhuma mensagem sai em nome do agente. A equipe continua respondendo normalmente pelo aplicativo.'}
           </p>
           {dados.automation.changedAt && (
             <small>
               última mudança {desde(dados.automation.changedAt)}
-              {dados.automation.changedByEmail ? ` por ${dados.automation.changedByEmail}` : ""}
+              {dados.automation.changedByEmail ? ` por ${dados.automation.changedByEmail}` : ''}
             </small>
           )}
         </div>
@@ -346,7 +404,7 @@ export default function WhatsAppConsole() {
             disabled={salvandoChave}
             onClick={() => void mudarChave(false)}
           >
-            {salvandoChave ? "parando…" : "PARAR AGORA"}
+            {salvandoChave ? 'parando…' : 'PARAR AGORA'}
           </button>
         ) : confirmandoLigar ? (
           // Ligar pede confirmação; parar não. A assimetria é proposital: o
@@ -358,7 +416,7 @@ export default function WhatsAppConsole() {
               disabled={salvandoChave}
               onClick={() => void mudarChave(true)}
             >
-              {salvandoChave ? "ligando…" : "sim, ligar"}
+              {salvandoChave ? 'ligando…' : 'sim, ligar'}
             </button>
             <button className={styles.ghost} onClick={() => setConfirmandoLigar(false)}>
               cancelar
@@ -383,15 +441,15 @@ export default function WhatsAppConsole() {
           <header className={styles.perguntasTopo}>
             <strong>O agente precisa de você</strong>
             <span>
-              {dados.ownerQuestions.length}{" "}
-              {dados.ownerQuestions.length === 1 ? "cliente esperando" : "clientes esperando"}
+              {dados.ownerQuestions.length}{' '}
+              {dados.ownerQuestions.length === 1 ? 'cliente esperando' : 'clientes esperando'}
             </span>
           </header>
 
           {dados.ownerQuestions.map((p) => (
             <article key={p.id} className={styles.pergunta}>
               <div className={styles.perguntaCabeca}>
-                <strong>{p.contactName ?? p.whatsapp ?? "Sem nome"}</strong>
+                <strong>{p.contactName ?? p.whatsapp ?? 'Sem nome'}</strong>
                 <span>esperando {desde(p.createdAt)}</span>
               </div>
               <p className={styles.perguntaTexto}>{p.question}</p>
@@ -400,21 +458,19 @@ export default function WhatsAppConsole() {
                 <input
                   className={styles.perguntaCampo}
                   placeholder="Responda em uma frase…"
-                  value={respostas[p.id] ?? ""}
+                  value={respostas[p.id] ?? ''}
                   disabled={enviandoResposta === p.id}
-                  onChange={(e) =>
-                    setRespostas((atual) => ({ ...atual, [p.id]: e.target.value }))
-                  }
+                  onChange={(e) => setRespostas((atual) => ({ ...atual, [p.id]: e.target.value }))}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") void responderPergunta(p.id);
+                    if (e.key === 'Enter') void responderPergunta(p.id);
                   }}
                 />
                 <button
                   className={styles.ligar}
-                  disabled={enviandoResposta === p.id || !(respostas[p.id] ?? "").trim()}
+                  disabled={enviandoResposta === p.id || !(respostas[p.id] ?? '').trim()}
                   onClick={() => void responderPergunta(p.id)}
                 >
-                  {enviandoResposta === p.id ? "enviando…" : "responder"}
+                  {enviandoResposta === p.id ? 'enviando…' : 'responder'}
                 </button>
                 <button
                   className={styles.ghost}
@@ -429,11 +485,50 @@ export default function WhatsAppConsole() {
         </section>
       )}
 
+      {/* Conversas que o agente abandonou. Vem depois das perguntas porque sao
+          mais raras, mas sao mais graves: na pergunta ao dono a cliente esta em
+          espera consciente; aqui ela escreveu e nao recebeu nada. Tom grave em
+          vez de ambar para nao se confundir com "trabalho esperando", e nunca
+          vermelho -- vermelho e so do botao de parada. */}
+      {estacionadas.length > 0 && (
+        <section className={styles.estacionadas}>
+          <header className={styles.estacionadasTopo}>
+            <strong>O agente desistiu destas conversas</strong>
+            <span>
+              {estacionadas.length}{' '}
+              {estacionadas.length === 1 ? 'cliente sem resposta' : 'clientes sem resposta'}
+            </span>
+          </header>
+          {estacionadas.map((c) => (
+            <article key={c.conversationId} className={styles.estacionada}>
+              <div className={styles.perguntaCabeca}>
+                <strong>{c.contactName ?? c.whatsapp ?? 'Sem nome'}</strong>
+                <span>parou {desde(c.parkedAt)}</span>
+              </div>
+              <p className={styles.perguntaTexto}>
+                Tentou {c.failures} {c.failures === 1 ? 'vez' : 'vezes'} e não conseguiu responder.
+                Alguém precisa atender essa cliente à mão.
+              </p>
+              {c.lastError && <p className={styles.estacionadaErro}>{c.lastError}</p>}
+              <div className={styles.perguntaAcoes}>
+                <button
+                  className={styles.ghost}
+                  disabled={retomando === c.conversationId}
+                  onClick={() => void retomarConversa(c.conversationId, c.contactName)}
+                >
+                  {retomando === c.conversationId ? 'devolvendo…' : 'devolver ao agente'}
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+
       <section className={styles.conexao}>
         {dados.connection ? (
           <>
             <span className={styles.pill}>{dados.connection.status}</span>
-            <span>número {dados.connection.senderId ?? "—"}</span>
+            <span>número {dados.connection.senderId ?? '—'}</span>
             <span>último evento da Meta {desde(dados.connection.lastWebhookAt)}</span>
           </>
         ) : (
@@ -443,14 +538,14 @@ export default function WhatsAppConsole() {
 
       <section className={styles.contadores}>
         {[
-          ["conversas abertas", dados.counters.conversationsOpen],
-          ["dentro da janela de 24h", dados.counters.windowOpen],
-          ["mensagens em 24h", dados.counters.messages24h],
-          ["respostas do agente em 24h", dados.counters.agentReplies24h],
-          ["esperando você responder", dados.counters.ownerQuestionsPending],
-          ["passadas para a equipe", dados.counters.handoffs24h],
-          ["na fila de envio", dados.counters.outboxPending],
-          ["falhas de envio", dados.counters.outboxFailed],
+          ['conversas abertas', dados.counters.conversationsOpen],
+          ['dentro da janela de 24h', dados.counters.windowOpen],
+          ['mensagens em 24h', dados.counters.messages24h],
+          ['respostas do agente em 24h', dados.counters.agentReplies24h],
+          ['esperando você responder', dados.counters.ownerQuestionsPending],
+          ['passadas para a equipe', dados.counters.handoffs24h],
+          ['na fila de envio', dados.counters.outboxPending],
+          ['falhas de envio', dados.counters.outboxFailed],
         ].map(([rotulo, valor]) => (
           <div key={String(rotulo)} className={styles.contador}>
             <strong>{valor}</strong>
@@ -468,12 +563,12 @@ export default function WhatsAppConsole() {
               className={c.id === conversa?.id ? styles.itemAtivo : styles.item}
               onClick={() => setSelecionada(c.id)}
             >
-              <strong>{c.contactName ?? c.whatsapp ?? "Sem nome"}</strong>
+              <strong>{c.contactName ?? c.whatsapp ?? 'Sem nome'}</strong>
               <span className={styles.itemPrevia}>
-                {c.messages.at(-1)?.text?.slice(0, 60) ?? "—"}
+                {c.messages.at(-1)?.text?.slice(0, 60) ?? '—'}
               </span>
               <span className={c.windowOpen ? styles.janelaAberta : styles.janelaFechada}>
-                {c.windowOpen ? janela(c.minutesRemaining) : "janela fechada"} ·{" "}
+                {c.windowOpen ? janela(c.minutesRemaining) : 'janela fechada'} ·{' '}
                 {desde(c.lastMessageAt)}
               </span>
             </button>
@@ -487,13 +582,13 @@ export default function WhatsAppConsole() {
             <>
               <header className={styles.conversaTopo}>
                 <div>
-                  <strong>{conversa.contactName ?? "Sem nome"}</strong>
+                  <strong>{conversa.contactName ?? 'Sem nome'}</strong>
                   <span>{conversa.whatsapp}</span>
                 </div>
                 <span className={conversa.windowOpen ? styles.janelaAberta : styles.janelaFechada}>
                   {conversa.windowOpen
                     ? `janela aberta · ${janela(conversa.minutesRemaining)}`
-                    : "janela de 24h fechada"}
+                    : 'janela de 24h fechada'}
                 </span>
               </header>
 
@@ -501,13 +596,13 @@ export default function WhatsAppConsole() {
                 {conversa.messages.map((m) => (
                   <div key={m.id}>
                     <article
-                      className={m.direction === "INBOUND" ? styles.balaoEntra : styles.balaoSai}
+                      className={m.direction === 'INBOUND' ? styles.balaoEntra : styles.balaoSai}
                     >
                       <span className={styles.autor}>
                         {quemFalou(m)}
-                        {m.direction === "OUTBOUND" && m.deliveryStatus
+                        {m.direction === 'OUTBOUND' && m.deliveryStatus
                           ? ` · ${m.deliveryStatus.toLowerCase()}`
-                          : ""}
+                          : ''}
                       </span>
                       <p>{m.text}</p>
                       <time>{hora(m.at)}</time>
@@ -515,21 +610,21 @@ export default function WhatsAppConsole() {
 
                     {/* O que o agente decidiu ao ver esta mensagem. É a linha
                         que transforma a tela de "histórico" em "comportamento". */}
-                    {m.direction === "INBOUND" && m.agentDecision && (
+                    {m.direction === 'INBOUND' && m.agentDecision && (
                       <p
                         className={
-                          m.agentDecision === "REPLY" ? styles.decisaoOk : styles.decisaoPassou
+                          m.agentDecision === 'REPLY' ? styles.decisaoOk : styles.decisaoPassou
                         }
                       >
-                        {m.agentDecision === "REPLY"
-                          ? "agente respondeu"
-                          : m.agentDecision === "HANDOFF"
-                            ? "agente passou para a equipe"
-                            : "agente falhou"}
-                        {m.agentDecisionReason ? ` — ${m.agentDecisionReason}` : ""}
+                        {m.agentDecision === 'REPLY'
+                          ? 'agente respondeu'
+                          : m.agentDecision === 'HANDOFF'
+                            ? 'agente passou para a equipe'
+                            : 'agente falhou'}
+                        {m.agentDecisionReason ? ` — ${m.agentDecisionReason}` : ''}
                       </p>
                     )}
-                    {m.direction === "INBOUND" && !m.agentDecision && m.agentMayReply === false && (
+                    {m.direction === 'INBOUND' && !m.agentDecision && m.agentMayReply === false && (
                       <p className={styles.decisaoPassou}>
                         cliente fora da lista de resposta automática — é da equipe
                       </p>

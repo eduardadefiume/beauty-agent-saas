@@ -18,6 +18,8 @@ const ACTIONS = new Set([
   'setAgentAutomation',
   'answerOwnerQuestion',
   'dismissOwnerQuestion',
+  'agentParkedConversations',
+  'resumeParkedConversation',
 ]);
 
 const JSON_HEADERS = {
@@ -77,6 +79,7 @@ export async function POST(request: Request): Promise<Response> {
       reason: typeof input.reason === 'string' ? input.reason : undefined,
       questionId: typeof input.questionId === 'string' ? input.questionId : undefined,
       answer: typeof input.answer === 'string' ? input.answer : undefined,
+      conversationId: typeof input.conversationId === 'string' ? input.conversationId : undefined,
     }),
   });
 

@@ -453,3 +453,48 @@
 .perguntaCampo:disabled {
   opacity: 0.6;
 }
+
+/* --- Conversas que o agente abandonou ------------------------------------ */
+
+/* Tom grave, não âmbar e não vermelho. Âmbar já significa "trabalho esperando"
+   nas perguntas ao dono, e vermelho é exclusivo do botão de parada. Aqui a
+   leitura é outra: parou, e alguém precisa entrar no lugar do agente. */
+.estacionadas {
+  margin-top: 20px;
+  border: 1px solid rgba(30, 43, 42, 0.14);
+  border-left: 5px solid var(--ink);
+  background: rgba(30, 43, 42, 0.05);
+}
+.estacionadasTopo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14px 18px 6px;
+}
+.estacionadasTopo strong {
+  font-size: 14px;
+}
+.estacionadasTopo span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.estacionada {
+  padding: 12px 18px 16px;
+  border-top: 1px solid rgba(30, 43, 42, 0.1);
+}
+/* O erro técnico fica visível de propósito: é o que a Duda copia e me manda
+   quando quer saber por que travou. Discreto, mas não escondido. */
+.estacionadaErro {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  background: rgba(30, 43, 42, 0.06);
+  color: #5f6459;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-word;
+}

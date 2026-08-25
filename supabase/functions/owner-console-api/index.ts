@@ -30,6 +30,12 @@ const ACTION_RPC = {
   setAgentAutomation: 'site_set_agent_automation',
   answerOwnerQuestion: 'site_answer_owner_question',
   dismissOwnerQuestion: 'site_dismiss_owner_question',
+  // Conversas que o agente desistiu de atender depois de tropecar cinco vezes.
+  // Existem como acao propria, e nao dentro do console, porque estacionar uma
+  // conversa e deixar uma cliente sem resposta: precisa de um lugar onde uma
+  // pessoa veja e resolva, nao de um numero no meio de outros.
+  agentParkedConversations: 'site_agent_parked_conversations',
+  resumeParkedConversation: 'site_resume_parked_conversation',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -51,7 +57,9 @@ function emailFromVerifiedJwt(authorizationHeader: string | null): string | null
   try {
     const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(atob(base64)) as { email?: unknown };
-    return typeof payload.email === 'string' && payload.email.length > 0 && payload.email.length <= 320
+    return typeof payload.email === 'string' &&
+      payload.email.length > 0 &&
+      payload.email.length <= 320
       ? payload.email
       : null;
   } catch {
@@ -152,10 +160,7 @@ Deno.serve(async (request: Request) => {
     case 'saveCalendarConnection':
       // Só chamada pela rota /auth/google-calendar/callback, server-to-server
       // — o token nunca passa pelo navegador. Ver validação lá.
-      if (
-        typeof input.provider !== 'string' ||
-        typeof input.accessToken !== 'string'
-      ) {
+      if (typeof input.provider !== 'string' || typeof input.accessToken !== 'string') {
         return json(400, { error: 'INVALID_SAVE_CALENDAR_CONNECTION_REQUEST' });
       }
       rpcBody = {
@@ -208,7 +213,8 @@ Deno.serve(async (request: Request) => {
         target_window_start: input.windowStart,
         target_window_end: input.windowEnd,
         target_events: input.events,
-        target_new_access_token: typeof input.newAccessToken === 'string' ? input.newAccessToken : null,
+        target_new_access_token:
+          typeof input.newAccessToken === 'string' ? input.newAccessToken : null,
         target_new_token_expires_at:
           typeof input.newTokenExpiresAt === 'string' ? input.newTokenExpiresAt : null,
         target_error: typeof input.syncError === 'string' ? input.syncError : null,
@@ -253,6 +259,23 @@ Deno.serve(async (request: Request) => {
         ...common,
         target_tenant_id: tenantId,
         target_question_id: input.questionId,
+      };
+      break;
+    case 'agentParkedConversations':
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_limit: Number.isInteger(input.limit) ? input.limit : 50,
+      };
+      break;
+    case 'resumeParkedConversation':
+      if (typeof input.conversationId !== 'string') {
+        return json(400, { error: 'INVALID_RESUME_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_conversation_id: input.conversationId,
       };
       break;
   }
