@@ -949,3 +949,49 @@ footer {
     font-size: 9px;
   }
 }
+
+/* Aviso de configuração congelada.
+   Fica no topo, antes dos módulos, porque é ali que a pessoa descobre que os
+   campos não respondem. O botão de destravar vem junto — explicação sem saída
+   é só uma desculpa mais bem escrita. */
+.frozen-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #d8b96a;
+  border-left: 4px solid #b4862a;
+  border-radius: 8px;
+  background: #fdf6e4;
+  color: #2c2a24;
+}
+
+.frozen-banner strong {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.frozen-banner p {
+  margin: 0;
+  max-width: 72ch;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  opacity: 0.85;
+}
+
+.frozen-banner .primary {
+  flex-shrink: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .frozen-banner {
+    border-color: #6b5a2e;
+    border-left-color: #b4862a;
+    background: #2a2519;
+    color: #f0ece1;
+  }
+}

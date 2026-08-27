@@ -1267,6 +1267,30 @@ export default function Configurator({ user }: { user: { displayName: string; em
         </div>
       )}
 
+      {/* Publicar CONGELA a configuração — isso é de propósito: o que está no
+          ar não muda debaixo do agente enquanto ele atende. O problema era que
+          a tela não contava. A dona abria Negócio, encontrava tudo cinza, e o
+          único jeito de destravar era navegar até o último módulo da lateral e
+          achar um botão lá no fim. Ninguém acha.
+
+          O aviso mora aqui, no topo, onde a pessoa trombou. */}
+      {!editable && (
+        <div className="frozen-banner" role="status">
+          <div>
+            <strong>Esta configuração está no ar e por isso está travada.</strong>
+            <p>
+              Nada aqui pode ser editado enquanto estiver publicado — é assim para o que o agente
+              usa não mudar no meio de um atendimento. Abra um rascunho novo para editar: ele já vem
+              com tudo que está publicado, e o que está no ar continua funcionando até você publicar
+              de novo.
+            </p>
+          </div>
+          <button className="primary" disabled={busy} onClick={() => void startNewDraft()}>
+            {busy ? 'Abrindo…' : 'Editar de novo'}
+          </button>
+        </div>
+      )}
+
       <div className="layout">
         <nav className="sidenav">
           {MODULES.map((item) => (
