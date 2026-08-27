@@ -101,6 +101,29 @@ type Console = {
 
 type Workspace = { tenantId: string; tenantName: string; timezone: string };
 
+// O anexo já subiu para o balde quando chega aqui: o que a tela guarda é o
+// endereço dele, não o arquivo. Assim trocar de conversa não perde o upload.
+type Anexo = {
+  storagePath: string;
+  mimeType: string;
+  filename: string;
+  size: number;
+  // URL local só para a pré-visualização. Vive enquanto a aba viver.
+  previa: string | null;
+};
+
+function tamanhoLegivel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function relogio(segundos: number): string {
+  const m = Math.floor(segundos / 60);
+  const s = segundos % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function hora(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('pt-BR', {
@@ -161,6 +184,15 @@ export default function WhatsAppConsole() {
   const [chavesEnvio, setChavesEnvio] = useState<Record<string, string>>({});
   const [enviandoMensagem, setEnviandoMensagem] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+  // Um anexo por vez, como no WhatsApp: escolher outro troca o anterior.
+  const [anexo, setAnexo] = useState<Anexo | null>(null);
+  const [subindoAnexo, setSubindoAnexo] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [segundosGravados, setSegundosGravados] = useState(0);
+  const gravadorRef = useRef<MediaRecorder | null>(null);
+  const pedacosRef = useRef<Blob[]>([]);
+  const arquivoRef = useRef<HTMLInputElement | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
   const tenantRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -239,6 +271,14 @@ export default function WhatsAppConsole() {
   }, [workspace, aoVivo, buscar]);
 
   // Faz o "atualizado há Xs" andar mesmo entre as buscas.
+  // O contador da gravação. Sem ele a pessoa não sabe se está gravando há três
+  // segundos ou há três minutos.
+  useEffect(() => {
+    if (!gravando) return;
+    const id = setInterval(() => setSegundosGravados((v) => v + 1), 1000);
+    return () => clearInterval(id);
+  }, [gravando]);
+
   const [, force] = useState(0);
   useEffect(() => {
     const id = setInterval(() => force((n) => n + 1), 1000);
@@ -320,6 +360,103 @@ export default function WhatsAppConsole() {
     }
   }
 
+  // Sobe o arquivo assim que a pessoa escolhe, antes de ela escrever a legenda.
+  //
+  // Subir só no momento do envio faria o botão "Enviar" travar por segundos com
+  // um arquivo grande, e a pessoa não saberia se travou ou se quebrou.
+  async function anexarArquivo(arquivo: File) {
+    const tenantId = tenantRef.current;
+    if (!tenantId) return;
+    setErroEnvio(null);
+    setSubindoAnexo(true);
+    try {
+      const formulario = new FormData();
+      formulario.append('tenantId', tenantId);
+      formulario.append('file', arquivo);
+      const r = await fetch('/api/whatsapp/anexo', { method: 'POST', body: formulario });
+      const body = await r.json();
+      if (!r.ok) {
+        setErroEnvio(
+          body.error === 'UNSUPPORTED_MEDIA_TYPE'
+            ? `O WhatsApp não aceita esse tipo de arquivo (${body.mime ?? '—'}).`
+            : body.error === 'FILE_TOO_LARGE'
+              ? 'Arquivo grande demais. O limite do WhatsApp é 16 MB.'
+              : 'Não foi possível anexar. Tente de novo.'
+        );
+        return;
+      }
+      const dados = body.data as Omit<Anexo, 'previa'>;
+      // Solta a prévia anterior: URL de objeto que ninguém revoga fica segurando
+      // o arquivo na memória da aba.
+      setAnexo((atual) => {
+        if (atual?.previa) URL.revokeObjectURL(atual.previa);
+        return {
+          ...dados,
+          previa: arquivo.type.startsWith('image/') ? URL.createObjectURL(arquivo) : null,
+        };
+      });
+    } catch {
+      setErroEnvio('Não foi possível anexar. Tente de novo.');
+    } finally {
+      setSubindoAnexo(false);
+    }
+  }
+
+  function descartarAnexo() {
+    setAnexo((atual) => {
+      if (atual?.previa) URL.revokeObjectURL(atual.previa);
+      return null;
+    });
+  }
+
+  // Gravação de áudio no navegador.
+  //
+  // O formato é escolhido pelo navegador (webm ou mp4, conforme o aparelho) e
+  // vai como está — a Meta aceita os dois. Converter no cliente exigiria uma
+  // biblioteca pesada para resolver um problema que não existe.
+  async function comecarAGravar() {
+    setErroEnvio(null);
+    try {
+      const trilha = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const gravador = new MediaRecorder(trilha);
+      pedacosRef.current = [];
+      gravador.ondataavailable = (e) => {
+        if (e.data.size > 0) pedacosRef.current.push(e.data);
+      };
+      gravador.onstop = () => {
+        // Desliga o microfone de verdade. Sem isto o indicador do navegador
+        // fica aceso depois de parar, e com razão: a trilha continua aberta.
+        trilha.getTracks().forEach((t) => t.stop());
+        // O navegador devolve algo como "audio/webm;codecs=opus". A Meta quer
+        // o MIME limpo, sem os parâmetros de codec.
+        const tipoCompleto = gravador.mimeType || 'audio/webm';
+        const tipo = tipoCompleto.split(';')[0] ?? 'audio/webm';
+        const blob = new Blob(pedacosRef.current, { type: tipo });
+        const extensao = tipo.includes('mp4') ? 'm4a' : 'webm';
+        void anexarArquivo(new File([blob], `audio-${Date.now()}.${extensao}`, { type: tipo }));
+      };
+      gravador.start();
+      gravadorRef.current = gravador;
+      setSegundosGravados(0);
+      setGravando(true);
+    } catch {
+      setErroEnvio('Não consegui acessar o microfone. Verifique a permissão do navegador.');
+    }
+  }
+
+  function pararDeGravar(descartar: boolean) {
+    const gravador = gravadorRef.current;
+    if (!gravador) return;
+    if (descartar) gravador.onstop = null;
+    gravador.stop();
+    if (descartar) {
+      gravador.stream.getTracks().forEach((t) => t.stop());
+      pedacosRef.current = [];
+    }
+    gravadorRef.current = null;
+    setGravando(false);
+  }
+
   // O dono respondendo pela tela.
   //
   // Fora da janela de 24h a Meta recusa texto livre -- só modelo aprovado. A
@@ -330,7 +467,7 @@ export default function WhatsAppConsole() {
     const conversationId = selecionada;
     if (!tenantId || !conversationId) return;
     const texto = (rascunhos[conversationId] ?? '').trim();
-    if (texto.length === 0 || enviandoMensagem) return;
+    if ((texto.length === 0 && !anexo) || enviandoMensagem || subindoAnexo) return;
 
     const chave = chavesEnvio[conversationId] ?? crypto.randomUUID();
     if (!chavesEnvio[conversationId]) {
@@ -349,6 +486,9 @@ export default function WhatsAppConsole() {
           conversationId,
           text: texto,
           idempotencyKey: chave,
+          mediaStoragePath: anexo?.storagePath,
+          mediaMimeType: anexo?.mimeType,
+          mediaFilename: anexo?.filename,
         }),
       });
       const body = await r.json();
@@ -370,6 +510,7 @@ export default function WhatsAppConsole() {
       // Só limpa depois de o banco aceitar. Rascunho apagado com envio falho
       // é texto perdido.
       setRascunhos((atual) => ({ ...atual, [conversationId]: '' }));
+      descartarAnexo();
       setChavesEnvio((atual) => {
         const proximo = { ...atual };
         delete proximo[conversationId];
@@ -722,8 +863,69 @@ export default function WhatsAppConsole() {
                     última mensagem da cliente — é regra da Meta, não do sistema. Fora disso, só
                     modelo aprovado. Assim que ela escrever, a caixa volta.
                   </p>
+                ) : gravando ? (
+                  <div className={styles.gravando}>
+                    <span className={styles.pontoVermelho} aria-hidden="true" />
+                    <strong>Gravando… {relogio(segundosGravados)}</strong>
+                    <button className={styles.ghost} onClick={() => pararDeGravar(true)}>
+                      Descartar
+                    </button>
+                    <button className={styles.enviar} onClick={() => pararDeGravar(false)}>
+                      Parar e anexar
+                    </button>
+                  </div>
                 ) : (
                   <>
+                    {anexo && (
+                      <div className={styles.anexo}>
+                        {anexo.previa ? (
+                          <img className={styles.anexoPrevia} src={anexo.previa} alt="" />
+                        ) : (
+                          <span className={styles.anexoIcone} aria-hidden="true">
+                            {anexo.mimeType.startsWith('audio/')
+                              ? '🎙'
+                              : anexo.mimeType.startsWith('video/')
+                                ? '🎬'
+                                : '📄'}
+                          </span>
+                        )}
+                        <div className={styles.anexoTexto}>
+                          <strong>{anexo.filename}</strong>
+                          <span>{tamanhoLegivel(anexo.size)}</span>
+                        </div>
+                        <button className={styles.ghost} onClick={descartarAnexo}>
+                          Remover
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Entradas escondidas: o clipe abre a galeria, a câmera
+                        abre a câmera direto no celular (capture). São dois
+                        botões porque no aparelho são dois gestos diferentes. */}
+                    <input
+                      ref={arquivoRef}
+                      type="file"
+                      hidden
+                      accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/aac,audio/mp4,audio/mpeg,audio/amr,audio/ogg,application/pdf"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void anexarArquivo(f);
+                        e.target.value = '';
+                      }}
+                    />
+                    <input
+                      ref={cameraRef}
+                      type="file"
+                      hidden
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void anexarArquivo(f);
+                        e.target.value = '';
+                      }}
+                    />
+
                     <textarea
                       className={styles.campoMensagem}
                       value={rascunhos[conversa.id] ?? ''}
@@ -744,6 +946,36 @@ export default function WhatsAppConsole() {
                       }}
                     />
                     <div className={styles.compositorAcoes}>
+                      <div className={styles.ferramentas}>
+                        <button
+                          className={styles.ferramenta}
+                          title="Anexar arquivo"
+                          aria-label="Anexar arquivo"
+                          disabled={subindoAnexo}
+                          onClick={() => arquivoRef.current?.click()}
+                        >
+                          📎
+                        </button>
+                        <button
+                          className={styles.ferramenta}
+                          title="Tirar foto"
+                          aria-label="Tirar foto"
+                          disabled={subindoAnexo}
+                          onClick={() => cameraRef.current?.click()}
+                        >
+                          📷
+                        </button>
+                        <button
+                          className={styles.ferramenta}
+                          title="Gravar áudio"
+                          aria-label="Gravar áudio"
+                          disabled={subindoAnexo}
+                          onClick={() => void comecarAGravar()}
+                        >
+                          🎙
+                        </button>
+                        {subindoAnexo && <span className={styles.subindo}>anexando…</span>}
+                      </div>
                       <span className={styles.contadorCaracteres}>
                         {(rascunhos[conversa.id] ?? '').length}/4096
                       </span>
@@ -751,7 +983,9 @@ export default function WhatsAppConsole() {
                         className={styles.enviar}
                         onClick={() => void enviarMensagem()}
                         disabled={
-                          enviandoMensagem || (rascunhos[conversa.id] ?? '').trim().length === 0
+                          enviandoMensagem ||
+                          subindoAnexo ||
+                          ((rascunhos[conversa.id] ?? '').trim().length === 0 && !anexo)
                         }
                       >
                         {enviandoMensagem ? 'Enviando…' : 'Enviar'}

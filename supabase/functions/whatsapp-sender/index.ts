@@ -24,7 +24,63 @@ type Reservada = {
   kind: string;
   body_text: string | null;
   attempts: number;
+  media_storage_path: string | null;
+  media_mime_type: string | null;
+  media_filename: string | null;
+  media_provider_id: string | null;
 };
+
+// A Meta agrupa midia em quatro tipos e cada um tem um campo proprio no corpo
+// da mensagem. O tipo sai do MIME, e nao da extensao do arquivo: extensao e
+// palpite de quem nomeou, MIME e o que o navegador mediu.
+function tipoDaMidia(mime: string): 'image' | 'video' | 'audio' | 'document' {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'document';
+}
+
+// Baixa do balde privado com a chave de servico e sobe para a Meta.
+//
+// Nao mandamos por URL publica -- que a Meta aceita e seria mais simples --
+// porque isso exporia a foto de uma cliente, nem que por minutos, e URL que ja
+// foi publica nao volta a ser privada.
+async function subirMidiaParaMeta(
+  supabaseUrl: string,
+  serviceKey: string,
+  accessToken: string,
+  senderId: string,
+  caminho: string,
+  mime: string,
+  nomeArquivo: string
+): Promise<string> {
+  const arquivo = await fetch(
+    `${supabaseUrl}/storage/v1/object/anexos/${caminho.split('/').map(encodeURIComponent).join('/')}`,
+    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+  );
+  if (!arquivo.ok) {
+    throw new Error(`balde ${arquivo.status} ao baixar ${caminho}`);
+  }
+  const bytes = await arquivo.blob();
+
+  const formulario = new FormData();
+  formulario.append('messaging_product', 'whatsapp');
+  formulario.append('type', mime);
+  formulario.append('file', new File([bytes], nomeArquivo, { type: mime }));
+
+  const subida = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${senderId}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: formulario,
+  });
+  const corpo = await subida.text();
+  if (!subida.ok) {
+    throw new Error(`upload de midia ${subida.status}: ${corpo.slice(0, 400)}`);
+  }
+  const id = (JSON.parse(corpo) as { id?: string }).id;
+  if (!id) throw new Error(`upload sem id: ${corpo.slice(0, 200)}`);
+  return id;
+}
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -109,8 +165,60 @@ Deno.serve(async (req) => {
       if (!item.sender_id) {
         throw new Error('conexao sem external_sender_id — canal nao configurado');
       }
-      if (item.kind !== 'TEXT') {
+      if (item.kind !== 'TEXT' && item.kind !== 'MEDIA') {
         throw new Error(`tipo ${item.kind} ainda nao suportado pelo worker`);
+      }
+
+      // Monta o corpo. Texto e um caso; midia sao quatro, e todos seguem a
+      // mesma forma: { type: <tipo>, <tipo>: { id, caption? } }.
+      let corpoDaMensagem: Record<string, unknown>;
+
+      if (item.kind === 'TEXT') {
+        corpoDaMensagem = {
+          type: 'text',
+          text: { preview_url: false, body: item.body_text ?? '' },
+        };
+      } else {
+        if (!item.media_storage_path || !item.media_mime_type) {
+          throw new Error('mensagem de midia sem caminho ou sem MIME');
+        }
+
+        // Reaproveita o id de uma tentativa anterior. Se a primeira subiu o
+        // arquivo e falhou so no envio, subir de novo seria pagar duas vezes a
+        // parte lenta -- e uma mensagem tem ate cinco tentativas.
+        let mediaId = item.media_provider_id;
+        if (!mediaId) {
+          mediaId = await subirMidiaParaMeta(
+            supabaseUrl,
+            serviceKey,
+            accessToken,
+            item.sender_id,
+            item.media_storage_path,
+            item.media_mime_type,
+            item.media_filename ?? 'arquivo'
+          );
+          // Grava antes de tentar enviar: se o envio falhar agora, a proxima
+          // tentativa ja encontra o id.
+          await rpc(supabaseUrl, serviceKey, 'mark_outbox_media_uploaded', {
+            p_outbox_id: item.id,
+            p_media_provider_id: mediaId,
+          });
+        }
+
+        const tipo = tipoDaMidia(item.media_mime_type);
+        const conteudo: Record<string, unknown> = { id: mediaId };
+        // Audio nao aceita legenda na Meta, e documento usa `filename` em vez
+        // de caption para o nome. Mandar campo que o tipo nao aceita derruba a
+        // mensagem inteira com erro de validacao.
+        const legenda = (item.body_text ?? '').trim();
+        if (legenda.length > 0 && (tipo === 'image' || tipo === 'video' || tipo === 'document')) {
+          conteudo.caption = legenda;
+        }
+        if (tipo === 'document' && item.media_filename) {
+          conteudo.filename = item.media_filename;
+        }
+
+        corpoDaMensagem = { type: tipo, [tipo]: conteudo };
       }
 
       const resposta = await fetch(
@@ -125,10 +233,9 @@ Deno.serve(async (req) => {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
             to: item.recipient_address,
-            type: 'text',
-            text: { preview_url: false, body: item.body_text ?? '' },
+            ...corpoDaMensagem,
           }),
-        },
+        }
       );
 
       const corpo = await resposta.text();
@@ -156,19 +263,23 @@ Deno.serve(async (req) => {
     } catch (erro) {
       // Se o registro do desfecho falhar, a mensagem fica em SENDING. E melhor
       // ficar presa e visivel do que ser reenviada as cegas.
-      console.error(JSON.stringify({ event: 'mark_result_failed', outboxId: item.id, erro: String(erro) }));
+      console.error(
+        JSON.stringify({ event: 'mark_result_failed', outboxId: item.id, erro: String(erro) })
+      );
     }
 
     if (sucesso) enviadas++;
     else falhadas++;
   }
 
-  console.log(JSON.stringify({
-    event: 'outbox_drained',
-    reservadas: reservadas.length,
-    enviadas,
-    falhadas,
-  }));
+  console.log(
+    JSON.stringify({
+      event: 'outbox_drained',
+      reservadas: reservadas.length,
+      enviadas,
+      falhadas,
+    })
+  );
 
   return json(200, { ok: true, reservadas: reservadas.length, enviadas, falhadas });
 });

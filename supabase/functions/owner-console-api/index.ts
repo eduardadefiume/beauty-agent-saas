@@ -286,23 +286,33 @@ Deno.serve(async (request: Request) => {
       // A chave de idempotencia vem do navegador de proposito: se a conexao
       // cair depois do envio e a pessoa apertar de novo, a mesma chave devolve
       // o mesmo envio em vez de mandar duas vezes para a cliente.
-      if (
-        typeof input.conversationId !== 'string' ||
-        typeof input.text !== 'string' ||
-        input.text.trim().length === 0 ||
-        typeof input.idempotencyKey !== 'string' ||
-        input.idempotencyKey.length < 8 ||
-        input.idempotencyKey.length > 128
-      ) {
-        return json(400, { error: 'INVALID_SEND_REQUEST' });
+      {
+        const temAnexo =
+          typeof input.mediaStoragePath === 'string' && input.mediaStoragePath.length > 0;
+        const texto = typeof input.text === 'string' ? input.text : '';
+        // Audio nao vem com legenda. Exigir texto aqui impediria mandar audio,
+        // que e metade da conversa de um salao.
+        if (
+          typeof input.conversationId !== 'string' ||
+          (texto.trim().length === 0 && !temAnexo) ||
+          (temAnexo && typeof input.mediaMimeType !== 'string') ||
+          typeof input.idempotencyKey !== 'string' ||
+          input.idempotencyKey.length < 8 ||
+          input.idempotencyKey.length > 128
+        ) {
+          return json(400, { error: 'INVALID_SEND_REQUEST' });
+        }
+        rpcBody = {
+          ...common,
+          target_tenant_id: tenantId,
+          target_conversation_id: input.conversationId,
+          message_text: texto,
+          idempotency_key: input.idempotencyKey,
+          media_storage_path: temAnexo ? input.mediaStoragePath : null,
+          media_mime_type: temAnexo ? input.mediaMimeType : null,
+          media_filename: typeof input.mediaFilename === 'string' ? input.mediaFilename : null,
+        };
       }
-      rpcBody = {
-        ...common,
-        target_tenant_id: tenantId,
-        target_conversation_id: input.conversationId,
-        message_text: input.text,
-        idempotency_key: input.idempotencyKey,
-      };
       break;
   }
 

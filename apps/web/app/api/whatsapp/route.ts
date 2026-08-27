@@ -83,6 +83,10 @@ export async function POST(request: Request): Promise<Response> {
       conversationId: typeof input.conversationId === 'string' ? input.conversationId : undefined,
       text: typeof input.text === 'string' ? input.text : undefined,
       idempotencyKey: typeof input.idempotencyKey === 'string' ? input.idempotencyKey : undefined,
+      mediaStoragePath:
+        typeof input.mediaStoragePath === 'string' ? input.mediaStoragePath : undefined,
+      mediaMimeType: typeof input.mediaMimeType === 'string' ? input.mediaMimeType : undefined,
+      mediaFilename: typeof input.mediaFilename === 'string' ? input.mediaFilename : undefined,
     }),
   });
 

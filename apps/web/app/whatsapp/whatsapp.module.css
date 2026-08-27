@@ -595,3 +595,123 @@
   color: #a33;
   line-height: 1.5;
 }
+
+/* Ferramentas do compositor: clipe, câmera, microfone.
+   Ficam à esquerda, longe do botão de enviar — anexar por engano quando se
+   queria enviar é o tipo de erro que manda foto errada para uma cliente. */
+.ferramentas {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: auto;
+}
+
+.ferramenta {
+  width: 2.1rem;
+  height: 2.1rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.ferramenta:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
+}
+.ferramenta:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.subindo {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+/* O anexo já subiu quando aparece aqui. A prévia existe para a pessoa
+   conferir o que vai sair antes de mandar. */
+.anexo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.anexoPrevia {
+  width: 3rem;
+  height: 3rem;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.anexoIcone {
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+.anexoTexto {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+.anexoTexto strong {
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anexoTexto span {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Gravando: a barra toma o lugar da caixa de texto inteira. Não dá para
+   escrever e gravar ao mesmo tempo, e fingir que dá confunde. */
+.gravando {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.2rem;
+}
+.gravando strong {
+  font-variant-numeric: tabular-nums;
+  margin-right: auto;
+}
+
+.pontoVermelho {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: #c0392b;
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pontoVermelho {
+    animation: pulsa 1.2s ease-in-out infinite;
+  }
+}
+@keyframes pulsa {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
