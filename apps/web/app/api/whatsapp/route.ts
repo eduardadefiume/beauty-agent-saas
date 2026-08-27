@@ -20,6 +20,7 @@ const ACTIONS = new Set([
   'dismissOwnerQuestion',
   'agentParkedConversations',
   'resumeParkedConversation',
+  'sendMessage',
 ]);
 
 const JSON_HEADERS = {
@@ -80,6 +81,8 @@ export async function POST(request: Request): Promise<Response> {
       questionId: typeof input.questionId === 'string' ? input.questionId : undefined,
       answer: typeof input.answer === 'string' ? input.answer : undefined,
       conversationId: typeof input.conversationId === 'string' ? input.conversationId : undefined,
+      text: typeof input.text === 'string' ? input.text : undefined,
+      idempotencyKey: typeof input.idempotencyKey === 'string' ? input.idempotencyKey : undefined,
     }),
   });
 

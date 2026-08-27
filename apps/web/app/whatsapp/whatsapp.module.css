@@ -498,3 +498,100 @@
   line-height: 1.45;
   word-break: break-word;
 }
+
+/* Caminho de volta. Estava faltando: quem entrava na tela só saía pelo botão
+   do navegador. */
+.voltar {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ink);
+  opacity: 0.65;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.voltar:hover,
+.voltar:focus-visible {
+  opacity: 1;
+  border-bottom-color: currentColor;
+}
+
+/* A caixa de digitação.
+   Fica colada no rodapé da conversa e não rola junto com as mensagens: a mão
+   de quem usa WhatsApp procura a caixa sempre no mesmo lugar. */
+.compositor {
+  border-top: 1px solid var(--line);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--surface, #fff);
+}
+
+.campoMensagem {
+  width: 100%;
+  resize: vertical;
+  min-height: 3rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  background: transparent;
+  color: inherit;
+}
+.campoMensagem:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+.campoMensagem:disabled {
+  opacity: 0.6;
+}
+
+.compositorAcoes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.contadorCaracteres {
+  font-size: 0.75rem;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.enviar {
+  padding: 0.5rem 1.4rem;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper, #fff);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.enviar:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Janela fechada não é erro do sistema, é regra da Meta. O aviso explica em
+   vez de mostrar um botão que não funciona. */
+.janelaFechadaAviso {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--line);
+  background: rgba(0, 0, 0, 0.03);
+  font-size: 0.87rem;
+  line-height: 1.55;
+}
+
+.erroEnvio {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #a33;
+  line-height: 1.5;
+}

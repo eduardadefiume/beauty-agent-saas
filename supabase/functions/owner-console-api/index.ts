@@ -36,6 +36,10 @@ const ACTION_RPC = {
   // pessoa veja e resolva, nao de um numero no meio de outros.
   agentParkedConversations: 'site_agent_parked_conversations',
   resumeParkedConversation: 'site_resume_parked_conversation',
+  // O dono respondendo pela tela. Existe porque um numero na Cloud API sai do
+  // aplicativo do WhatsApp Business: sem esta acao, no dia da migracao o dono
+  // fica sem nenhuma forma de falar com a cliente dele.
+  sendMessage: 'site_send_manual_message',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -276,6 +280,28 @@ Deno.serve(async (request: Request) => {
         ...common,
         target_tenant_id: tenantId,
         target_conversation_id: input.conversationId,
+      };
+      break;
+    case 'sendMessage':
+      // A chave de idempotencia vem do navegador de proposito: se a conexao
+      // cair depois do envio e a pessoa apertar de novo, a mesma chave devolve
+      // o mesmo envio em vez de mandar duas vezes para a cliente.
+      if (
+        typeof input.conversationId !== 'string' ||
+        typeof input.text !== 'string' ||
+        input.text.trim().length === 0 ||
+        typeof input.idempotencyKey !== 'string' ||
+        input.idempotencyKey.length < 8 ||
+        input.idempotencyKey.length > 128
+      ) {
+        return json(400, { error: 'INVALID_SEND_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_conversation_id: input.conversationId,
+        message_text: input.text,
+        idempotency_key: input.idempotencyKey,
       };
       break;
   }

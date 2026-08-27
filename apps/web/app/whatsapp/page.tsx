@@ -151,6 +151,16 @@ export default function WhatsAppConsole() {
   const [retomando, setRetomando] = useState<string | null>(null);
   const [respostas, setRespostas] = useState<Record<string, string>>({});
   const [enviandoResposta, setEnviandoResposta] = useState<string | null>(null);
+  // Rascunho por conversa: trocar de conversa e voltar não pode apagar o que a
+  // pessoa já tinha digitado.
+  const [rascunhos, setRascunhos] = useState<Record<string, string>>({});
+  // Uma chave de idempotência por rascunho. Ela sobrevive a uma falha de rede
+  // de propósito: apertar enviar de novo devolve o mesmo envio em vez de
+  // mandar a mensagem duas vezes para a cliente. Só é trocada depois do
+  // sucesso, quando começa uma mensagem nova.
+  const [chavesEnvio, setChavesEnvio] = useState<Record<string, string>>({});
+  const [enviandoMensagem, setEnviandoMensagem] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const tenantRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -310,6 +320,69 @@ export default function WhatsAppConsole() {
     }
   }
 
+  // O dono respondendo pela tela.
+  //
+  // Fora da janela de 24h a Meta recusa texto livre -- só modelo aprovado. A
+  // função do banco devolve SERVICE_WINDOW_CLOSED e a tela diz isso com todas
+  // as letras, em vez de deixar a mensagem sumir sem explicação.
+  async function enviarMensagem() {
+    const tenantId = tenantRef.current;
+    const conversationId = selecionada;
+    if (!tenantId || !conversationId) return;
+    const texto = (rascunhos[conversationId] ?? '').trim();
+    if (texto.length === 0 || enviandoMensagem) return;
+
+    const chave = chavesEnvio[conversationId] ?? crypto.randomUUID();
+    if (!chavesEnvio[conversationId]) {
+      setChavesEnvio((atual) => ({ ...atual, [conversationId]: chave }));
+    }
+
+    setEnviandoMensagem(true);
+    setErroEnvio(null);
+    try {
+      const r = await fetch('/api/whatsapp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sendMessage',
+          tenantId,
+          conversationId,
+          text: texto,
+          idempotencyKey: chave,
+        }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? 'FALHA');
+      // O console embrulha o retorno da RPC em `data`. Ler o nível errado aqui
+      // faria uma recusa da Meta passar por sucesso e o rascunho ser apagado
+      // sem a mensagem ter saído.
+      const resultado = (body?.data ?? {}) as { ok?: boolean; reason?: string };
+      if (resultado.ok === false) {
+        setErroEnvio(
+          resultado.reason === 'SERVICE_WINDOW_CLOSED'
+            ? 'A janela de 24h fechou. Só dá para escrever livremente até 24h depois da última mensagem da cliente — fora disso a Meta exige um modelo aprovado.'
+            : resultado.reason === 'BODY_TOO_LONG'
+              ? 'Mensagem longa demais. O limite do WhatsApp é 4096 caracteres.'
+              : 'Não foi possível enviar. Tente de novo.'
+        );
+        return;
+      }
+      // Só limpa depois de o banco aceitar. Rascunho apagado com envio falho
+      // é texto perdido.
+      setRascunhos((atual) => ({ ...atual, [conversationId]: '' }));
+      setChavesEnvio((atual) => {
+        const proximo = { ...atual };
+        delete proximo[conversationId];
+        return proximo;
+      });
+      await buscar();
+    } catch {
+      setErroEnvio('Não foi possível enviar. Tente de novo — a mensagem não sai duas vezes.');
+    } finally {
+      setEnviandoMensagem(false);
+    }
+  }
+
   // Devolver a conversa ao agente e ato humano e deliberado: alguem olhou,
   // entendeu o que travou e decidiu tentar de novo. Por isso tem confirmacao --
   // se a causa nao foi resolvida, ela vai estacionar de novo em meia hora.
@@ -366,6 +439,11 @@ export default function WhatsAppConsole() {
     <main className={styles.shell}>
       <header className={styles.topo}>
         <div>
+          {/* Sem isto não havia caminho de volta: quem entrava aqui só saía
+              pelo botão do navegador. */}
+          <a className={styles.voltar} href="/">
+            ← Voltar ao configurador
+          </a>
           <span className={styles.eyebrow}>whatsapp · {workspace?.tenantName ?? ''}</span>
           <h1>Conversas e agente</h1>
         </div>
@@ -631,6 +709,57 @@ export default function WhatsAppConsole() {
                     )}
                   </div>
                 ))}
+              </div>
+
+              {/* A caixa de digitação. É ela que transforma esta tela de
+                  espelho em telefone -- um número na Cloud API sai do
+                  aplicativo do WhatsApp Business, então esta é a única porta
+                  que resta para o dono falar com a cliente. */}
+              <div className={styles.compositor}>
+                {!conversa.windowOpen ? (
+                  <p className={styles.janelaFechadaAviso}>
+                    <strong>Janela de 24h fechada.</strong> Texto livre só sai até 24h depois da
+                    última mensagem da cliente — é regra da Meta, não do sistema. Fora disso, só
+                    modelo aprovado. Assim que ela escrever, a caixa volta.
+                  </p>
+                ) : (
+                  <>
+                    <textarea
+                      className={styles.campoMensagem}
+                      value={rascunhos[conversa.id] ?? ''}
+                      placeholder="Escreva para a cliente…"
+                      rows={2}
+                      maxLength={4096}
+                      disabled={enviandoMensagem}
+                      onChange={(e) =>
+                        setRascunhos((atual) => ({ ...atual, [conversa.id]: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        // Enter envia, Shift+Enter quebra linha -- é o que a
+                        // mão de quem usa WhatsApp já espera.
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          void enviarMensagem();
+                        }
+                      }}
+                    />
+                    <div className={styles.compositorAcoes}>
+                      <span className={styles.contadorCaracteres}>
+                        {(rascunhos[conversa.id] ?? '').length}/4096
+                      </span>
+                      <button
+                        className={styles.enviar}
+                        onClick={() => void enviarMensagem()}
+                        disabled={
+                          enviandoMensagem || (rascunhos[conversa.id] ?? '').trim().length === 0
+                        }
+                      >
+                        {enviandoMensagem ? 'Enviando…' : 'Enviar'}
+                      </button>
+                    </div>
+                  </>
+                )}
+                {erroEnvio && <p className={styles.erroEnvio}>{erroEnvio}</p>}
               </div>
             </>
           )}
