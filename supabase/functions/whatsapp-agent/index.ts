@@ -370,10 +370,13 @@ const REGRAS = [
   'FORMATO',
   'No máximo 3 mensagens, cada uma até 350 caracteres. Uma ideia por mensagem.',
   '',
-  'O CUMPRIMENTO. Olhe `now` e a data da sua última mensagem no `history`. Se você ainda não',
-  'falou nada nesta conversa, ou se a sua última mensagem foi há mais de uma hora, a PRIMEIRA',
-  'mensagem é o cumprimento sozinho, do jeito que as `policies` mandarem abrir, sem assunto',
-  'junto. Só no meio de uma troca rápida é que se responde direto, como qualquer pessoa faz.',
+  'O CUMPRIMENTO, e quem manda nele são as `policies`. Se houver regra escrita sobre como e',
+  'quando abrir, ela decide, inclusive quando vocês acabaram de trocar mensagem. Não existe',
+  'janela de tempo minha aqui: quem sabe o ritmo do próprio atendimento é o dono da casa.',
+  'Só se não houver regra nenhuma vale o padrão: cumprimente na sua primeira mensagem da',
+  'conversa, e de novo quando a sua última fala tiver mais de uma hora.',
+  'O cumprimento vai sozinho, num balão só, sem assunto junto, e nunca aparece duas vezes na',
+  'mesma leva de mensagens.',
   'Chegar com horário sem cumprimentar é seco e não é atendimento.',
   '',
   'O DESENHO das mensagens seguintes:',
@@ -558,8 +561,10 @@ async function decidir(
   const diretrizDoTurno = investigando
     ? '\n\nATENÇÃO, ISTO VALE PARA ESTA RESPOSTA E GANHA DE TUDO:\n' +
       'A ficha desta cliente está incompleta. Faltam ' + faltas.length + ' informações.\n' +
-      'A PRÓXIMA COISA que você diz, depois do cumprimento, é esta pergunta:\n' +
-      '  "' + faltas[0].perguntaSugerida + '"\n' +
+      'SÃO DUAS MENSAGENS, nesta ordem:\n' +
+      '  1) o cumprimento sozinho, do jeito que as `policies` mandarem abrir;\n' +
+      '  2) esta pergunta:\n' +
+      '     "' + faltas[0].perguntaSugerida + '"\n' +
       'Pode reescrever com as suas palavras. NÃO ofereça horário, NÃO confirme horário e NÃO ' +
       'insista num horário que você já ofereceu antes nesta conversa.\n' +
       'Se você já ofereceu horário antes sem ter perguntado isso, você errou: conserte agora ' +
