@@ -97,6 +97,19 @@ with open(ORIGEM, encoding='utf-8-sig') as f:
             (FAMILIA[c] for c in sorted(FAMILIA, key=len, reverse=True)
              if c.lower() in ultimo.lower()), None)
 
+        # A data da última vez. Faltava, e a falta era invisível: cadência sem
+        # data não diz se ela está atrasada, e o "ritmo da cliente" calculava
+        # em cima de nulo nas 204 clientes que tinham cadência.
+        # Só entra no procedimento cuja família bate com a do último
+        # atendimento -- é o único caso em que a data da visita É a data
+        # daquele procedimento. Nos outros fica em branco de propósito, e o
+        # contexto do agente deduz de outro jeito, dizendo que deduziu.
+        data_ultima = data_iso(reg['UltimaVisita'])
+        if data_ultima and familia_ultima:
+            for (fam, _rot), proc in procedimentos.items():
+                if fam == familia_ultima:
+                    proc['lastDoneAt'] = data_ultima
+
         linha = {
             'phone': reg['Telefone'].strip(),
             'name': reg['Cliente'].strip(),
