@@ -307,7 +307,7 @@ const REGRAS = [
   'deduzir de uma foto que veio junto nem do que costuma ser comum.',
   'Quando faltar uma informação que muda o atendimento, pergunte a ELA. "Seu cabelo é comprido?"',
   'é uma pergunta normal e honesta. Afirmar que é comprido sem saber é a pior coisa que você',
-  'pode fazer: entrega na hora que do outro lado tem uma máquina chutando.'
+  'pode fazer: entrega na hora que do outro lado tem uma máquina chutando.',
   'Como falar do preço que aparece na arte, quem manda são as `policies`.',
   'Se a arte contradisser o catálogo, e nenhuma regra resolver a contradição, use ASK_OWNER.',
   'Foto que a cliente manda do próprio caso é para VOCÊ entender o que ela tem e o que ela quer,',
@@ -536,12 +536,43 @@ async function decidir(
   motivoFalha?: string;
   agendou?: { quando: string; appointmentId: string } | null;
 }> {
+  // A INVESTIGAÇÃO NÃO PODE SER UMA SUGESTÃO.
+  //
+  // A lista `client.missing` chegou completa no contexto, com cinco itens, e o
+  // modelo ofereceu horário assim mesmo. Duas vezes. O motivo é entendível: o
+  // histórico tinha ele próprio oferecendo aquele horário antes, e o peso da
+  // conversa venceu a regra que estava lá atrás no prompt de sistema.
+  //
+  // Regra em prompt é preferência. Aqui vira duas coisas duras:
+  //   1. Uma diretriz do turno, colada logo depois do JSON da conversa, que é
+  //      a última coisa que ele lê antes de decidir.
+  //   2. A ferramenta de RESERVAR some da mesa. Enquanto faltar ficha ele
+  //      simplesmente não tem como marcar, por mais convencido que esteja.
+  //
+  // Consultar a agenda continua permitido: quem só quer saber se tem vaga
+  // merece resposta, e travar isso puniria a cliente pelo cadastro incompleto.
+  const faltas = ((volatil as { client?: { missing?: Array<{ campo: string; perguntaSugerida: string }> } })
+    ?.client?.missing ?? []);
+  const investigando = faltas.length > 0;
+
+  const diretrizDoTurno = investigando
+    ? '\n\nATENÇÃO, ISTO VALE PARA ESTA RESPOSTA E GANHA DE TUDO:\n' +
+      'A ficha desta cliente está incompleta. Faltam ' + faltas.length + ' informações.\n' +
+      'A PRÓXIMA COISA que você diz, depois do cumprimento, é esta pergunta:\n' +
+      '  "' + faltas[0].perguntaSugerida + '"\n' +
+      'Pode reescrever com as suas palavras. NÃO ofereça horário, NÃO confirme horário e NÃO ' +
+      'insista num horário que você já ofereceu antes nesta conversa.\n' +
+      'Se você já ofereceu horário antes sem ter perguntado isso, você errou: conserte agora ' +
+      'perguntando, não repita o erro.'
+    : '';
+
   const mensagens: Anthropic.MessageParam[] = [
     {
       role: 'user',
       content:
         'Esta conversa (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
-        JSON.stringify(volatil),
+        JSON.stringify(volatil) +
+        diretrizDoTurno,
     },
   ];
 
@@ -568,7 +599,11 @@ async function decidir(
           cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
         },
       ],
-      tools: FERRAMENTAS,
+      // Sem ficha, sem reserva. Não é castigo: é que marcar química sem saber
+      // o que já foi feito naquele cabelo é o erro que queima cliente.
+      tools: investigando
+        ? FERRAMENTAS.filter((f) => f.name !== 'reservar_horario')
+        : FERRAMENTAS,
       tool_choice: { type: 'any' },
       messages: mensagens,
     });
