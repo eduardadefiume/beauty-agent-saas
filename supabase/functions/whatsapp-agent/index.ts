@@ -127,6 +127,47 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       additionalProperties: false,
     },
   },
+  // A ficha so anda se alguem escrever nela.
+  //
+  // Sem isto o agente descobria na conversa que o cabelo e curto, dizia
+  // "perfeito, vi aqui" e no minuto seguinte a lista de pendencias mandava
+  // perguntar o comprimento de novo. Escrever nao e enfeite: e o que faz a
+  // investigacao terminar.
+  //
+  // Nao e estrito de proposito: o modelo manda so o que descobriu neste turno,
+  // e o que nao vier fica como estava. O banco nunca apaga campo preenchido.
+  {
+    name: 'anotar_na_ficha',
+    description:
+      'Guarda na ficha da cliente o que VOCÊ descobriu nesta conversa, seja porque ela contou, seja porque você viu na foto que ela mandou. Mande apenas os campos que você descobriu agora. Use SEMPRE que aparecer uma informação nova, antes de responder.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        comprimento: {
+          type: 'string',
+          description:
+            'O comprimento do cabelo, com o rótulo exato que aparece em `lengthOptions` nos dados do negócio.',
+        },
+        temQuimica: { type: 'boolean', description: 'Se ela tem alguma química no cabelo.' },
+        quimicaQual: { type: 'string', description: 'Qual química, nas palavras dela.' },
+        quimicaQuando: { type: 'string', description: 'Data aproximada da última química, AAAA-MM-DD.' },
+        quimicaFormol: {
+          type: 'string',
+          enum: ['COM_FORMOL', 'SEM_FORMOL', 'NAO_SABE'],
+          description: 'Só quando ela disser. Nunca deduza.',
+        },
+        temColoracao: { type: 'boolean', description: 'Se o cabelo é colorido ou tem tintura.' },
+        coloracaoQuando: { type: 'string', description: 'Data aproximada da última coloração, AAAA-MM-DD.' },
+        tomQueQuer: { type: 'string', description: 'O tom que ela quer alcançar, do jeito que ela descreveu ou como você viu na foto de referência.' },
+        observacao: {
+          type: 'string',
+          description:
+            'Uma linha sobre o caso dela que a ficha não tem campo para guardar. Some ao que já existe, nunca substitui.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
   {
     name: 'atender',
     description: 'Registra o que fazer nesta conversa.',
@@ -331,6 +372,27 @@ const REGRAS = [
   'CUIDADO: `isKnown: true` diz só que EXISTE uma ficha, não que ela tem algo dentro. Quem',
   'decide se você sabe alguma coisa é `client.missing`, campo por campo.',
   '',
+  'TEM PERGUNTA QUE NÃO É DA CLIENTE, E ESSA VOCÊ NUNCA FAZ',
+  'Você pergunta o que só ELA sabe: o que ela já fez no cabelo, quando fez, o que ela quer.',
+  'Você NÃO pergunta o que é leitura técnica de quem trabalha com isso: volume, espessura,',
+  'saúde do fio, porosidade, se o caso "precisa de correção de cor". Isso você vê na foto, ou',
+  'fica para a avaliação presencial. Jogar esse diagnóstico no colo da cliente é o contrário de',
+  'atender: ela procurou o salão justamente para não precisar saber.',
+  'E nunca faça pergunta que já vem com a resposta dentro ("então não teria volume, né?").',
+  'Pergunta capciosa empurra a cliente a concordar e ainda soa falsa.',
+  'Quando faltar uma informação técnica, o caminho é outro: peça a foto que mostra aquilo, ou',
+  'siga para a avaliação, que é onde isso se decide.',
+  'Para o tom, o certo é sempre pedir a FOTO do tom que ela quer, nunca perguntar se o cabelo',
+  '"tem correção de cor" - a foto responde melhor e não constrange ninguém.',
+  '',
+  'O QUE VOCÊ DESCOBRE, VOCÊ ANOTA',
+  'Toda vez que aparecer informação nova sobre o cabelo dela, seja porque ela contou, seja',
+  'porque você viu na foto que ela mandou, chame anotar_na_ficha ANTES de responder. Mande só',
+  'o que descobriu agora.',
+  'Se você viu na foto que o cabelo é curto, isso é informação sua: anota e não pergunta mais.',
+  'Ficha que não é escrita faz você perguntar amanhã o que a cliente te contou hoje, e não',
+  'existe jeito mais rápido de perder uma cliente.',
+  '',
   '`client.missing` É A SUA LISTA DE INVESTIGAÇÃO',
   'Vem na ordem certa e com a pergunta já escrita em `perguntaSugerida`. Se `missing` está',
   'vazio, você conhece o caso dela e vai direto ao horário.',
@@ -530,6 +592,7 @@ async function decidir(
     workerToken: string;
     tenantId: string;
     unitId: string;
+    conversationId: string;
     clientePhone: string | null;
     clienteNome: string | null;
   }
@@ -740,6 +803,34 @@ async function decidir(
             }
           }
         }
+      } else if (chamada.name === 'anotar_na_ficha') {
+        // Falhar aqui nao derruba o turno: a cliente esperando resposta importa
+        // mais que um campo que pode ser perguntado de novo depois.
+        try {
+          const gravado = (await rpc(
+            ambiente.supabaseUrl,
+            ambiente.serviceKey,
+            'record_client_facts_for_conversation',
+            { p_conversation_id: ambiente.conversationId, p_facts: chamada.input }
+          )) as { ok?: boolean; ignorados?: string[]; aindaFalta?: Array<{ perguntaSugerida: string }> };
+
+          if (gravado?.ok) {
+            const falta = gravado.aindaFalta ?? [];
+            texto =
+              'Anotado na ficha.' +
+              (gravado.ignorados?.length
+                ? ` Não deu para gravar: ${gravado.ignorados.join(', ')}.`
+                : '') +
+              (falta.length
+                ? ` Ainda falta saber ${falta.length}. A próxima pergunta é: "${falta[0].perguntaSugerida}"`
+                : ' A ficha está completa, pode seguir para o horário.');
+          } else {
+            texto = 'Não deu para anotar agora. Siga a conversa normalmente.';
+          }
+        } catch (erroFicha) {
+          console.error(JSON.stringify({ event: 'ficha_write_failed', erro: String(erroFicha) }));
+          texto = 'Não deu para anotar agora. Siga a conversa normalmente.';
+        }
       } else {
         texto = 'Ferramenta desconhecida.';
       }
@@ -850,6 +941,7 @@ Deno.serve(async (req) => {
           workerToken: req.headers.get('x-worker-token') ?? '',
           tenantId: item.tenant_id,
           unitId: contexto.unitId ?? '',
+          conversationId: item.conversation_id,
           clientePhone: volatilTipado?.contact?.whatsapp ?? null,
           clienteNome: volatilTipado?.contact?.displayName ?? null,
         }
