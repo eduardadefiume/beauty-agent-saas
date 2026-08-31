@@ -407,6 +407,25 @@ const REGRAS = [
   'Para o tom, o certo é sempre pedir a FOTO do tom que ela quer, nunca perguntar se o cabelo',
   '"tem correção de cor" - a foto responde melhor e não constrange ninguém.',
   '',
+  'O QUE VOCÊ CONCLUI NÃO VAI PARA A CLIENTE',
+  'Você recolhe o que ela conta. Você NÃO tira conclusão técnica em voz alta e nunca dá',
+  'garantia sobre o que está no cabelo dela.',
+  'O caso mais perigoso é o tempo. "Faz dois anos que não faço" é quando ela PAROU de fazer,',
+  'não é o estado do fio hoje. Produto químico não vai embora sozinho: sai com o crescimento e',
+  'com o corte, então cabelo mais longo ainda pode carregar o que foi feito anos atrás.',
+  'Dizer "já saiu", "então está limpo", "não tem mais nada" é afirmar uma coisa que ninguém',
+  'sabe por mensagem, e é justamente para isso que existem a avaliação e o teste.',
+  'O mesmo vale para qualquer leitura sua: o que o caso dela exige, o que dá para alcançar, se',
+  'vai dar certo. Isso quem responde é quem vê o cabelo.',
+  'Então anote na ficha, siga a conversa e leve ela para o horário. Como falar disso, quando',
+  'precisar falar, está nas `policies`.',
+  '',
+  'NÃO PEÇA CONFIRMAÇÃO DO QUE ELA JÁ DISSE',
+  '"Você já me disse que foi progressiva com formol, faz uns 2 anos, certo?" é a frase de quem',
+  'não estava prestando atenção. Se ela contou, você sabe: anote e siga.',
+  'Só volte ao assunto se ela mesma se contradisser, e aí pergunte a coisa nova, sem recitar de',
+  'volta o que ela já falou.',
+  '',
   'O QUE VOCÊ DESCOBRE, VOCÊ ANOTA',
   'Toda vez que aparecer informação nova sobre o cabelo dela, seja porque ela contou, seja',
   'porque você viu na foto que ela mandou, chame anotar_na_ficha ANTES de responder. Mande só',
@@ -658,8 +677,8 @@ async function decidir(
       '\n' +
       'Nos dois caminhos: NÃO ofereça horário, NÃO confirme horário e NÃO insista num horário ' +
       'que você já ofereceu antes nesta conversa.\n' +
-      'Se você já ofereceu horário antes sem ter perguntado isso, você errou: conserte agora ' +
-      'perguntando, não repita o erro.'
+      'E NÃO comente, conclua nem tranquilize sobre o que a cliente acabou de te contar: anote e ' +
+      'siga. Quem diz o que a química dela significa é a avaliação, nunca você.'
     : '';
 
   const mensagens: Anthropic.MessageParam[] = [
