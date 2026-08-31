@@ -215,7 +215,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
     label: 'WhatsApp',
     ready: false,
     soonNote:
-      'A conexão técnica com a Meta já existe em modo piloto restrito, mas o painel para você acompanhar conversas e status ainda não foi construído.',
+      'O console de conversas vive na operação, não aqui: abra "Abrir operação" e vá em "WhatsApp ao vivo". Ele fica fora do configurador porque não pode congelar quando a configuração está publicada.',
   },
   {
     key: 'agente',
@@ -229,7 +229,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
     label: 'Clientes',
     ready: false,
     soonNote:
-      'Cadastro de clientes com histórico, preferências e consentimento ainda não tem tabela própria no banco.',
+      'A ficha da cliente vive na operação, não aqui: abra "Abrir operação" e vá em "Clientes". Ela fica fora do configurador porque ficha não é configuração - travar a ficha quando o negócio está publicado impediria você de anotar uma química no dia em que descobre.',
   },
   {
     key: 'promocoes',

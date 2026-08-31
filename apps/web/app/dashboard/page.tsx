@@ -69,6 +69,10 @@ const navItems: NavItem[] = [
   // Único item que sai do dashboard: o console de WhatsApp é uma tela própria,
   // porque atualiza sozinha e tem o botão de parada de emergência.
   { label: "WhatsApp ao vivo", icon: Inbox, target: "whatsapp", href: "/whatsapp" },
+  // Também sai do dashboard: a ficha da cliente é operação, não configuração,
+  // e por isso não vive no configurador (que congela quando o negócio está
+  // publicado).
+  { label: "Clientes", icon: Users, target: "clientes", href: "/clientes" },
   { label: "Serviços e Agenda", icon: CalendarDays, target: "schedule" },
   { label: "Evidências", icon: FileCheck2, target: "evidence" },
 ];

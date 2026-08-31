@@ -40,6 +40,13 @@ const ACTION_RPC = {
   // aplicativo do WhatsApp Business: sem esta acao, no dia da migracao o dono
   // fica sem nenhuma forma de falar com a cliente dele.
   sendMessage: 'site_send_manual_message',
+  // Clientes. Nao entram no ciclo de rascunho/publicacao da configuracao: a
+  // ficha de uma cliente e operacao, nao ajuste do negocio, e travar a ficha
+  // porque a configuracao esta no ar seria impedir a dona de anotar uma
+  // quimica no dia em que ela descobre.
+  loadClients: 'site_load_clients',
+  loadClient: 'site_load_client',
+  saveClient: 'site_save_client',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -280,6 +287,51 @@ Deno.serve(async (request: Request) => {
         ...common,
         target_tenant_id: tenantId,
         target_conversation_id: input.conversationId,
+      };
+      break;
+    case 'loadClients':
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_limit: Number.isInteger(input.limit) ? input.limit : 200,
+      };
+      break;
+    case 'loadClient':
+      if (typeof input.profileId !== 'string') {
+        return json(400, { error: 'INVALID_CLIENT_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_profile_id: input.profileId,
+      };
+      break;
+    case 'saveClient':
+      // O payload aqui SUBSTITUI procedimentos, visitas manuais e fotos da
+      // ficha. Mandar um objeto sem esses campos apagaria os tres, entao a
+      // forma tem que ser conferida antes de chegar no banco: array de
+      // verdade ou nada feito.
+      if (
+        typeof input.profileId !== 'string' ||
+        typeof input.payload !== 'object' ||
+        input.payload === null ||
+        Array.isArray(input.payload)
+      ) {
+        return json(400, { error: 'INVALID_CLIENT_SAVE_REQUEST' });
+      }
+      {
+        const corpo = input.payload as Record<string, unknown>;
+        for (const campo of ['procedures', 'visits', 'photos']) {
+          if (!Array.isArray(corpo[campo])) {
+            return json(400, { error: 'INVALID_CLIENT_SAVE_REQUEST', field: campo });
+          }
+        }
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_profile_id: input.profileId,
+        payload: input.payload,
       };
       break;
     case 'sendMessage':
