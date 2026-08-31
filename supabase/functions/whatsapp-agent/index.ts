@@ -154,14 +154,23 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         },
         temQuimica: { type: 'boolean', description: 'Se ela tem alguma química no cabelo.' },
         quimicaQual: { type: 'string', description: 'Qual química, nas palavras dela.' },
-        quimicaQuando: { type: 'string', description: 'Data aproximada da última química, AAAA-MM-DD.' },
+        quimicaHaQuantoTempo: {
+          type: 'string',
+          description:
+            'Há quanto tempo foi a última química, com as palavras dela: "uns 2 anos", "6 meses", "3 semanas". PREFIRA este campo: a conta de calendário é feita pelo sistema.',
+        },
+        quimicaQuando: { type: 'string', description: 'Só quando ela disser a data exata, AAAA-MM-DD.' },
         quimicaFormol: {
           type: 'string',
           enum: ['COM_FORMOL', 'SEM_FORMOL', 'NAO_SABE'],
           description: 'Só quando ela disser. Nunca deduza.',
         },
         temColoracao: { type: 'boolean', description: 'Se o cabelo é colorido ou tem tintura.' },
-        coloracaoQuando: { type: 'string', description: 'Data aproximada da última coloração, AAAA-MM-DD.' },
+        coloracaoHaQuantoTempo: {
+          type: 'string',
+          description: 'Há quanto tempo foi a última coloração, com as palavras dela. Prefira este campo.',
+        },
+        coloracaoQuando: { type: 'string', description: 'Só quando ela disser a data exata, AAAA-MM-DD.' },
         tomQueQuer: { type: 'string', description: 'O tom que ela quer alcançar, do jeito que ela descreveu ou como você viu na foto de referência.' },
         observacao: {
           type: 'string',
@@ -331,6 +340,14 @@ const REGRAS = [
   '- Quando a consulta de agenda falhar. Aí não invente horário: pergunte à dona.',
   'Escreva a pergunta como se perguntasse para a dona no meio do salão: curta e específica.',
   '',
+  'ASK_OWNER NÃO É PEDIR PERMISSÃO, e este é o erro mais caro que você pode cometer.',
+  'Se a pergunta que você ia mandar para a dona JÁ CONTÉM a resposta ("confirmo que fica a',
+  'partir de R$ 430 e digo que depende da avaliação?"), então você tinha a resposta e a cliente',
+  'ficou sem nada esperando uma autorização que ninguém precisava dar.',
+  'Antes de usar ASK_OWNER, faça este teste: eu consigo escrever uma resposta honesta com o que',
+  'está no catálogo, nas `policies` e nas `statusArts`? Se consigo, é REPLY.',
+  'ASK_OWNER é só para o que NÃO EXISTE nos dados. Falta de coragem não é falta de informação.',
+  '',
   'QUANDO A DONA JÁ TE RESPONDEU',
   'Se vier `ownerAnswers`, a informação é sua agora. Responda a cliente com naturalidade, como',
   'quem sempre soube. Nunca diga "consultei", "verifiquei" ou "a equipe me informou". E termine',
@@ -430,6 +447,12 @@ const REGRAS = [
   'Toda vez que aparecer informação nova sobre o cabelo dela, seja porque ela contou, seja',
   'porque você viu na foto que ela mandou, chame anotar_na_ficha ANTES de responder. Mande só',
   'o que descobriu agora.',
+  'Anote TUDO que couber daquela mensagem de uma vez. Se ela disse "eu fazia progressiva com',
+  'formol, mas faz uns 2 anos que parei", isso é química, tipo, formol E tempo, tudo na mesma',
+  'chamada. Anotar metade faz a pendencia continuar aberta e você acaba perguntando de novo o',
+  'que ela já respondeu.',
+  'Para tempo, prefira `quimicaHaQuantoTempo` com as palavras dela ("uns 2 anos"): a conta de',
+  'calendário o sistema faz, e conta feita por você erra calada.',
   'Se você viu na foto que o cabelo é curto, isso é informação sua: anota e não pergunta mais.',
   'Ficha que não é escrita faz você perguntar amanhã o que a cliente te contou hoje, e não',
   'existe jeito mais rápido de perder uma cliente.',
@@ -440,6 +463,9 @@ const REGRAS = [
   'Se `missing` TEM item e o que ela quer depende disso, você PERGUNTA antes de fechar horário.',
   'Uma pergunta por vez, a primeira da lista, com as suas palavras. Nunca despeje a lista toda:',
   'cinco perguntas de uma vez é formulário, não é conversa.',
+  'MAS ANTES DE PERGUNTAR, releia o histórico. Se ela já respondeu aquilo em alguma mensagem,',
+  'mesmo de passagem, anote com anotar_na_ficha e pule para o assunto seguinte. Campo vazio às',
+  'vezes é só sinal de que VOCÊ esqueceu de anotar.',
   'Marcar um procedimento químico sem saber o que já foi feito naquele cabelo é o pior erro que',
   'você pode cometer, muito pior que demorar uma mensagem a mais.',
   'O que JÁ está preenchido, você não pergunta de novo. Perguntar o que ela já te contou é a',
@@ -674,6 +700,10 @@ async function decidir(
       '  2) esta pergunta:\n' +
       '     "' + faltas[0].perguntaSugerida + '"\n' +
       'Pode reescrever com as suas palavras.\n' +
+      'ANTES DE PERGUNTAR, releia o histórico. Se ela JÁ respondeu isso em alguma mensagem, mesmo ' +
+      'de passagem e no meio de outra frase, NÃO pergunte de novo: chame anotar_na_ficha com o ' +
+      'que ela disse e siga para o assunto seguinte. Esta lista existe porque o campo está vazio, ' +
+      'e às vezes ele está vazio só porque você esqueceu de anotar.\n' +
       '\n' +
       'Nos dois caminhos: NÃO ofereça horário, NÃO confirme horário e NÃO insista num horário ' +
       'que você já ofereceu antes nesta conversa.\n' +
