@@ -56,6 +56,10 @@ const ACTION_RPC = {
   deleteAgentPolicy: 'site_delete_agent_policy',
   loadStatusArts: 'site_load_status_arts',
   updateStatusArt: 'site_update_status_art',
+  // Conhecimento: as dimensoes e opcoes com que o salao classifica um cabelo
+  // (comprimento, volume). E isso que da nome ao que o agente anota na ficha.
+  loadKnowledge: 'site_load_knowledge',
+  saveKnowledge: 'site_save_knowledge',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -345,7 +349,26 @@ Deno.serve(async (request: Request) => {
       break;
     case 'loadAgentPolicies':
     case 'loadStatusArts':
+    case 'loadKnowledge':
       rpcBody = { ...common, target_tenant_id: tenantId };
+      break;
+    case 'saveKnowledge':
+      // O payload SUBSTITUI a arvore inteira: dimensao, opcao ou foto que nao
+      // vier no corpo e apagada. Um payload sem `dimensions` limparia o
+      // cadastro todo em silencio, entao a forma e conferida antes.
+      if (
+        typeof input.payload !== 'object' ||
+        input.payload === null ||
+        Array.isArray(input.payload) ||
+        !Array.isArray((input.payload as Record<string, unknown>).dimensions)
+      ) {
+        return json(400, { error: 'INVALID_KNOWLEDGE_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        payload: input.payload,
+      };
       break;
     case 'saveAgentPolicy':
       if (

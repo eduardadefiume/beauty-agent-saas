@@ -1,0 +1,333 @@
+/* Mesma paleta do dashboard, WhatsApp, Clientes e Agente. */
+
+.shell {
+  --ink: #1e2b2a;
+  --paper: #f4f0e8;
+  --olive: #6e7a4a;
+  --lime: #a5b47a;
+  --muted: #858a80;
+  --alerta: #a8412f;
+  min-height: 100vh;
+  padding: clamp(20px, 4vw, 44px);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Manrope, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.estado {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 28px;
+  background: #f4f0e8;
+  color: #1e2b2a;
+  font-family: Manrope, Arial, sans-serif;
+}
+.estadoCard {
+  width: min(100%, 550px);
+  padding: clamp(30px, 6vw, 58px);
+  border: 1px solid rgba(30, 43, 42, 0.14);
+  background: rgba(255, 255, 255, 0.46);
+}
+.estadoCard h1 {
+  margin: 18px 0 0;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(30px, 5vw, 46px);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+.estadoCard p {
+  margin: 16px 0 0;
+  color: #6c7066;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.eyebrow {
+  display: block;
+  color: var(--olive);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.voltar {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+.voltar:hover {
+  color: var(--ink);
+}
+
+.topo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.topo h1 {
+  margin: 8px 0 0;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+
+.salvar {
+  padding: 11px 22px;
+  border: 1px solid rgba(30, 43, 42, 0.2);
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+  font-family: inherit;
+  font-size: 13px;
+}
+.salvarPendente {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.aviso {
+  margin: 18px 0 0;
+  padding: 12px 16px;
+  border: 1px solid rgba(168, 65, 47, 0.3);
+  background: rgba(168, 65, 47, 0.06);
+  color: var(--alerta);
+  font-size: 13px;
+}
+.recado {
+  margin: 16px 0 0;
+  padding: 11px 15px;
+  border: 1px solid rgba(110, 122, 74, 0.3);
+  background: rgba(165, 180, 122, 0.14);
+  color: var(--olive);
+  font-size: 13px;
+}
+
+.contadores {
+  display: grid;
+  gap: 1px;
+  margin-top: 24px;
+  border: 1px solid rgba(30, 43, 42, 0.14);
+  background: rgba(30, 43, 42, 0.14);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.contador {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  background: rgba(255, 255, 255, 0.5);
+}
+.contador strong {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+}
+.contador span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.explicacao {
+  max-width: 78ch;
+  margin: 24px 0 6px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.75;
+}
+.explicacao strong {
+  color: var(--ink);
+}
+
+/* --- Dimensão ------------------------------------------------------------- */
+
+.dimensao {
+  margin-top: 22px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid rgba(30, 43, 42, 0.16);
+  background: rgba(255, 255, 255, 0.5);
+}
+.dimensaoTopo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.campoNome {
+  display: flex;
+  min-width: 220px;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.campoNome input {
+  padding: 9px 11px;
+  border: 1px solid rgba(30, 43, 42, 0.2);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink);
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 20px;
+}
+
+.campoLargo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.campoLargo input {
+  padding: 9px 11px;
+  border: 1px solid rgba(30, 43, 42, 0.2);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+/* --- Opções --------------------------------------------------------------- */
+
+.opcoes {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(30, 43, 42, 0.1);
+}
+.opcoesTitulo {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--olive);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.opcao {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(30, 43, 42, 0.1);
+  background: rgba(255, 255, 255, 0.55);
+}
+.opcaoGrade {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+  grid-template-columns: minmax(140px, 1fr) minmax(180px, 2fr) auto;
+}
+@media (max-width: 700px) {
+  .opcaoGrade {
+    grid-template-columns: 1fr;
+  }
+}
+.opcaoGrade label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.opcaoGrade input {
+  padding: 8px 10px;
+  border: 1px solid rgba(30, 43, 42, 0.2);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.fotos {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(30, 43, 42, 0.14);
+}
+.foto {
+  display: grid;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto;
+}
+@media (max-width: 700px) {
+  .foto {
+    grid-template-columns: 1fr;
+  }
+}
+.foto code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.foto input {
+  padding: 7px 9px;
+  border: 1px solid rgba(30, 43, 42, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+/* --- Botões e rodapé ------------------------------------------------------ */
+
+.principal {
+  padding: 11px 22px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+.ghost,
+.ghostPerigo {
+  padding: 8px 15px;
+  border: 1px solid rgba(30, 43, 42, 0.2);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.ghost:hover {
+  border-color: var(--olive);
+}
+.ghostPerigo {
+  border-color: rgba(168, 65, 47, 0.3);
+  color: var(--alerta);
+}
+.ghostPerigo:hover {
+  background: rgba(168, 65, 47, 0.07);
+}
+
+.rodape {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(30, 43, 42, 0.12);
+}
+.nota {
+  margin: 12px 0 0;
+  max-width: 72ch;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.vazio {
+  padding: 30px 18px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}

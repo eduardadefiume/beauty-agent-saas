@@ -76,6 +76,9 @@ const navItems: NavItem[] = [
   // As regras que a dona escreve para o agente. Também fora do configurador:
   // regra corrigida às 11h tem que valer no atendimento das 11h05.
   { label: "Agente e regras", icon: Sparkles, target: "agente", href: "/agente" },
+  // O vocabulário com que o salão descreve um cabelo. É ele que dá nome ao que
+  // o agente anota na ficha.
+  { label: "Conhecimento", icon: ScanLine, target: "conhecimento", href: "/conhecimento" },
   { label: "Serviços e Agenda", icon: CalendarDays, target: "schedule" },
   { label: "Evidências", icon: FileCheck2, target: "evidence" },
 ];

@@ -201,7 +201,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
     label: 'Conhecimento (fotos)',
     ready: false,
     soonNote:
-      'Classificar cabelo por foto com IA ainda depende de um motor de análise de imagem que não foi construído. As variações de comprimento e volume por texto já podem ser cadastradas em Serviços.',
+      'O vocabulário do salão - as perguntas sobre o cabelo e as respostas possíveis - fica na operação: abra "Abrir operação" e vá em "Conhecimento". O que ainda não existe é classificar cabelo por foto automaticamente: isso depende de um motor de análise de imagem que não foi construído.',
   },
   {
     key: 'comunicacao',
