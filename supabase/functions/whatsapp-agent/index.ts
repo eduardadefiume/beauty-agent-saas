@@ -289,8 +289,26 @@ type Candidato = {
 type EstadoDaConversa = {
   configurationVersionId?: string;
   serviceId?: string;
+  serviceName?: string;
   candidatos: Candidato[];
 };
+
+// O que a conversa ja decidiu sobre agenda, lido do banco no inicio da leva.
+// Sem isso o servico e reescolhido do zero a cada leva de mensagens: foi assim
+// que o agente ofereceu sabado as 8h para um servico de 240 min e, na leva
+// seguinte, consultou a agenda para outro de 360 min -- que nao cabe em
+// sabado nenhum -- e concluiu que o horario tinha sumido.
+type Foco = {
+  serviceId: string;
+  serviceName: string;
+  configurationVersionId: string | null;
+  candidates: Candidato[];
+  ageMinutes: number;
+};
+
+// Depois disso os horarios guardados nao valem mais: outra cliente pode ter
+// pegado. O servico continua valendo -- ele nao vence.
+const FOCO_CANDIDATOS_VALIDOS_MINUTOS = 12 * 60;
 
 // O teto de voltas existe para o caso de o modelo insistir em consultar sem
 // nunca decidir: sem ele, uma conversa confusa viraria uma sequencia infinita
@@ -370,7 +388,53 @@ async function decidir(
     },
   ];
 
+  // O foco e lido antes da primeira volta: e ele que impede o servico de
+  // trocar sozinho entre uma leva de mensagens e a seguinte.
+  let foco: Foco | null = null;
+  try {
+    foco = (await rpc(ambiente.supabaseUrl, ambiente.serviceKey, 'agent_scheduling_focus', {
+      p_conversation_id: ambiente.conversationId,
+    })) as Foco | null;
+  } catch (erro) {
+    console.error('FOCO_LEITURA_FALHOU', ambiente.conversationId, String(erro));
+  }
+
+  // O servico com que a conversa ENTROU neste turno. E ele que manda na hora
+  // de reservar: consultar outro servico e so informacao, mas marcar outro
+  // servico e mandar a cliente para o procedimento errado.
+  const servicoDoInicioDoTurno = foco?.serviceId ?? null;
+
   const estado: EstadoDaConversa = { candidatos: [] };
+  if (foco?.serviceId) {
+    estado.serviceId = foco.serviceId;
+    estado.serviceName = foco.serviceName;
+    if (foco.ageMinutes <= FOCO_CANDIDATOS_VALIDOS_MINUTOS) {
+      estado.configurationVersionId = foco.configurationVersionId ?? undefined;
+      estado.candidatos = foco.candidates ?? [];
+    }
+  }
+
+  // A diretriz da agenda vai colada na mesma mensagem, depois da diretriz da
+  // ficha: e a ultima coisa que o modelo le antes de escolher a ferramenta.
+  if (foco?.serviceId) {
+    const primeira = mensagens[0];
+    primeira.content =
+      (primeira.content as string) +
+      '\n\nESTA CONVERSA JÁ ESTÁ NUM SERVIÇO: ' + foco.serviceName + '.\n' +
+      'Foi nesse serviço que você consultou a agenda e foi dele que saiu qualquer horário ' +
+      'que você já ofereceu. Se precisar consultar a agenda de novo, consulte ESSE serviço.\n' +
+      'Só troque de serviço se a CLIENTE pedir outra coisa - e, se trocar, diga a ela que ' +
+      'trocou, porque o horário e o tempo mudam junto.' +
+      (estado.candidatos.length > 0
+        ? '\nOs horários que você já tem na mão para esse serviço:\n' +
+          estado.candidatos
+            .map((c, i) => `${i + 1}. ${horarioLocal(c.startMs)}`)
+            .join('\n') +
+          '\nSe ela aceitou um desses, chame reservar_horario com o número dele. ' +
+          'Não precisa consultar de novo.'
+        : '');
+  }
+
   const usage: Uso = {
     input_tokens: 0,
     output_tokens: 0,
@@ -437,6 +501,13 @@ async function decidir(
 
       if (chamada.name === 'consultar_horarios') {
         const args = chamada.input as { servicoId: string; aPartirDe: string; dias: number };
+        // A troca silenciosa de servico e o erro que esta consulta existe para
+        // pegar: mesmo horario, servico com outra duracao, agenda responde
+        // outra coisa. Nao bloqueio -- a cliente pode ter mudado de ideia --
+        // mas o modelo tem que ler em voz alta que trocou.
+        const trocouDeServico =
+          !!estado.serviceId && !!args.servicoId && args.servicoId !== estado.serviceId;
+        const servicoAnterior = estado.serviceName;
         const busca = await agenda(
           ambiente.supabaseUrl,
           ambiente.serviceKey,
@@ -465,23 +536,84 @@ async function decidir(
           estado.serviceId = dados.serviceId;
           estado.candidatos = dados.candidates ?? [];
 
+          // O foco vira fato no banco: a proxima leva de mensagens le isso e
+          // consulta o mesmo servico em vez de escolher outro do zero.
+          try {
+            const gravado = (await rpc(
+              ambiente.supabaseUrl,
+              ambiente.serviceKey,
+              'agent_set_scheduling_focus',
+              {
+                p_tenant_id: ambiente.tenantId,
+                p_conversation_id: ambiente.conversationId,
+                p_service_id: dados.serviceId,
+                p_configuration_version_id: dados.configurationVersionId,
+                p_candidates: estado.candidatos,
+              }
+            )) as { serviceName?: string } | null;
+            estado.serviceName = gravado?.serviceName ?? estado.serviceName;
+          } catch (erro) {
+            console.error('FOCO_GRAVACAO_FALHOU', ambiente.conversationId, String(erro));
+          }
+
+          const cabecalho = estado.serviceName
+            ? `Agenda de ${estado.serviceName}:`
+            : 'Agenda:';
+
+          const aviso =
+            trocouDeServico
+              ? `ATENÇÃO: esta conversa estava em ${servicoAnterior ?? 'outro serviço'} e você ` +
+                `acabou de consultar ${estado.serviceName ?? 'um serviço diferente'}. Serviços ` +
+                'diferentes têm durações diferentes, então os horários mudam. Se a cliente não ' +
+                'pediu para trocar, consulte de novo o serviço de antes. Se ela pediu, avise a ' +
+                'ela que o horário mudou junto.\n\n'
+              : '';
+
           texto =
-            estado.candidatos.length === 0
-              ? 'Nenhum horário livre nesse período.'
-              : 'Horários livres:\n' +
+            aviso +
+            (estado.candidatos.length === 0
+              ? `${cabecalho} nenhum horário livre nesse período. Isso é a agenda falando: ` +
+                'esse horário não existe. Não peça para a dona confirmar assim mesmo - ' +
+                'ofereça outro período ou outro dia.'
+              : cabecalho +
+                '\n' +
                 estado.candidatos
                   .map(
                     (c, i) =>
                       `${i + 1}. ${horarioLocal(c.startMs)} (termina ${horarioLocal(c.endMs)})`
                   )
                   .join('\n') +
-                '\n\nISTO AINDA NÃO É UM AGENDAMENTO. Só existe agendamento depois de reservar_horario.';
+                '\n\nISTO AINDA NÃO É UM AGENDAMENTO. Só existe agendamento depois de reservar_horario.');
         }
       } else if (chamada.name === 'reservar_horario') {
         const args = chamada.input as { opcao: number };
         const escolhido = estado.candidatos[(args.opcao ?? 1) - 1];
 
-        if (!escolhido || !estado.configurationVersionId || !estado.serviceId) {
+        // A TRAVA DO SERVICO. Aviso nao basta: o modelo ja leu o aviso, trocou
+        // de servico assim mesmo e marcou 13h de um procedimento de 5 horas
+        // para uma cliente que tinha aceitado 8h de outro. Dentro de um turno
+        // o servico nao muda. Trocar exige um turno novo -- que e o tempo de
+        // dizer a cliente que trocou.
+        const trocouNaHoraDeMarcar =
+          servicoDoInicioDoTurno != null &&
+          estado.serviceId != null &&
+          estado.serviceId !== servicoDoInicioDoTurno;
+
+        if (trocouNaHoraDeMarcar) {
+          console.error(
+            JSON.stringify({
+              event: 'reserva_bloqueada_por_troca_de_servico',
+              conversationId: ambiente.conversationId,
+              servicoDoTurno: servicoDoInicioDoTurno,
+              servicoTentado: estado.serviceId,
+            })
+          );
+          texto =
+            'NÃO reservei: esta conversa era de outro serviço e você trocou no meio. ' +
+            'Marcar o serviço errado é pior que não marcar. Consulte de novo o serviço de ' +
+            'antes e ofereça o horário dele. Se a cliente realmente quer outro serviço, ' +
+            'fale isso com ela primeiro e marque na próxima mensagem.';
+        } else if (!escolhido || !estado.configurationVersionId || !estado.serviceId) {
           texto = 'Essa opção não existe. Consulte os horários antes de reservar.';
         } else {
           // Reserva temporaria e confirmacao, na sequencia. O hold protege a
@@ -528,6 +660,20 @@ async function decidir(
                 quando: horarioLocal(escolhido.startMs),
                 appointmentId: dados.appointmentId ?? '',
               };
+              // Marcou: o foco morre. Se ela voltar amanha para marcar outra
+              // coisa, comeca do zero em vez de arrastar os candidatos de um
+              // agendamento que ja aconteceu.
+              try {
+                await rpc(
+                  ambiente.supabaseUrl,
+                  ambiente.serviceKey,
+                  'agent_clear_scheduling_focus',
+                  { p_conversation_id: ambiente.conversationId }
+                );
+              } catch (erro) {
+                console.error('FOCO_LIMPEZA_FALHOU', ambiente.conversationId, String(erro));
+              }
+              estado.candidatos = [];
               texto = `Marcado com sucesso para ${horarioLocal(escolhido.startMs)}. Agora sim, confirme para a cliente.`;
             }
           }
