@@ -423,10 +423,7 @@ export default function TelaDeConhecimento() {
         <button
           className={styles.principal}
           onClick={() =>
-            mexer([
-              ...dimensoes,
-              { id: idNovo(), name: '', whatToLookAt: '', options: [] },
-            ])
+            mexer([...dimensoes, { id: idNovo(), name: '', whatToLookAt: '', options: [] }])
           }
         >
           Adicionar pergunta

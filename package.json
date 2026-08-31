@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "guardrails": "node scripts/guardrails.mjs",
     "backup:check": "node scripts/backup/check-backup-kit.mjs",
-    "quality": "pnpm guardrails && pnpm backup:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm format:check"
+    "quality": "pnpm guardrails && pnpm backup:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm format:check:changed",
+    "format:check:changed": "node scripts/format-check-changed.mjs"
   },
   "devDependencies": {
     "eslint": "10.8.0",

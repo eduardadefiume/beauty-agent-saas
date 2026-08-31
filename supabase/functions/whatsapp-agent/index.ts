@@ -135,7 +135,10 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description:
             'Há quanto tempo foi a última química, com as palavras dela: "uns 2 anos", "6 meses". PREFIRA este campo: a conta de calendário é feita pelo sistema.',
         },
-        quimicaQuando: { type: 'string', description: 'Só quando ela disser a data exata, AAAA-MM-DD.' },
+        quimicaQuando: {
+          type: 'string',
+          description: 'Só quando ela disser a data exata, AAAA-MM-DD.',
+        },
         quimicaFormol: {
           type: 'string',
           enum: ['COM_FORMOL', 'SEM_FORMOL', 'NAO_SABE'],
@@ -144,9 +147,13 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         temColoracao: { type: 'boolean', description: 'Se o cabelo é colorido ou tem tintura.' },
         coloracaoHaQuantoTempo: {
           type: 'string',
-          description: 'Há quanto tempo foi a última coloração, com as palavras dela. Prefira este campo.',
+          description:
+            'Há quanto tempo foi a última coloração, com as palavras dela. Prefira este campo.',
         },
-        coloracaoQuando: { type: 'string', description: 'Só quando ela disser a data exata, AAAA-MM-DD.' },
+        coloracaoQuando: {
+          type: 'string',
+          description: 'Só quando ela disser a data exata, AAAA-MM-DD.',
+        },
         tomQueQuer: {
           type: 'string',
           description:
@@ -348,13 +355,16 @@ async function decidir(
   // 3. A cliente respondeu "faz uns 2 anos" no meio de outra frase, ele anotou
   //    metade, a pendencia continuou aberta e a diretriz mandou perguntar de
   //    novo o que ela ja tinha dito.
-  const faltas = ((volatil as { client?: { missing?: Array<{ campo: string; perguntaSugerida: string }> } })
-    ?.client?.missing ?? []);
+  const faltas =
+    (volatil as { client?: { missing?: Array<{ campo: string; perguntaSugerida: string }> } })
+      ?.client?.missing ?? [];
   const investigando = faltas.length > 0;
 
   const diretrizDoTurno = investigando
     ? '\n\nATENÇÃO, ISTO VALE PARA ESTA RESPOSTA E GANHA DE TUDO:\n' +
-      'A ficha desta cliente está incompleta. Faltam ' + faltas.length + ' informações.\n' +
+      'A ficha desta cliente está incompleta. Faltam ' +
+      faltas.length +
+      ' informações.\n' +
       'Antes de escrever, decida em que ponto a conversa está.\n' +
       '\n' +
       'CAMINHO A: ela ainda NÃO disse o que quer fazer (só cumprimentou, só falou oi). Então\n' +
@@ -366,7 +376,9 @@ async function decidir(
       'CAMINHO B: ela JÁ disse o que quer. Aí sim a ficha entra:\n' +
       '  1) o cumprimento, se você ainda não cumprimentou nesta leva de mensagens;\n' +
       '  2) esta pergunta:\n' +
-      '     "' + faltas[0].perguntaSugerida + '"\n' +
+      '     "' +
+      faltas[0].perguntaSugerida +
+      '"\n' +
       'Pode reescrever com as suas palavras.\n' +
       'ANTES DE PERGUNTAR, releia o histórico. Se ela JÁ respondeu isso em alguma mensagem, mesmo ' +
       'de passagem, NÃO pergunte de novo: chame anotar_na_ficha com o que ela disse e siga para o ' +
@@ -420,16 +432,16 @@ async function decidir(
     const primeira = mensagens[0];
     primeira.content =
       (primeira.content as string) +
-      '\n\nESTA CONVERSA JÁ ESTÁ NUM SERVIÇO: ' + foco.serviceName + '.\n' +
+      '\n\nESTA CONVERSA JÁ ESTÁ NUM SERVIÇO: ' +
+      foco.serviceName +
+      '.\n' +
       'Foi nesse serviço que você consultou a agenda e foi dele que saiu qualquer horário ' +
       'que você já ofereceu. Se precisar consultar a agenda de novo, consulte ESSE serviço.\n' +
       'Só troque de serviço se a CLIENTE pedir outra coisa - e, se trocar, diga a ela que ' +
       'trocou, porque o horário e o tempo mudam junto.' +
       (estado.candidatos.length > 0
         ? '\nOs horários que você já tem na mão para esse serviço:\n' +
-          estado.candidatos
-            .map((c, i) => `${i + 1}. ${horarioLocal(c.startMs)}`)
-            .join('\n') +
+          estado.candidatos.map((c, i) => `${i + 1}. ${horarioLocal(c.startMs)}`).join('\n') +
           '\nSe ela aceitou um desses, chame reservar_horario com o número dele. ' +
           'Não precisa consultar de novo.'
         : '');
@@ -462,9 +474,7 @@ async function decidir(
       ],
       // Sem ficha, sem reserva. Nao e castigo: marcar quimica sem saber o que
       // ja foi feito naquele cabelo e o erro que queima cliente.
-      tools: investigando
-        ? FERRAMENTAS.filter((f) => f.name !== 'reservar_horario')
-        : FERRAMENTAS,
+      tools: investigando ? FERRAMENTAS.filter((f) => f.name !== 'reservar_horario') : FERRAMENTAS,
       tool_choice: { type: 'any' },
       messages: mensagens,
     });
@@ -556,18 +566,15 @@ async function decidir(
             console.error('FOCO_GRAVACAO_FALHOU', ambiente.conversationId, String(erro));
           }
 
-          const cabecalho = estado.serviceName
-            ? `Agenda de ${estado.serviceName}:`
-            : 'Agenda:';
+          const cabecalho = estado.serviceName ? `Agenda de ${estado.serviceName}:` : 'Agenda:';
 
-          const aviso =
-            trocouDeServico
-              ? `ATENÇÃO: esta conversa estava em ${servicoAnterior ?? 'outro serviço'} e você ` +
-                `acabou de consultar ${estado.serviceName ?? 'um serviço diferente'}. Serviços ` +
-                'diferentes têm durações diferentes, então os horários mudam. Se a cliente não ' +
-                'pediu para trocar, consulte de novo o serviço de antes. Se ela pediu, avise a ' +
-                'ela que o horário mudou junto.\n\n'
-              : '';
+          const aviso = trocouDeServico
+            ? `ATENÇÃO: esta conversa estava em ${servicoAnterior ?? 'outro serviço'} e você ` +
+              `acabou de consultar ${estado.serviceName ?? 'um serviço diferente'}. Serviços ` +
+              'diferentes têm durações diferentes, então os horários mudam. Se a cliente não ' +
+              'pediu para trocar, consulte de novo o serviço de antes. Se ela pediu, avise a ' +
+              'ela que o horário mudou junto.\n\n'
+            : '';
 
           texto =
             aviso +
@@ -687,7 +694,11 @@ async function decidir(
             ambiente.serviceKey,
             'record_client_facts_for_conversation',
             { p_conversation_id: ambiente.conversationId, p_facts: chamada.input }
-          )) as { ok?: boolean; ignorados?: string[]; aindaFalta?: Array<{ perguntaSugerida: string }> };
+          )) as {
+            ok?: boolean;
+            ignorados?: string[];
+            aindaFalta?: Array<{ perguntaSugerida: string }>;
+          };
 
           if (gravado?.ok) {
             const falta = gravado.aindaFalta ?? [];
@@ -864,8 +875,7 @@ Deno.serve(async (req) => {
       // horario que ninguem sabe que existe e o pior desfecho do produto.
       const AFIRMA_AGENDAMENTO =
         /(est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad)/i;
-      const mentiuAgendamento =
-        agendou == null && textos.some((t) => AFIRMA_AGENDAMENTO.test(t));
+      const mentiuAgendamento = agendou == null && textos.some((t) => AFIRMA_AGENDAMENTO.test(t));
 
       let acao = decisao.action;
       if (mentiuAgendamento) {
@@ -940,7 +950,10 @@ Deno.serve(async (req) => {
             });
           } catch (erroPergunta) {
             console.error(
-              JSON.stringify({ event: 'owner_question_with_reply_failed', erro: String(erroPergunta) })
+              JSON.stringify({
+                event: 'owner_question_with_reply_failed',
+                erro: String(erroPergunta),
+              })
             );
           }
         }

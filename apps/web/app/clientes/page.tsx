@@ -354,10 +354,7 @@ export default function TelaDeClientes() {
     [opcoes]
   );
 
-  const atrasadas = useMemo(
-    () => lista.filter((c) => (c.overdueDays ?? -1) > 0).length,
-    [lista]
-  );
+  const atrasadas = useMemo(() => lista.filter((c) => (c.overdueDays ?? -1) > 0).length, [lista]);
   const comPendencia = useMemo(
     () => lista.filter((c) => (c.pendencias ?? []).length > 0).length,
     [lista]
@@ -492,7 +489,8 @@ export default function TelaDeClientes() {
                 </span>
                 {(c.pendencias ?? []).length > 0 && (
                   <span className={styles.itemPendencias}>
-                    falta: {c.pendencias.map((p) => ROTULO_PENDENCIA[p] ?? p.toLowerCase()).join(', ')}
+                    falta:{' '}
+                    {c.pendencias.map((p) => ROTULO_PENDENCIA[p] ?? p.toLowerCase()).join(', ')}
                   </span>
                 )}
               </button>
@@ -610,7 +608,9 @@ export default function TelaDeClientes() {
                     <select
                       value={ficha.hasChemistry == null ? '' : String(ficha.hasChemistry)}
                       onChange={(e) =>
-                        editar({ hasChemistry: e.target.value === '' ? null : e.target.value === 'true' })
+                        editar({
+                          hasChemistry: e.target.value === '' ? null : e.target.value === 'true',
+                        })
                       }
                     >
                       <option value="">não sei</option>
@@ -666,7 +666,9 @@ export default function TelaDeClientes() {
                     <select
                       value={ficha.hasColor == null ? '' : String(ficha.hasColor)}
                       onChange={(e) =>
-                        editar({ hasColor: e.target.value === '' ? null : e.target.value === 'true' })
+                        editar({
+                          hasColor: e.target.value === '' ? null : e.target.value === 'true',
+                        })
                       }
                     >
                       <option value="">não sei</option>
