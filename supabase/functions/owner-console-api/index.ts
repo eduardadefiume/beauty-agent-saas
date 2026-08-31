@@ -47,6 +47,15 @@ const ACTION_RPC = {
   loadClients: 'site_load_clients',
   loadClient: 'site_load_client',
   saveClient: 'site_save_client',
+  // As regras que a dona escreve para o agente, e as artes de status que ele
+  // leu. Tambem ficam fora do ciclo de rascunho/publicacao: uma regra escrita
+  // as 11h da manha precisa valer no atendimento das 11h05, nao na proxima
+  // publicacao.
+  loadAgentPolicies: 'site_load_agent_policies',
+  saveAgentPolicy: 'site_save_agent_policy',
+  deleteAgentPolicy: 'site_delete_agent_policy',
+  loadStatusArts: 'site_load_status_arts',
+  updateStatusArt: 'site_update_status_art',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -332,6 +341,51 @@ Deno.serve(async (request: Request) => {
         target_tenant_id: tenantId,
         target_profile_id: input.profileId,
         payload: input.payload,
+      };
+      break;
+    case 'loadAgentPolicies':
+    case 'loadStatusArts':
+      rpcBody = { ...common, target_tenant_id: tenantId };
+      break;
+    case 'saveAgentPolicy':
+      if (
+        typeof input.policy !== 'object' ||
+        input.policy === null ||
+        Array.isArray(input.policy)
+      ) {
+        return json(400, { error: 'INVALID_POLICY_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_policy: input.policy,
+      };
+      break;
+    case 'deleteAgentPolicy':
+      if (typeof input.policyId !== 'string') {
+        return json(400, { error: 'INVALID_POLICY_DELETE_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_policy_id: input.policyId,
+      };
+      break;
+    case 'updateStatusArt':
+      // Os dois campos sao opcionais na RPC, mas mandar os dois nulos seria
+      // uma escrita que nao escreve nada. Pelo menos um tem que vir.
+      if (
+        typeof input.artId !== 'string' ||
+        (typeof input.ownerNote !== 'string' && typeof input.retired !== 'boolean')
+      ) {
+        return json(400, { error: 'INVALID_STATUS_ART_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_art_id: input.artId,
+        target_owner_note: typeof input.ownerNote === 'string' ? input.ownerNote : null,
+        target_retired: typeof input.retired === 'boolean' ? input.retired : null,
       };
       break;
     case 'sendMessage':

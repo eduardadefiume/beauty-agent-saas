@@ -73,6 +73,9 @@ const navItems: NavItem[] = [
   // e por isso não vive no configurador (que congela quando o negócio está
   // publicado).
   { label: "Clientes", icon: Users, target: "clientes", href: "/clientes" },
+  // As regras que a dona escreve para o agente. Também fora do configurador:
+  // regra corrigida às 11h tem que valer no atendimento das 11h05.
+  { label: "Agente e regras", icon: Sparkles, target: "agente", href: "/agente" },
   { label: "Serviços e Agenda", icon: CalendarDays, target: "schedule" },
   { label: "Evidências", icon: FileCheck2, target: "evidence" },
 ];

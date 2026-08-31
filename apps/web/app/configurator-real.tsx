@@ -222,7 +222,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
     label: 'Agente (fala com você)',
     ready: false,
     soonNote:
-      'O módulo para você conversar direto com a IA (avisar atraso, remanejar clientes, consultar agenda) ainda não foi modelado.',
+      'As regras que você escreve para o agente, e as artes de status que ele leu, ficam na operação: abra "Abrir operação" e vá em "Agente e regras". O que ainda não existe é o caminho inverso - você conversar com ele por mensagem para avisar atraso ou remanejar cliente. Isso ainda não foi modelado.',
   },
   {
     key: 'clientes',
