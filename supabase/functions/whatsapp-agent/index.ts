@@ -113,7 +113,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'reservar_horario',
     description:
-      'Marca o horário de verdade na agenda. Só use depois de a cliente aceitar um horário específico que VOCÊ ofereceu na consulta anterior. Nunca use para um horário que a cliente propôs e você não consultou.',
+      'Marca o horário de verdade na agenda. Só use depois de a cliente aceitar um horário específico que VOCÊ ofereceu na consulta anterior. Enquanto você não chamar esta ferramenta e receber a confirmação, NÃO EXISTE agendamento nenhum.',
     strict: true,
     input_schema: {
       type: 'object',
@@ -203,7 +203,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         ownerQuestion: {
           type: 'string',
           description:
-            'Só quando action for ASK_OWNER. A pergunta para a dona, direta e específica, do jeito que se pergunta para alguém ocupada, citando o serviço pelo nome que ele tem no catálogo deste negócio. Vazio nos outros casos.',
+            'A pergunta para a dona, direta e específica, do jeito que se pergunta para alguém ocupada, citando o serviço pelo nome que ele tem no catálogo deste negócio. Obrigatória quando action for ASK_OWNER. TAMBÉM pode vir junto de um REPLY: aí você responde à cliente o que sabe e pergunta à dona só o pedaço que falta. Vazio quando não há nada a perguntar.',
         },
         contextSummary: {
           type: 'string',
@@ -347,6 +347,14 @@ const REGRAS = [
   'Antes de usar ASK_OWNER, faça este teste: eu consigo escrever uma resposta honesta com o que',
   'está no catálogo, nas `policies` e nas `statusArts`? Se consigo, é REPLY.',
   'ASK_OWNER é só para o que NÃO EXISTE nos dados. Falta de coragem não é falta de informação.',
+  '',
+  'VOCÊ PODE RESPONDER O QUE SABE E PERGUNTAR SÓ O QUE FALTA',
+  'Quando a mensagem dela tem duas coisas e você só sabe uma, NÃO cale a conversa inteira. Use',
+  'REPLY para a parte que você sabe e preencha `ownerQuestion` com a parte que falta: a cliente',
+  'recebe o que dá para responder agora e a dona recebe a pergunta por dentro.',
+  'O caso que não pode acontecer nunca: a cliente ACEITA um horário e pergunta outra coisa na',
+  'mesma leva, e você fica em silêncio por causa da outra coisa. O aceite dela vem primeiro:',
+  'reserve o horário, confirme, e só depois trate o resto.',
   '',
   'QUANDO A DONA JÁ TE RESPONDEU',
   'Se vier `ownerAnswers`, a informação é sua agora. Responda a cliente com naturalidade, como',
@@ -505,6 +513,12 @@ const REGRAS = [
   'Você só pode afirmar o que estiver nos dados desta conversa. Não existe conhecimento seu',
   'sobre este negócio fora daí. Preço que você não achou em NENHUMA das três fontes não pode ser',
   'estimado, nem citado como faixa, nem comparado com outro serviço. Aí é ASK_OWNER.',
+  'Isso vale em dobro para CONDIÇÃO COMERCIAL: forma de pagamento, cartão, parcelamento, juros,',
+  'desconto, sinal, política de cancelamento, garantia. Se não estiver escrito nos seus dados,',
+  'você NÃO SABE, e inventar aqui não é um errinho de conversa: é um compromisso que o salão vai',
+  'ter que honrar ou desmentir na frente da cliente.',
+  'E responda só o que vale para o caso DELA. Se ela quer mechas, não recite a condição do',
+  'alisamento junto: informação de outro procedimento só confunde.',
   '',
   'FORMATO',
   'No máximo 3 mensagens, cada uma até 350 caracteres. Uma ideia por mensagem.',
@@ -832,7 +846,8 @@ async function decidir(
                     (c, i) =>
                       `${i + 1}. ${horarioLocal(c.startMs)} (termina ${horarioLocal(c.endMs)})`
                   )
-                  .join('\n');
+                  .join('\n') +
+                '\n\nISTO AINDA NÃO É UM AGENDAMENTO. Só existe agendamento depois de reservar_horario.';
         }
       } else if (chamada.name === 'reservar_horario') {
         const args = chamada.input as { opcao: number };
@@ -886,7 +901,7 @@ async function decidir(
                 quando: horarioLocal(escolhido.startMs),
                 appointmentId: dados.appointmentId ?? '',
               };
-              texto = `Marcado com sucesso para ${horarioLocal(escolhido.startMs)}. Confirme para a cliente.`;
+              texto = `Marcado com sucesso para ${horarioLocal(escolhido.startMs)}. Agora sim, confirme para a cliente.`;
             }
           }
         }
@@ -1055,7 +1070,32 @@ Deno.serve(async (req) => {
 
       // REPLY sem texto seria um envio em branco. Vale o que o modelo fez, nao
       // o rotulo que ele deu.
+      // NÃO SE ANUNCIA UM AGENDAMENTO QUE NÃO EXISTE.
+      //
+      // O modelo escreveu "seu horário de sábado 05/09 às 8h já está
+      // confirmado" sem ter chamado reservar_horario. A ferramenta estava na
+      // mesa, a ficha estava completa, e mesmo assim ele afirmou. Nenhuma regra
+      // de prompt pode ser a única defesa contra isso: uma cliente que aparece
+      // no salão num horário que não existe é o pior desfecho possível.
+      //
+      // Se o texto afirma que está marcado e `agendou` é nulo, a mensagem não
+      // sai e a conversa vai para uma pessoa.
+      const AFIRMA_AGENDAMENTO =
+        /(est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad)/i;
+      const mentiuAgendamento =
+        agendou == null && textos.some((t) => AFIRMA_AGENDAMENTO.test(t));
+
       let acao = decisao.action;
+      if (mentiuAgendamento) {
+        console.error(
+          JSON.stringify({
+            event: 'agendamento_afirmado_sem_reserva',
+            conversationId: item.conversation_id,
+            textos,
+          })
+        );
+        acao = 'HANDOFF';
+      }
       if (acao === 'REPLY' && textos.length === 0) acao = 'HANDOFF';
       if (acao === 'ASK_OWNER' && (decisao.ownerQuestion ?? '').trim().length < 3) acao = 'HANDOFF';
 
@@ -1097,6 +1137,33 @@ Deno.serve(async (req) => {
           p_tenant_id: item.tenant_id,
           p_conversation_id: item.conversation_id,
         });
+
+        // RESPONDER E PERGUNTAR AO MESMO TEMPO.
+        //
+        // A cliente escreveu "pode sim" e, na mensagem seguinte, "você passa
+        // cartão?". As duas caíram no mesmo turno. Com uma decisão só por
+        // turno, a dúvida sobre pagamento virou ASK_OWNER e ASK_OWNER é
+        // silêncio total: o aceite do horário morreu junto.
+        //
+        // Agora um REPLY pode carregar uma pergunta à dona. A cliente recebe o
+        // que dá para responder agora; o resto vai para a fila da dona sem
+        // parar a conversa.
+        const perguntaJunto = (decisao.ownerQuestion ?? '').trim();
+        if (perguntaJunto.length >= 3) {
+          try {
+            await rpc(supabaseUrl, serviceKey, 'record_owner_question', {
+              p_tenant_id: item.tenant_id,
+              p_conversation_id: item.conversation_id,
+              p_message_id: item.last_inbound_message_id,
+              p_question: perguntaJunto,
+              p_context_summary: decisao.contextSummary,
+            });
+          } catch (erroPergunta) {
+            console.error(
+              JSON.stringify({ event: 'owner_question_with_reply_failed', erro: String(erroPergunta) })
+            );
+          }
+        }
       } else if (acao === 'ASK_OWNER') {
         await rpc(supabaseUrl, serviceKey, 'record_owner_question', {
           p_tenant_id: item.tenant_id,
@@ -1139,8 +1206,9 @@ Deno.serve(async (req) => {
         trigger: item.trigger,
         action: acao,
         reason: decisao.reason,
-        messages: textos,
-        ownerQuestion: acao === 'ASK_OWNER' ? decisao.ownerQuestion : undefined,
+        messages: acao === 'REPLY' ? textos : [],
+        bloqueadas: mentiuAgendamento ? textos : undefined,
+        ownerQuestion: (decisao.ownerQuestion ?? '').trim() || undefined,
         agendou: agendou ?? undefined,
         enfileirados: enviados,
         usage,
