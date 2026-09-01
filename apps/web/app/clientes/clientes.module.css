@@ -397,3 +397,17 @@
   padding: 8px 9px;
   border-bottom: 1px solid rgba(30, 43, 42, 0.08);
 }
+
+/* Marca de quem respondeu: o que o motor leu numa foto não se confunde com o
+   que uma pessoa digitou olhando a cliente. */
+.lidoPelaFoto {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid rgba(110, 122, 74, 0.35);
+  background: rgba(165, 180, 122, 0.16);
+  color: var(--olive);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

@@ -50,7 +50,26 @@ type ClienteDaLista = {
   nextAppointmentAt: string | null;
 };
 
-type OpcaoClassificacao = { dimension: string; optionId: string; label: string };
+type OpcaoClassificacao = {
+  dimensionId: string;
+  dimension: string;
+  optionId: string;
+  label: string;
+};
+
+// Como esta cliente se encaixa numa das perguntas que ESTE salão cadastrou.
+// `source` e `confidence` aparecem na tela de propósito: uma resposta que o
+// motor deu lendo uma foto e uma que alguém digitou olhando a cliente não
+// valem a mesma coisa, e quem corrige a ficha precisa saber qual é qual.
+type Classificacao = {
+  dimensionId: string;
+  dimensionName: string;
+  optionId: string;
+  optionLabel: string;
+  confidence: number | null;
+  source: string;
+  decidedAt: string | null;
+};
 
 type Procedimento = {
   id: string;
@@ -81,7 +100,7 @@ type Foto = {
   takenOn: string | null;
 };
 
-type Ficha = {
+export type Ficha = {
   profileId: string;
   contactId: string;
   displayName: string | null;
@@ -89,8 +108,7 @@ type Ficha = {
   phone: string | null;
   status: string;
   pendencias: Pendencia[];
-  lengthOptionId: string | null;
-  thicknessOptionId: string | null;
+  classifications: Classificacao[];
   hasChemistry: boolean | null;
   chemistryKind: string | null;
   chemistryLastAt: string | null;
@@ -168,12 +186,14 @@ function telefoneLegivel(phone: string | null): string {
 
 // Só o que a tela pode editar volta para o banco. O resto vai de volta igual
 // ao que veio, porque o salvamento substitui as listas inteiras.
-function payloadDaFicha(f: Ficha): Record<string, unknown> {
+export function payloadDaFicha(f: Ficha): Record<string, unknown> {
   return {
     preferredName: f.preferredName ?? '',
     status: f.status,
-    lengthOptionId: f.lengthOptionId ?? '',
-    thicknessOptionId: f.thicknessOptionId ?? '',
+    classifications: f.classifications.map((c) => ({
+      dimensionId: c.dimensionId,
+      optionId: c.optionId,
+    })),
     hasChemistry: f.hasChemistry,
     chemistryKind: f.chemistryKind ?? '',
     chemistryLastAt: f.chemistryLastAt ?? '',
@@ -291,6 +311,39 @@ export default function TelaDeClientes() {
     }
   }
 
+  // Escolher na tela é resposta de gente, e ela vale mais que a do motor: o
+  // que era "lido na foto" passa a ser PESSOA na hora, e é assim que fica
+  // gravado. Escolher "não anotado" apaga a resposta -- é como o dono desfaz
+  // uma leitura errada.
+  function escolherClassificacao(
+    dimensao: { id: string; nome: string; opcoes: OpcaoClassificacao[] },
+    optionId: string
+  ) {
+    setFicha((atual) => {
+      if (!atual) return atual;
+      const outras = atual.classifications.filter((c) => c.dimensionId !== dimensao.id);
+      if (!optionId) return { ...atual, classifications: outras };
+      const opcao = dimensao.opcoes.find((o) => o.optionId === optionId);
+      return {
+        ...atual,
+        classifications: [
+          ...outras,
+          {
+            dimensionId: dimensao.id,
+            dimensionName: dimensao.nome,
+            optionId,
+            optionLabel: opcao?.label ?? '',
+            confidence: null,
+            source: 'PESSOA',
+            decidedAt: null,
+          },
+        ],
+      };
+    });
+    setSujo(true);
+    setAviso(null);
+  }
+
   function editar(mudanca: Partial<Ficha>) {
     setFicha((atual) => (atual ? { ...atual, ...mudanca } : atual));
     setSujo(true);
@@ -345,14 +398,21 @@ export default function TelaDeClientes() {
     }
   }
 
-  const comprimentos = useMemo(
-    () => opcoes.filter((o) => o.dimension.toLowerCase().startsWith('compriment')),
-    [opcoes]
-  );
-  const volumes = useMemo(
-    () => opcoes.filter((o) => !o.dimension.toLowerCase().startsWith('compriment')),
-    [opcoes]
-  );
+  // As perguntas sobre cabelo saem da régua que o salão cadastrou em
+  // Conhecimento, não de uma lista minha. Se ele criar "Volume" amanhã, o
+  // select aparece aqui sem uma linha de código nova.
+  const dimensoes = useMemo(() => {
+    const porDimensao = new Map<
+      string,
+      { id: string; nome: string; opcoes: OpcaoClassificacao[] }
+    >();
+    for (const o of opcoes) {
+      const atual = porDimensao.get(o.dimensionId);
+      if (atual) atual.opcoes.push(o);
+      else porDimensao.set(o.dimensionId, { id: o.dimensionId, nome: o.dimension, opcoes: [o] });
+    }
+    return [...porDimensao.values()];
+  }, [opcoes]);
 
   const atrasadas = useMemo(() => lista.filter((c) => (c.overdueDays ?? -1) > 0).length, [lista]);
   const comPendencia = useMemo(
@@ -554,40 +614,37 @@ export default function TelaDeClientes() {
               <div className={styles.grupo}>
                 <span className={styles.grupoTitulo}>Cabelo</span>
                 <div className={styles.grade}>
-                  <label>
-                    Comprimento
-                    <select
-                      value={ficha.lengthOptionId ?? ''}
-                      onChange={(e) => editar({ lengthOptionId: e.target.value || null })}
-                    >
-                      <option value="">não anotado</option>
-                      {comprimentos.map((o) => (
-                        <option key={o.optionId} value={o.optionId}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Volume
-                    <select
-                      value={ficha.thicknessOptionId ?? ''}
-                      onChange={(e) => editar({ thicknessOptionId: e.target.value || null })}
-                      disabled={volumes.length === 0}
-                    >
-                      <option value="">não anotado</option>
-                      {volumes.map((o) => (
-                        <option key={o.optionId} value={o.optionId}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {dimensoes.map((d) => {
+                    const escolhida = ficha.classifications.find((c) => c.dimensionId === d.id);
+                    return (
+                      <label key={d.id}>
+                        {d.nome}
+                        {escolhida?.source === 'AGENTE_FOTO' && (
+                          <span className={styles.lidoPelaFoto}>
+                            lido na foto
+                            {escolhida.confidence != null &&
+                              ` · ${Math.round(Number(escolhida.confidence) * 100)}%`}
+                          </span>
+                        )}
+                        <select
+                          value={escolhida?.optionId ?? ''}
+                          onChange={(e) => escolherClassificacao(d, e.target.value)}
+                        >
+                          <option value="">não anotado</option>
+                          {d.opcoes.map((o) => (
+                            <option key={o.optionId} value={o.optionId}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    );
+                  })}
                 </div>
-                {volumes.length === 0 && (
+                {dimensoes.length === 0 && (
                   <p className={styles.nota}>
-                    Não há opções de volume cadastradas. Elas são criadas em Serviços, no
-                    configurador.
+                    Este negócio ainda não cadastrou como descrever cabelo. As perguntas e as
+                    respostas possíveis são criadas na tela de Conhecimento.
                   </p>
                 )}
                 <label className={styles.campoLargo}>

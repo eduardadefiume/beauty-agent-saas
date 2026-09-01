@@ -339,6 +339,13 @@ Deno.serve(async (request: Request) => {
             return json(400, { error: 'INVALID_CLIENT_SAVE_REQUEST', field: campo });
           }
         }
+        // `classifications` e conferida so quando vem: o banco trata a ausencia
+        // como "nao mexe", entao uma tela antiga nao apaga classificacao. Mas
+        // se vier com a forma errada, a lista inteira seria apagada em silencio
+        // -- e isso e barrado aqui.
+        if ('classifications' in corpo && !Array.isArray(corpo.classifications)) {
+          return json(400, { error: 'INVALID_CLIENT_SAVE_REQUEST', field: 'classifications' });
+        }
       }
       rpcBody = {
         ...common,
