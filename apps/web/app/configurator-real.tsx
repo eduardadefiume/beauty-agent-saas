@@ -108,7 +108,14 @@ type Step = {
 type Service = {
   name: string;
   basePriceMinor: number | null;
-  variations: Array<{ name: string; priceMinor: number | null }>;
+  variations: Array<{
+    name: string;
+    priceMinor: number | null;
+    /** Em que caso esta variação vale: { idDaPergunta: idDaResposta }. Pergunta
+     *  ausente = vale para qualquer resposta dela. É isto que deixa o agente
+     *  escolher o preço olhando a ficha, em vez de ler um rótulo de texto. */
+    classificationValues: Record<string, string>;
+  }>;
   steps: Step[];
   /** Exige teste de mechas antes do atendimento; o sistema tenta marcar o teste sozinho na janela configurada. */
   requiresStrandTest: boolean;
@@ -255,10 +262,25 @@ async function api(body: Obj) {
 }
 
 const rows = (value: unknown) => (Array.isArray(value) ? (value as Obj[]) : []);
+
+// A classificação vem do banco como jsonb livre. Só sobrevive o que tem a forma
+// { idDaPergunta: idDaResposta }: qualquer outra coisa é lixo de escrita antiga
+// e entra vazio, em vez de quebrar a tela.
+function normalizeClassification(value: unknown): Record<string, string> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const saida: Record<string, string> = {};
+  for (const [chave, valor] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof valor === 'string' && valor.length > 0) saida[chave] = valor;
+  }
+  return saida;
+}
 const clock = (value: unknown, fallback = '09:00') =>
   typeof value === 'string' ? value.slice(0, 5) : fallback;
 
-function normalize(data: Loaded): Config {
+// Exportada para teste: é aqui que o bug morava. A variação vinha do banco com
+// classification_values, a tela lia só nome e preço, e o salvamento -- que
+// devolve o `config` inteiro -- apagava a classificação a cada gravação.
+export function normalize(data: Loaded): Config {
   const raw = data.configuration;
   const skills = rows(raw.skills);
   const skillNames = new Map(skills.map((item) => [String(item.id), String(item.name)]));
@@ -393,6 +415,12 @@ function normalize(data: Loaded): Config {
         variations: rows(item.variations).map((variation) => ({
           name: String(variation.name),
           priceMinor: variation.price_minor == null ? null : Number(variation.price_minor),
+          // O banco já guardava isto e a tela ignorava. Como o salvamento manda
+          // o `config` inteiro de volta, ignorar aqui significava APAGAR a
+          // classificação a cada gravação.
+          classificationValues: normalizeClassification(
+            variation.classification_values ?? variation.classificationValues
+          ),
         })),
         steps: rows(item.steps).map((step) => ({
           name: String(step.name),
@@ -983,6 +1011,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [module, setModule] = useState<ModuleKey>('negocio');
+  // O vocabulário do salão (Conhecimento). Entra aqui porque uma variação de
+  // preço só é útil se disser A QUAL CASO ela se aplica, e os casos são as
+  // respostas que o salão cadastrou.
+  const [vocabulario, setVocabulario] = useState<
+    Array<{ id: string; name: string; options: Array<{ id: string; label: string }> }>
+  >([]);
   const [calendarConnections, setCalendarConnections] = useState<CalendarConnection[]>([]);
   const [calendarShifts, setCalendarShifts] = useState<CalendarShift[]>([]);
   const [syncingCalendar, setSyncingCalendar] = useState(false);
@@ -1045,6 +1079,35 @@ export default function Configurator({ user }: { user: { displayName: string; em
       .catch((error) => setNotice(error instanceof Error ? error.message : 'Falha ao carregar.'))
       .finally(() => setLoading(false));
   }, [tenantId]);
+  // O vocabulário vive fora do rascunho da configuração (é operação, não
+  // publicação), então vem pela rota própria. Falhar aqui não derruba o
+  // configurador: sem vocabulário, a variação continua funcionando com nome
+  // livre, só perde a parte que o agente lê sozinho.
+  useEffect(() => {
+    if (!tenantId) return;
+    void fetch('/api/conhecimento', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'loadKnowledge', tenantId }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('sem vocabulário'))))
+      .then((corpo) => {
+        const dimensoes = (corpo?.data?.dimensions ?? []) as Array<{
+          id: string;
+          name: string;
+          options?: Array<{ id: string; label: string }>;
+        }>;
+        setVocabulario(
+          dimensoes.map((d) => ({
+            id: String(d.id),
+            name: String(d.name),
+            options: (d.options ?? []).map((o) => ({ id: String(o.id), label: String(o.label) })),
+          }))
+        );
+      })
+      .catch(() => setVocabulario([]));
+  }, [tenantId]);
+
   useEffect(() => {
     if (!tenantId) return;
     void api({ action: 'listCalendarConnections', tenantId })
@@ -2847,6 +2910,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                     draft.services[serviceIndex]?.variations.push({
                                       name: '',
                                       priceMinor: null,
+                                      classificationValues: {},
                                     })
                                   )
                                 }
@@ -2855,54 +2919,99 @@ export default function Configurator({ user }: { user: { displayName: string; em
                               </button>
                             </div>
                             <p className="hint small">
-                              Cada variação é livre: cadastre &ldquo;Cabelo longo&rdquo;,
-                              &ldquo;Volume muito&rdquo; ou qualquer critério seu, com o preço
-                              correspondente.
+                              Cada variação é um preço para um caso. O nome é para você; o que o
+                              agente lê são as respostas escolhidas abaixo. Deixar uma pergunta em
+                              &ldquo;qualquer&rdquo; significa que o preço vale para todas as
+                              respostas dela.
                             </p>
+                            {vocabulario.length === 0 && (
+                              <p className="hint small">
+                                Este negócio ainda não tem perguntas cadastradas em Conhecimento,
+                                então a variação só tem nome e preço. Cadastre lá as perguntas
+                                (comprimento, volume) para o agente escolher o preço sozinho.
+                              </p>
+                            )}
                             {service.variations.map((variation, variationIndex) => (
-                              <div className="row variation" key={variationIndex}>
-                                <input
-                                  disabled={!editable}
-                                  value={variation.name}
-                                  placeholder="Ex.: Cabelo longo"
-                                  onChange={(e) =>
-                                    change((draft) => {
-                                      const target =
-                                        draft.services[serviceIndex]?.variations[variationIndex];
-                                      if (target) target.name = e.target.value;
-                                    })
-                                  }
-                                />
-                                <input
-                                  type="number"
-                                  min={0}
-                                  disabled={!editable}
-                                  value={variation.priceMinor ?? ''}
-                                  placeholder="Centavos"
-                                  onChange={(e) =>
-                                    change((draft) => {
-                                      const target =
-                                        draft.services[serviceIndex]?.variations[variationIndex];
-                                      if (target)
-                                        target.priceMinor =
-                                          e.target.value === '' ? null : Number(e.target.value);
-                                    })
-                                  }
-                                />
-                                <button
-                                  className="danger"
-                                  disabled={!editable}
-                                  onClick={() =>
-                                    change((draft) =>
-                                      draft.services[serviceIndex]?.variations.splice(
-                                        variationIndex,
-                                        1
+                              <div className="variation-block" key={variationIndex}>
+                                <div className="row variation">
+                                  <input
+                                    disabled={!editable}
+                                    value={variation.name}
+                                    placeholder="Ex.: Cabelo longo"
+                                    onChange={(e) =>
+                                      change((draft) => {
+                                        const target =
+                                          draft.services[serviceIndex]?.variations[variationIndex];
+                                        if (target) target.name = e.target.value;
+                                      })
+                                    }
+                                  />
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    disabled={!editable}
+                                    value={variation.priceMinor ?? ''}
+                                    placeholder="Centavos"
+                                    onChange={(e) =>
+                                      change((draft) => {
+                                        const target =
+                                          draft.services[serviceIndex]?.variations[variationIndex];
+                                        if (target)
+                                          target.priceMinor =
+                                            e.target.value === '' ? null : Number(e.target.value);
+                                      })
+                                    }
+                                  />
+                                  <button
+                                    className="danger"
+                                    disabled={!editable}
+                                    onClick={() =>
+                                      change((draft) =>
+                                        draft.services[serviceIndex]?.variations.splice(
+                                          variationIndex,
+                                          1
+                                        )
                                       )
-                                    )
-                                  }
-                                >
-                                  Remover
-                                </button>
+                                    }
+                                  >
+                                    Remover
+                                  </button>
+                                </div>
+                                {vocabulario.length > 0 && (
+                                  <div className="variation-caso">
+                                    {vocabulario.map((dimensao) => (
+                                      <label key={dimensao.id}>
+                                        {dimensao.name}
+                                        <select
+                                          disabled={!editable}
+                                          value={variation.classificationValues[dimensao.id] ?? ''}
+                                          onChange={(e) =>
+                                            change((draft) => {
+                                              const alvo =
+                                                draft.services[serviceIndex]?.variations[
+                                                  variationIndex
+                                                ];
+                                              if (!alvo) return;
+                                              if (e.target.value === '') {
+                                                delete alvo.classificationValues[dimensao.id];
+                                              } else {
+                                                alvo.classificationValues[dimensao.id] =
+                                                  e.target.value;
+                                              }
+                                            })
+                                          }
+                                        >
+                                          <option value="">qualquer</option>
+                                          {dimensao.options.map((opcao) => (
+                                            <option key={opcao.id} value={opcao.id}>
+                                              {opcao.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             ))}
 

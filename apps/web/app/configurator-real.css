@@ -426,6 +426,32 @@ legend {
 .row.variation {
   grid-template-columns: 1.6fr 0.7fr auto;
 }
+
+/* Uma variação é o preço + o caso em que ele vale. O bloco existe para que as
+   duas partes andem juntas visualmente: o preço em cima, o caso logo abaixo e
+   recuado, para não parecer outra linha da lista. */
+.variation-block {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed rgba(30, 43, 42, 0.14);
+}
+.variation-block:last-of-type {
+  border-bottom: 0;
+}
+.variation-caso {
+  display: grid;
+  gap: 10px;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 2px solid rgba(110, 122, 74, 0.35);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.variation-caso label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
 .row.requirement {
   grid-template-columns: 1.2fr 0.5fr 1fr auto;
 }
