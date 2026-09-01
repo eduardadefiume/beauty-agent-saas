@@ -8,11 +8,18 @@
 // pigmentação". Esta tela é onde essas respostas entram -- e a decisão de
 // produto dela é o que ela NÃO pede.
 //
-// Ela não pede a tabela de decisão. Clarear quantos níveis exige descoloração,
-// escurecer descolorido exige pré-pigmentação, clarear exige matização: isso é
-// química, é igual em todo salão, e está no banco como conta. Aqui só entram
-// as poucas coisas que mudam de salão para salão -- as faixas de tom e os
-// números de tempo e preço.
+// A FAMÍLIA SE DEFINE POR FOTO, NÃO POR NÚMERO. A primeira versão desta tela
+// pedia "de qual altura de tom até qual vai o Ruivo?". Isso é pedir que um
+// cabeleireiro traduza o ofício dele para uma escala numérica antes de poder
+// responder. Ele não pensa assim: ele olha uma foto e sabe na hora se aquilo é
+// ruivo ou é morena iluminada. Então o que ele faz aqui é subir foto e dizer a
+// classe. A faixa de altura de tom continua existindo, porque a conta de
+// clareamento precisa dela -- mas ela é LIDA das fotos, e aparece nesta tela
+// como consequência, não como campo.
+//
+// Ela também não pede a tabela de decisão. Clarear quantos níveis exige
+// descoloração, escurecer descolorido exige pré-pigmentação, clarear exige
+// matização: isso é química, é igual em todo salão, e está no banco como conta.
 //
 // E ela mostra a diferença entre o que o dono respondeu e o que ainda é
 // sugestão do sistema. Se tudo aparecesse preenchido igual, ele abriria a tela,
@@ -24,17 +31,29 @@ import styles from './cor.module.css';
 
 type Nivel = { level: number; name: string; underlyingPigment: string };
 
+type FotoDeReferencia = {
+  id: string;
+  storagePath: string;
+  caption: string | null;
+  // Lida da foto pelo motor. Nula enquanto a leitura não rodou.
+  estimatedLevel: number | null;
+  levelSource: 'LIDO_NA_FOTO' | 'PESSOA' | null;
+  readAt: string | null;
+  readError: string | null;
+};
+
 type Familia = {
   id: string;
   name: string;
   description: string | null;
-  minLevel: number | null;
-  maxLevel: number | null;
   needsWarmBase: boolean;
   extraMinutes: number | null;
   extraPriceMinor: number | null;
-  answered: boolean;
-  answeredAt: string | null;
+  // Consequência das fotos, não campo: `rangeFromPhotos` diz se já veio delas.
+  rangeMin: number | null;
+  rangeMax: number | null;
+  rangeFromPhotos: boolean;
+  photos: FotoDeReferencia[];
 };
 
 type Pergunta = {
@@ -52,12 +71,177 @@ type Pergunta = {
 type Modelo = { levels: Nivel[]; families: Familia[]; questions: Pergunta[] };
 type Workspace = { tenantId: string; tenantName: string; timezone: string };
 
+// O componente de fotos precisa do tenant que a tela resolveu. Um módulo-nível
+// simples resolve sem espalhar props por três camadas -- e ele é sempre escrito
+// antes de qualquer foto poder ser subida.
+let tenantGlobal: string | null = null;
+
 const UNIDADE: Record<Pergunta['unit'], string> = {
   NIVEIS: 'níveis',
   MINUTOS: 'minutos',
   REAIS: 'reais',
   SIM_NAO: '',
 };
+
+// As fotos de uma família: subir, ver, corrigir a altura lida e remover.
+//
+// O balde é privado, então cada foto precisa de uma URL assinada para aparecer.
+// Assinar sob demanda, e não guardar a URL, é o que faz o link expirar sozinho
+// em dez minutos em vez de vazar num histórico de navegador.
+function FotosDaFamilia({
+  familia,
+  niveis,
+  onMudou,
+  aoFalhar,
+}: {
+  familia: Familia;
+  niveis: Nivel[];
+  onMudou: () => void;
+  aoFalhar: (mensagem: string) => void;
+}) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [subindo, setSubindo] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const novas: Record<string, string> = {};
+      for (const foto of familia.photos) {
+        try {
+          const r = await fetch(`/api/cor/foto?path=${encodeURIComponent(foto.storagePath)}`);
+          const body = await r.json();
+          if (r.ok && body.data?.url) novas[foto.id] = body.data.url as string;
+        } catch {
+          /* foto que não abre aparece como moldura vazia, não derruba a tela */
+        }
+      }
+      if (vivo) setUrls(novas);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [familia.photos]);
+
+  async function subir(arquivos: FileList | null) {
+    if (!arquivos || arquivos.length === 0) return;
+    const tenantId = new URLSearchParams(window.location.search).get('tenantId') ?? tenantGlobal;
+    if (!tenantId) return;
+    setSubindo(true);
+    try {
+      for (const arquivo of Array.from(arquivos)) {
+        const formulario = new FormData();
+        formulario.append('tenantId', tenantId);
+        formulario.append('file', arquivo);
+        const envio = await fetch('/api/cor/foto', { method: 'POST', body: formulario });
+        const corpoEnvio = await envio.json();
+        if (!envio.ok) throw new Error(corpoEnvio.error ?? 'UPLOAD_FALHOU');
+
+        const registro = await fetch('/api/cor', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            action: 'addTonePhoto',
+            tenantId,
+            familyId: familia.id,
+            storagePath: corpoEnvio.data.storagePath,
+          }),
+        });
+        if (!registro.ok) {
+          const corpo = await registro.json();
+          throw new Error(corpo.error ?? 'REGISTRO_FALHOU');
+        }
+      }
+      onMudou();
+    } catch {
+      aoFalhar('Não foi possível subir a foto. Tente de novo.');
+    } finally {
+      setSubindo(false);
+    }
+  }
+
+  async function mexerNaFoto(photoId: string, corpo: Record<string, unknown>) {
+    const tenantId = new URLSearchParams(window.location.search).get('tenantId') ?? tenantGlobal;
+    if (!tenantId) return;
+    try {
+      const r = await fetch('/api/cor', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'updateTonePhoto', tenantId, photoId, ...corpo }),
+      });
+      if (!r.ok) throw new Error('FALHOU');
+      onMudou();
+    } catch {
+      aoFalhar('Não foi possível alterar esta foto.');
+    }
+  }
+
+  return (
+    <div className={styles.fotos}>
+      {familia.photos.length === 0 && (
+        <p className={styles.nota}>
+          Sem foto, o sistema não sabe o que este salão chama de {familia.name.toLowerCase()}.
+        </p>
+      )}
+
+      <div className={styles.tiras}>
+        {familia.photos.map((foto) => (
+          <figure key={foto.id} className={styles.tira}>
+            {urls[foto.id] ? (
+              // <img> e não next/image de propósito: a URL é assinada e expira
+              // em dez minutos, e o otimizador do Next guardaria em cache uma
+              // imagem cujo link já morreu.
+              <img src={urls[foto.id]} alt={foto.caption ?? 'Foto de referência'} />
+            ) : (
+              <div className={styles.tiraVazia} />
+            )}
+            <figcaption>
+              <select
+                value={foto.estimatedLevel ?? ''}
+                onChange={(e) =>
+                  void mexerNaFoto(foto.id, {
+                    level: e.target.value ? Number(e.target.value) : null,
+                  })
+                }
+              >
+                <option value="">{foto.readError ? 'não deu para ler' : 'lendo…'}</option>
+                {niveis.map((n) => (
+                  <option key={n.level} value={n.level}>
+                    altura {n.level}
+                  </option>
+                ))}
+              </select>
+              <span className={foto.levelSource === 'PESSOA' ? styles.selo : styles.seloSugerido}>
+                {foto.levelSource === 'PESSOA'
+                  ? 'você corrigiu'
+                  : foto.levelSource === 'LIDO_NA_FOTO'
+                    ? 'lido na foto'
+                    : 'ainda não lida'}
+              </span>
+              <button
+                type="button"
+                className={styles.remover}
+                onClick={() => void mexerNaFoto(foto.id, { remove: true })}
+              >
+                remover
+              </button>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+
+      <label className={styles.subir}>
+        {subindo ? 'subindo…' : `+ fotos de ${familia.name.toLowerCase()}`}
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          disabled={subindo}
+          onChange={(e) => void subir(e.target.files)}
+        />
+      </label>
+    </div>
+  );
+}
 
 export default function TelaDeCor() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -85,6 +269,7 @@ export default function TelaDeCor() {
       .then((body) => {
         const w = body.activeWorkspace as Workspace;
         tenantRef.current = w.tenantId;
+        tenantGlobal = w.tenantId;
         setWorkspace(w);
       })
       .catch((e: unknown) => {
@@ -171,15 +356,14 @@ export default function TelaDeCor() {
           action: 'saveColorModel',
           tenantId,
           payload: {
+            // Faixa não vai: ela é lida das fotos, e mandá-la daqui reabriria
+            // a porta que a correção fechou.
             families: modelo.families.map((f) => ({
               id: f.id,
               description: f.description ?? '',
-              minLevel: f.minLevel ?? '',
-              maxLevel: f.maxLevel ?? '',
               needsWarmBase: f.needsWarmBase,
               extraMinutes: f.extraMinutes ?? '',
               extraPriceMinor: f.extraPriceMinor ?? '',
-              answered: f.answered,
             })),
             questions: modelo.questions.map((p) => ({
               key: p.key,
@@ -204,8 +388,21 @@ export default function TelaDeCor() {
     () => (modelo?.questions ?? []).filter((p) => p.answered).length,
     [modelo]
   );
-  const familiasConfirmadas = useMemo(
-    () => (modelo?.families ?? []).filter((f) => f.answered).length,
+  // O que conta agora é quantas famílias já têm foto: é a foto que ensina.
+  const familiasComFoto = useMemo(
+    () => (modelo?.families ?? []).filter((f) => f.photos.length > 0).length,
+    [modelo]
+  );
+  const fotosLidas = useMemo(
+    () =>
+      (modelo?.families ?? []).reduce(
+        (total, f) => total + f.photos.filter((ph) => ph.estimatedLevel != null).length,
+        0
+      ),
+    [modelo]
+  );
+  const fotosTotais = useMemo(
+    () => (modelo?.families ?? []).reduce((total, f) => total + f.photos.length, 0),
     [modelo]
   );
 
@@ -262,9 +459,15 @@ export default function TelaDeCor() {
       <div className={styles.contadores}>
         <div className={styles.contador}>
           <strong>
-            {familiasConfirmadas}/{modelo?.families.length ?? 0}
+            {familiasComFoto}/{modelo?.families.length ?? 0}
           </strong>
-          <span>famílias de tom confirmadas</span>
+          <span>famílias com foto cadastrada</span>
+        </div>
+        <div className={styles.contador}>
+          <strong>
+            {fotosLidas}/{fotosTotais}
+          </strong>
+          <span>fotos com a altura de tom já lida</span>
         </div>
         <div className={styles.contador}>
           <strong>
@@ -305,9 +508,10 @@ export default function TelaDeCor() {
       <section className={styles.bloco}>
         <span className={styles.blocoTitulo}>As famílias de tom deste salão</span>
         <p className={styles.nota}>
-          Cada família cobre uma faixa da escala. É isso que responde “esse tom é loiro ou é
-          iluminado?”. As faixas abaixo são uma sugestão do sistema — corrija e marque
-          <em> confirmada</em> quando estiver do jeito daqui.
+          Suba fotos e diga a que família cada uma pertence. É assim que o sistema aprende o que
+          <strong> este</strong> salão chama de ruivo, de iluminado, de loiro — com as fotos de quem
+          faz, não com uma lista pronta. A altura de tom de cada foto é lida automaticamente; a
+          faixa da família sai daí, você não precisa digitar número nenhum.
         </p>
 
         {(modelo?.families ?? []).map((f) => (
@@ -317,53 +521,21 @@ export default function TelaDeCor() {
                 <h2>{f.name}</h2>
                 {f.description && <p className={styles.familiaDescricao}>{f.description}</p>}
               </div>
-              <label className={styles.confirmar}>
-                <input
-                  type="checkbox"
-                  checked={f.answered}
-                  onChange={(e) => editarFamilia(f.id, { answered: e.target.checked })}
-                />
-                {f.answered ? 'confirmada' : 'ainda é sugestão'}
-              </label>
+              <span className={f.rangeFromPhotos ? styles.selo : styles.seloSugerido}>
+                {f.rangeFromPhotos
+                  ? `altura ${f.rangeMin} a ${f.rangeMax}, pelas fotos`
+                  : 'sem foto ainda'}
+              </span>
             </div>
 
+            <FotosDaFamilia
+              familia={f}
+              niveis={modelo?.levels ?? []}
+              onMudou={() => void buscar()}
+              aoFalhar={setErro}
+            />
+
             <div className={styles.grade}>
-              <label>
-                Da altura de tom
-                <select
-                  value={f.minLevel ?? ''}
-                  onChange={(e) =>
-                    editarFamilia(f.id, {
-                      minLevel: e.target.value ? Number(e.target.value) : null,
-                    })
-                  }
-                >
-                  <option value="">—</option>
-                  {(modelo?.levels ?? []).map((n) => (
-                    <option key={n.level} value={n.level}>
-                      {n.level} · {n.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Até a altura de tom
-                <select
-                  value={f.maxLevel ?? ''}
-                  onChange={(e) =>
-                    editarFamilia(f.id, {
-                      maxLevel: e.target.value ? Number(e.target.value) : null,
-                    })
-                  }
-                >
-                  <option value="">—</option>
-                  {(modelo?.levels ?? []).map((n) => (
-                    <option key={n.level} value={n.level}>
-                      {n.level} · {n.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <label>
                 Minutos a mais
                 <input

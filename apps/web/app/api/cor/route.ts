@@ -9,7 +9,14 @@ export const dynamic = 'force-dynamic';
 // operação: não entra no ciclo de rascunho/publicação da configuração, porque
 // o dono corrigindo o tempo da matização às 11h precisa valer no atendimento
 // das 11h05.
-const ACTIONS = new Set(['loadColorModel', 'saveColorModel']);
+const ACTIONS = new Set([
+  'loadColorModel',
+  'saveColorModel',
+  // A família se define por foto: subir e classificar é o caminho principal
+  // desta tela, não um extra.
+  'addTonePhoto',
+  'updateTonePhoto',
+]);
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -64,6 +71,12 @@ export async function POST(request: Request): Promise<Response> {
       action: input.action,
       tenantId: input.tenantId,
       payload: input.payload,
+      familyId: input.familyId,
+      photoId: input.photoId,
+      storagePath: input.storagePath,
+      caption: input.caption,
+      level: input.level,
+      remove: input.remove,
     }),
   });
 

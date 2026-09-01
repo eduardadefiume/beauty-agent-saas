@@ -10,8 +10,13 @@
 --   4. Ruivo é a exceção: ele VIVE do fundo quente, matizar é tirar o que ia
 --      sustentar a cor.
 --
--- E uma quinta, que é de honestidade e não de química: enquanto o dono não
--- responde, o plano tem que dizer que o número é sugestão do sistema.
+-- E duas de honestidade, que não são de química:
+--
+--   5. Enquanto o dono não responde, o plano diz que o número é sugestão.
+--   6. Família sem foto é avisada como família sem foto. Depois que a Duda
+--      corrigiu o desenho -- "não é número que vai dizer qual a família da cor
+--      e sim foto" --, a faixa passou a sair das fotos, e o aviso útil deixou
+--      de ser "falta confirmar" e virou "falta foto".
 
 begin;
 
@@ -93,6 +98,37 @@ begin
   if (v_plano->>'tempoAMaisMinutos')::integer <> 210 then
     raise exception 'A_RESPOSTA_DO_DONO_TEM_QUE_ENTRAR_NA_CONTA, veio: %',
       v_plano->>'tempoAMaisMinutos';
+  end if;
+
+  -- 6. Sem foto, o plano avisa que não aprendeu o que este salão chama assim.
+  v_plano := app.color_plan(v_tenant, 5::smallint, 'VIRGEM', 9::smallint, v_loiro, false);
+  if not (v_plano->'avisos')::text like '%não tem nenhuma foto%' then
+    raise exception 'FAMILIA_SEM_FOTO_TEM_QUE_AVISAR: %', v_plano->'avisos';
+  end if;
+  if (v_plano->'faixaDaFamilia'->>'veioDasFotos')::boolean then
+    raise exception 'SEM_FOTO_A_FAIXA_NAO_PODE_DIZER_QUE_VEIO_DELAS: %', v_plano;
+  end if;
+
+  -- ...e com foto lida, a faixa passa a ser a das fotos, não a semente.
+  insert into app.tone_family_photos
+    (tenant_id, family_id, storage_path, estimated_level, level_source)
+  values (v_tenant, v_loiro, v_tenant::text || '/cor/g4.jpg', 8, 'LIDO_NA_FOTO');
+
+  v_plano := app.color_plan(v_tenant, 5::smallint, 'VIRGEM', 9::smallint, v_loiro, false);
+  if not (v_plano->'faixaDaFamilia'->>'veioDasFotos')::boolean then
+    raise exception 'COM_FOTO_A_FAIXA_TEM_QUE_VIR_DELAS: %', v_plano;
+  end if;
+  if (v_plano->'faixaDaFamilia'->>'de')::integer <> 8 then
+    raise exception 'A_FAIXA_E_O_QUE_AS_FOTOS_DIZEM, veio: %', v_plano->'faixaDaFamilia';
+  end if;
+
+  -- E correção de gente não é sobrescrita pelo motor.
+  update app.tone_family_photos set estimated_level = 9, level_source = 'PESSOA'
+   where family_id = v_loiro;
+  if (public.record_tone_photo_level(
+        (select id from app.tone_family_photos where family_id = v_loiro),
+        7::smallint, null)->>'ok')::boolean then
+    raise exception 'O_MOTOR_NAO_PODE_PASSAR_POR_CIMA_DA_CORRECAO_DE_GENTE';
   end if;
 
   -- Guardas de entrada: altura fora da escala e estado inventado não passam.

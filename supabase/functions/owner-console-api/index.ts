@@ -66,6 +66,10 @@ const ACTION_RPC = {
   // no atendimento das 11h05.
   loadColorModel: 'site_load_color_model',
   saveColorModel: 'site_save_color_model',
+  // A familia de tom se define por FOTO: o dono sobe e diz a classe, e a
+  // altura de tom e lida da imagem depois. Numero digitado nao entra aqui.
+  addTonePhoto: 'site_add_tone_family_photo',
+  updateTonePhoto: 'site_update_tone_family_photo',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -365,6 +369,36 @@ Deno.serve(async (request: Request) => {
     case 'loadKnowledge':
     case 'loadColorModel':
       rpcBody = { ...common, target_tenant_id: tenantId };
+      break;
+    case 'addTonePhoto':
+      // O caminho vem da rota de upload, que o montou no servidor. A RPC ainda
+      // confere que ele comeca pela pasta do proprio salao -- conferir duas
+      // vezes aqui e barato, e o registro apontar para o arquivo de outro
+      // negocio nao e.
+      if (typeof input.familyId !== 'string' || typeof input.storagePath !== 'string') {
+        return json(400, { error: 'INVALID_TONE_PHOTO_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_family_id: input.familyId,
+        target_storage_path: input.storagePath,
+        target_caption: typeof input.caption === 'string' ? input.caption : null,
+      };
+      break;
+    case 'updateTonePhoto':
+      if (typeof input.photoId !== 'string') {
+        return json(400, { error: 'INVALID_TONE_PHOTO_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_photo_id: input.photoId,
+        target_remove: input.remove === true,
+        target_level:
+          typeof input.level === 'number' && Number.isInteger(input.level) ? input.level : null,
+        target_caption: typeof input.caption === 'string' ? input.caption : null,
+      };
       break;
     case 'saveColorModel':
       // Ao contrario das outras telas, aqui o payload NAO substitui tudo: so
