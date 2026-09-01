@@ -60,6 +60,12 @@ const ACTION_RPC = {
   // (comprimento, volume). E isso que da nome ao que o agente anota na ficha.
   loadKnowledge: 'site_load_knowledge',
   saveKnowledge: 'site_save_knowledge',
+  // Cor: as familias de tom deste salao e as perguntas de clareamento,
+  // pre-pigmentacao e matizacao que o dono responde. Tambem fora do ciclo de
+  // publicacao -- o dono corrigindo o tempo da matizacao as 11h precisa valer
+  // no atendimento das 11h05.
+  loadColorModel: 'site_load_color_model',
+  saveColorModel: 'site_save_color_model',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -357,7 +363,35 @@ Deno.serve(async (request: Request) => {
     case 'loadAgentPolicies':
     case 'loadStatusArts':
     case 'loadKnowledge':
+    case 'loadColorModel':
       rpcBody = { ...common, target_tenant_id: tenantId };
+      break;
+    case 'saveColorModel':
+      // Ao contrario das outras telas, aqui o payload NAO substitui tudo: so
+      // as linhas que vierem sao tocadas. Ainda assim a forma e conferida,
+      // porque `families` ou `questions` com forma errada derrubaria a
+      // gravacao no meio, deixando parte das respostas do dono gravada e
+      // parte nao.
+      if (
+        typeof input.payload !== 'object' ||
+        input.payload === null ||
+        Array.isArray(input.payload)
+      ) {
+        return json(400, { error: 'INVALID_COLOR_MODEL_REQUEST' });
+      }
+      {
+        const corpo = input.payload as Record<string, unknown>;
+        for (const campo of ['families', 'questions']) {
+          if (campo in corpo && !Array.isArray(corpo[campo])) {
+            return json(400, { error: 'INVALID_COLOR_MODEL_REQUEST', field: campo });
+          }
+        }
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        payload: input.payload,
+      };
       break;
     case 'saveKnowledge':
       // O payload SUBSTITUI a arvore inteira: dimensao, opcao ou foto que nao

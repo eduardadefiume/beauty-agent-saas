@@ -20,6 +20,7 @@ import {
   MoreHorizontal,
   Network,
   Radio,
+  Palette,
   ScanLine,
   ShieldCheck,
   Sparkles,
@@ -82,6 +83,9 @@ const navItems: NavItem[] = [
   // O vocabulário com que o salão descreve um cabelo. É ele que dá nome ao que
   // o agente anota na ficha.
   { label: 'Conhecimento', icon: ScanLine, target: 'conhecimento', href: '/conhecimento' },
+  // As famílias de tom deste salão e as poucas perguntas de cor que só o dono
+  // sabe responder. A química em si é conta do sistema, não pergunta para ele.
+  { label: 'Cor', icon: Palette, target: 'cor', href: '/cor' },
   { label: 'Serviços e Agenda', icon: CalendarDays, target: 'schedule' },
   { label: 'Evidências', icon: FileCheck2, target: 'evidence' },
 ];
