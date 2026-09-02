@@ -2,18 +2,22 @@ import { createSupabaseServerClient } from './supabase/server';
 
 // Subir e exibir foto de referência — a parte que Cor e Conhecimento têm igual.
 //
-// As duas telas guardam foto no MESMO balde privado (`conhecimento`) e pelo
-// mesmo motivo: é imagem que ensina o sistema a reconhecer cabelo, não conteúdo
-// público. O que muda entre elas é só a pasta. Duplicar noventa linhas de
-// upload para mudar uma palavra seria garantir que um dia as duas divirjam em
-// teto de tamanho ou tipo aceito.
+// Todas as telas que sobem foto fazem a mesma coisa: conferir a sessão, o tipo
+// e o tamanho, e montar o caminho a partir do tenant. O que muda é o balde e a
+// pasta. Duplicar noventa linhas para mudar duas palavras seria garantir que um
+// dia elas divirjam em teto de tamanho ou tipo aceito.
+//
+// O BALDE MUDA E ISSO IMPORTA. `conhecimento` guarda o vocabulário do salão --
+// some quando o salão muda a régua. `clientes` guarda dado de uma pessoa -- some
+// quando ela pede. Misturar os dois faria "apagar os dados da fulana" virar uma
+// busca, e é por isso que eles nasceram separados.
 //
 // POR QUE PASSA PELO SERVIDOR, e não direto do navegador para o Storage: o
 // caminho é montado aqui a partir do tenant, então o navegador não escolhe em
 // que pasta escreve; e o tipo e o tamanho são conferidos antes de o arquivo
 // ocupar espaço.
 
-const BALDE = 'conhecimento';
+type Balde = 'conhecimento' | 'clientes';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -34,7 +38,7 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-export async function subirFotoDeReferencia(request: Request, pasta: string): Promise<Response> {
+export async function subirFoto(request: Request, balde: Balde, pasta: string): Promise<Response> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { session },
@@ -77,7 +81,7 @@ export async function subirFotoDeReferencia(request: Request, pasta: string): Pr
   const caminho = `${tenantId}/${pasta}/${crypto.randomUUID()}.${extensao}`;
 
   const { error } = await supabase.storage
-    .from(BALDE)
+    .from(balde)
     .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
 
   if (error) {
@@ -92,7 +96,7 @@ export async function subirFotoDeReferencia(request: Request, pasta: string): Pr
 // Assinar com a sessão de quem pediu faz a própria política do balde barrar
 // caminho de outro negócio — não é preciso conferir o tenant de novo aqui, e
 // conferir de novo seria a segunda verdade que um dia diverge da primeira.
-export async function assinarFotoDeReferencia(request: Request): Promise<Response> {
+export async function assinarFoto(request: Request, balde: Balde): Promise<Response> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { session },
@@ -107,7 +111,7 @@ export async function assinarFotoDeReferencia(request: Request): Promise<Respons
     return json(400, { error: 'PATH_REQUIRED' });
   }
 
-  const { data, error } = await supabase.storage.from(BALDE).createSignedUrl(caminho, 60 * 10);
+  const { data, error } = await supabase.storage.from(balde).createSignedUrl(caminho, 60 * 10);
 
   if (error || !data?.signedUrl) {
     return json(404, { error: 'FOTO_INDISPONIVEL' });

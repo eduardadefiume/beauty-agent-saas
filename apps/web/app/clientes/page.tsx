@@ -36,6 +36,9 @@ type ClienteDaLista = {
   name: string | null;
   phone: string | null;
   status: string;
+  // O rosto que identifica a pessoa. Existe porque tem mais de uma Andreia no
+  // salão, e nome igual em lista não diz qual é qual.
+  avatarPath: string | null;
   pendencias: Pendencia[];
   mainProcedure: string | null;
   cadenceProcedure: string | null;
@@ -209,6 +212,159 @@ export function payloadDaFicha(f: Ficha): Record<string, unknown> {
     visits: f.visits.filter((v) => v.appointmentId == null),
     photos: f.photos,
   };
+}
+
+// O rosto da cliente, do tamanho de um selo, ao lado do nome.
+//
+// O balde é privado, então cada foto precisa de URL assinada. Assinar sob
+// demanda e não guardar a URL é o que faz o link expirar sozinho em dez minutos
+// em vez de ficar num histórico de navegador.
+//
+// Sem foto, mostra a inicial. Uma moldura vazia na lista pareceria erro de
+// carregamento; a inicial parece o que é -- uma ficha que ainda não tem rosto.
+function Rosto({ path, nome }: { path: string | null; nome: string | null }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!path) {
+      setUrl(null);
+      return;
+    }
+    let vivo = true;
+    void (async () => {
+      try {
+        const r = await fetch(`/api/clientes/foto?path=${encodeURIComponent(path)}`);
+        const body = await r.json();
+        if (vivo && r.ok && body.data?.url) setUrl(body.data.url as string);
+      } catch {
+        /* foto que não abre vira inicial, não derruba a lista */
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [path]);
+
+  if (url) {
+    return <img className={styles.rosto} src={url} alt={nome ?? 'Cliente'} />;
+  }
+  return (
+    <span className={styles.rostoVazio} aria-hidden="true">
+      {(nome ?? '?').trim().charAt(0).toUpperCase() || '?'}
+    </span>
+  );
+}
+
+// O rosto na ficha: subir, trocar e tirar.
+//
+// UMA SÓ. A ficha tem no máximo um rosto -- o banco tem índice único para isso.
+// Subir uma nova troca a que está lá, que é o que qualquer pessoa espera de uma
+// foto de perfil, e é diferente das fotos de trabalho (cabelo atual, resultado,
+// cor), que são muitas e formam histórico.
+//
+// A LIGAÇÃO SÓ EXISTE DEPOIS DE GRAVAR. O arquivo sobe na hora, mas
+// `site_save_client` substitui a lista de fotos inteira -- é ela quem decide o
+// que fica. Por isso o aviso, senão o arquivo ficaria no balde sem ninguém
+// apontando para ele.
+function RostoDaFicha({
+  ficha,
+  tenantId,
+  onMudou,
+  aoFalhar,
+}: {
+  ficha: Ficha;
+  tenantId: string | null;
+  onMudou: (photos: Foto[]) => void;
+  aoFalhar: (mensagem: string) => void;
+}) {
+  const perfil = ficha.photos.find((f) => f.kind === 'PERFIL') ?? null;
+  const [url, setUrl] = useState<string | null>(null);
+  const [subindo, setSubindo] = useState(false);
+
+  useEffect(() => {
+    if (!perfil) {
+      setUrl(null);
+      return;
+    }
+    let vivo = true;
+    void (async () => {
+      try {
+        const r = await fetch(`/api/clientes/foto?path=${encodeURIComponent(perfil.storagePath)}`);
+        const body = await r.json();
+        if (vivo && r.ok && body.data?.url) setUrl(body.data.url as string);
+      } catch {
+        /* sem preview, o resto da ficha continua funcionando */
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [perfil]);
+
+  async function subir(arquivos: FileList | null) {
+    const arquivo = arquivos?.[0];
+    if (!arquivo || !tenantId) return;
+    setSubindo(true);
+    try {
+      const formulario = new FormData();
+      formulario.append('tenantId', tenantId);
+      formulario.append('file', arquivo);
+      const r = await fetch('/api/clientes/foto', { method: 'POST', body: formulario });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? 'UPLOAD_FALHOU');
+
+      onMudou([
+        ...ficha.photos.filter((f) => f.kind !== 'PERFIL'),
+        {
+          id: `novo:${Math.random().toString(36).slice(2)}`,
+          kind: 'PERFIL',
+          storagePath: body.data.storagePath as string,
+          caption: null,
+          takenOn: null,
+        },
+      ]);
+      aoFalhar('Foto escolhida. Ela só fica na ficha depois de você gravar.');
+    } catch {
+      aoFalhar('Não foi possível subir a foto. Aceita JPG, PNG e WEBP até 8 MB.');
+    } finally {
+      setSubindo(false);
+    }
+  }
+
+  return (
+    <div className={styles.rostoDaFicha}>
+      {url ? (
+        <img className={styles.rostoGrande} src={url} alt={ficha.preferredName ?? 'Cliente'} />
+      ) : (
+        <span className={styles.rostoGrandeVazio} aria-hidden="true">
+          {(ficha.preferredName ?? ficha.displayName ?? '?').trim().charAt(0).toUpperCase() || '?'}
+        </span>
+      )}
+      <div className={styles.rostoAcoes}>
+        <label className={styles.subir}>
+          {subindo ? 'subindo…' : perfil ? 'Trocar foto' : 'Colocar foto'}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            disabled={subindo || !tenantId}
+            onChange={(e) => void subir(e.target.files)}
+          />
+        </label>
+        {perfil && (
+          <button
+            type="button"
+            className={styles.ghostPerigo}
+            onClick={() => onMudou(ficha.photos.filter((f) => f.kind !== 'PERFIL'))}
+          >
+            Tirar
+          </button>
+        )}
+        <p className={styles.nota}>
+          Serve para reconhecer quem é quem na lista. Não é foto de cabelo nem de resultado.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default function TelaDeClientes() {
@@ -537,6 +693,7 @@ export default function TelaDeClientes() {
                 onClick={() => void abrirFicha(c.profileId)}
               >
                 <div className={styles.itemLinha}>
+                  <Rosto path={c.avatarPath} nome={c.name} />
                   <strong>{c.name || telefoneLegivel(c.phone)}</strong>
                   {atrasada && (
                     <span className={styles.selo}>
@@ -772,10 +929,16 @@ export default function TelaDeClientes() {
                   consentimento. Foto que ela manda no meio da conversa não é guardada — o agente lê
                   e descarta.
                 </p>
-                {ficha.photos.length > 0 && (
+                <RostoDaFicha
+                  ficha={ficha}
+                  tenantId={workspace?.tenantId ?? null}
+                  onMudou={(photos) => editar({ photos })}
+                  aoFalhar={setAviso}
+                />
+                {ficha.photos.filter((f) => f.kind !== 'PERFIL').length > 0 && (
                   <p className={styles.nota}>
-                    {ficha.photos.length}{' '}
-                    {ficha.photos.length === 1 ? 'foto guardada' : 'fotos guardadas'} nesta ficha.
+                    {ficha.photos.filter((f) => f.kind !== 'PERFIL').length} foto(s) de trabalho
+                    guardada(s) nesta ficha, além do rosto.
                   </p>
                 )}
               </div>

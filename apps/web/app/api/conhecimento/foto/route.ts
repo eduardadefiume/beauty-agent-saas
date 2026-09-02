@@ -1,7 +1,4 @@
-import {
-  assinarFotoDeReferencia,
-  subirFotoDeReferencia,
-} from '../../../../lib/fotos-de-referencia';
+import { assinarFoto, subirFoto } from '../../../../lib/fotos';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +12,9 @@ export const dynamic = 'force-dynamic';
 // diferentes para pessoas diferentes, e uma foto resolve a ambiguidade que
 // três linhas de texto não resolvem.
 export async function POST(request: Request): Promise<Response> {
-  return subirFotoDeReferencia(request, 'conhecimento');
+  return subirFoto(request, 'conhecimento', 'conhecimento');
 }
 
 export async function GET(request: Request): Promise<Response> {
-  return assinarFotoDeReferencia(request);
+  return assinarFoto(request, 'conhecimento');
 }

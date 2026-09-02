@@ -1,7 +1,4 @@
-import {
-  assinarFotoDeReferencia,
-  subirFotoDeReferencia,
-} from '../../../../lib/fotos-de-referencia';
+import { assinarFoto, subirFoto } from '../../../../lib/fotos';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,9 +7,9 @@ export const dynamic = 'force-dynamic';
 // A família de cor se define por foto: o dono sobe a imagem e diz a classe. A
 // altura de tom é lida depois pelo worker, para que ninguém digite número.
 export async function POST(request: Request): Promise<Response> {
-  return subirFotoDeReferencia(request, 'cor');
+  return subirFoto(request, 'conhecimento', 'cor');
 }
 
 export async function GET(request: Request): Promise<Response> {
-  return assinarFotoDeReferencia(request);
+  return assinarFoto(request, 'conhecimento');
 }

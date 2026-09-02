@@ -411,3 +411,90 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+
+/* --- O rosto da cliente --------------------------------------------------- */
+
+/* Na lista: do tamanho de um selo, ao lado do nome. */
+.rosto,
+.rostoVazio {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.rostoVazio {
+  display: grid;
+  border: 1px solid rgba(30, 43, 42, 0.16);
+  background: rgba(165, 180, 122, 0.18);
+  color: var(--olive);
+  font-size: 11px;
+  font-weight: 700;
+  place-items: center;
+}
+
+/* Na ficha: grande o bastante para reconhecer a pessoa. */
+.rostoDaFicha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(30, 43, 42, 0.14);
+}
+.rostoGrande,
+.rostoGrandeVazio {
+  width: 88px;
+  height: 88px;
+  flex: 0 0 88px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.rostoGrandeVazio {
+  display: grid;
+  border: 1px solid rgba(30, 43, 42, 0.16);
+  background: rgba(165, 180, 122, 0.18);
+  color: var(--olive);
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 34px;
+  place-items: center;
+}
+.rostoAcoes {
+  display: flex;
+  min-width: 200px;
+  flex: 1 1 200px;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.subir {
+  display: inline-block;
+  padding: 8px 15px;
+  border: 1px dashed rgba(30, 43, 42, 0.28);
+  background: transparent;
+  color: var(--olive);
+  cursor: pointer;
+  font-size: 12px;
+}
+.subir:hover {
+  border-color: var(--olive);
+  background: rgba(165, 180, 122, 0.1);
+}
+.subir input {
+  display: none;
+}
+
+.ghostPerigo {
+  padding: 8px 15px;
+  border: 1px solid rgba(168, 65, 47, 0.3);
+  background: transparent;
+  color: var(--alerta);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.ghostPerigo:hover {
+  background: rgba(168, 65, 47, 0.07);
+}
