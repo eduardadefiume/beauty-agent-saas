@@ -47,6 +47,9 @@ type Familia = {
   name: string;
   description: string | null;
   needsWarmBase: boolean;
+  // PRODUTO quer dizer que a família veio do padrão e ninguém confirmou nada
+  // sobre ela ainda. É palpite, não resposta do dono.
+  origin: 'PRODUTO' | 'PRODUTO_AJUSTADO' | 'SALAO';
   extraMinutes: number | null;
   extraPriceMinor: number | null;
   // Consequência das fotos, não campo: `rangeFromPhotos` diz se já veio delas.
@@ -68,7 +71,16 @@ type Pergunta = {
   answeredAt: string | null;
 };
 
-type Modelo = { levels: Nivel[]; families: Familia[]; questions: Pergunta[] };
+// As regras da profissão que este modelo usa. Vêm só para leitura: elas não
+// têm tenant_id, então mudar uma aqui mudaria para todos os salões.
+type Regra = { code: string; title: string; statement: string };
+
+type Modelo = {
+  levels: Nivel[];
+  families: Familia[];
+  questions: Pergunta[];
+  rules?: Regra[];
+};
 type Workspace = { tenantId: string; tenantName: string; timezone: string };
 
 // O componente de fotos precisa do tenant que a tela resolveu. Um módulo-nível
@@ -518,7 +530,17 @@ export default function TelaDeCor() {
           <article key={f.id} className={styles.familia}>
             <div className={styles.familiaTopo}>
               <div>
-                <h2>{f.name}</h2>
+                <h2>
+                  {f.name}
+                  {f.origin === 'PRODUTO' && (
+                    <span
+                      className={styles.seloSugerido}
+                      title="Esta família veio do padrão do sistema e ninguém confirmou."
+                    >
+                      do padrão
+                    </span>
+                  )}
+                </h2>
                 {f.description && <p className={styles.familiaDescricao}>{f.description}</p>}
               </div>
               <span className={f.rangeFromPhotos ? styles.selo : styles.seloSugerido}>
@@ -627,6 +649,27 @@ export default function TelaDeCor() {
           </article>
         ))}
       </section>
+
+      {/* --- As regras da profissão --------------------------------------- */}
+      {(modelo?.rules ?? []).length > 0 && (
+        <section className={styles.bloco}>
+          <span className={styles.blocoTitulo}>O que o sistema já sabe de cor e química</span>
+          <p className={styles.nota}>
+            Estas não são perguntas: são as regras da profissão que o plano usa para decidir quando
+            entra descoloração, pré-pigmentação, matização e teste de mecha. Elas valem igual em
+            qualquer salão, por isso não são campo aqui. Quando o plano cita uma etapa, a explicação
+            vem de uma delas.
+          </p>
+          {(modelo?.rules ?? []).map((r) => (
+            <details key={r.code} className={styles.pergunta}>
+              <summary>
+                <strong>{r.title}</strong>
+              </summary>
+              <p className={styles.nota}>{r.statement}</p>
+            </details>
+          ))}
+        </section>
+      )}
 
       <footer className={styles.rodape}>
         <p className={styles.nota}>

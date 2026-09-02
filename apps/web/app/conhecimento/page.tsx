@@ -30,10 +30,16 @@ import styles from './conhecimento.module.css';
 
 type Foto = { id: string; storagePath: string; caption: string | null };
 
+// De onde veio a linha. PRODUTO é palpite do sistema, não resposta do dono:
+// é a diferença entre um cadastro preenchido e um cadastro respondido.
+type Procedencia = 'PRODUTO' | 'PRODUTO_AJUSTADO' | 'SALAO';
+
 type Opcao = {
   id: string;
   label: string;
   description: string | null;
+  origin?: Procedencia;
+  productCode?: string | null;
   photos: Foto[];
 };
 
@@ -41,8 +47,22 @@ type Dimensao = {
   id: string;
   name: string;
   whatToLookAt: string | null;
+  origin?: Procedencia;
+  productCode?: string | null;
   options: Opcao[];
 };
+
+// O que o produto tem e este salão ainda não pegou.
+type Sugestao = {
+  code: string;
+  name: string;
+  whatToLookAt: string | null;
+  options: { code: string; label: string; description: string | null }[];
+};
+
+// As regras da profissão. Não têm dono: valem igual em qualquer salão, e por
+// isso aparecem aqui só para leitura.
+type Regra = { code: string; subject: string; title: string; statement: string };
 
 type Workspace = { tenantId: string; tenantName: string; timezone: string };
 
@@ -52,6 +72,26 @@ function idNovo(): string {
   return `novo:${Math.random().toString(36).slice(2)}`;
 }
 const ehNovo = (id: string) => id.startsWith('novo:');
+
+// O selo é curto de propósito: ele fica ao lado do campo o tempo todo, e um
+// selo comprido vira ruído em vez de informação.
+function Selo({ origin }: { origin?: Procedencia | undefined }) {
+  if (origin === 'PRODUTO') {
+    return (
+      <span className={styles.seloProduto} title="Veio do padrão do sistema e ninguém confirmou.">
+        do padrão
+      </span>
+    );
+  }
+  if (origin === 'PRODUTO_AJUSTADO') {
+    return (
+      <span className={styles.seloAjustado} title="Veio do padrão e você reescreveu.">
+        você ajustou
+      </span>
+    );
+  }
+  return null;
+}
 
 // As fotos de uma resposta: subir, ver, legendar e remover.
 //
@@ -177,6 +217,8 @@ function FotosDaOpcao({
 export default function TelaDeConhecimento() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [dimensoes, setDimensoes] = useState<Dimensao[]>([]);
+  const [sugestoes, setSugestoes] = useState<Sugestao[]>([]);
+  const [regras, setRegras] = useState<Regra[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -223,8 +265,14 @@ export default function TelaDeConhecimento() {
       });
       const body = await r.json();
       if (!r.ok) throw new Error(body.error ?? 'CONHECIMENTO_INDISPONIVEL');
-      const dados = body.data as { dimensions?: Dimensao[] };
+      const dados = body.data as {
+        dimensions?: Dimensao[];
+        suggestions?: Sugestao[];
+        rules?: Regra[];
+      };
       setDimensoes(dados.dimensions ?? []);
+      setSugestoes(dados.suggestions ?? []);
+      setRegras(dados.rules ?? []);
       setSujo(false);
       setErro(null);
     } catch {
@@ -257,6 +305,31 @@ export default function TelaDeConhecimento() {
           : { ...d, options: d.options.map((o, j) => (j === iOpt ? { ...o, ...mudanca } : o)) }
       )
     );
+  }
+
+  // Adotar uma sugestão traz as palavras do produto para dentro do salão. Ela
+  // entra como linha nova, marcada como padrão, e some da lista de ofertas na
+  // hora -- mas só existe de verdade depois de Gravar, como tudo aqui.
+  function adotar(sugestao: Sugestao) {
+    mexer([
+      ...dimensoes,
+      {
+        id: idNovo(),
+        name: sugestao.name,
+        whatToLookAt: sugestao.whatToLookAt,
+        origin: 'PRODUTO',
+        productCode: sugestao.code,
+        options: sugestao.options.map((o) => ({
+          id: idNovo(),
+          label: o.label,
+          description: o.description,
+          origin: 'PRODUTO',
+          productCode: o.code,
+          photos: [],
+        })),
+      },
+    ]);
+    setSugestoes(sugestoes.filter((s) => s.code !== sugestao.code));
   }
 
   async function salvar() {
@@ -292,10 +365,14 @@ export default function TelaDeConhecimento() {
               ...(ehNovo(d.id) ? {} : { id: d.id }),
               name: d.name.trim(),
               whatToLookAt: d.whatToLookAt ?? '',
+              // O código do produto viaja junto: é ele que faz a linha nascer
+              // marcada como padrão em vez de como resposta do dono.
+              productCode: d.productCode ?? '',
               options: d.options.map((o) => ({
                 ...(ehNovo(o.id) ? {} : { id: o.id }),
                 label: o.label.trim(),
                 description: o.description ?? '',
+                productCode: o.productCode ?? '',
                 // As fotos vão de volta inteiras: o que não vier é apagado.
                 photos: o.photos.map((f) => ({
                   id: f.id,
@@ -408,7 +485,9 @@ export default function TelaDeConhecimento() {
         <article key={d.id} className={styles.dimensao}>
           <header className={styles.dimensaoTopo}>
             <label className={styles.campoNome}>
-              Pergunta
+              <span className={styles.rotuloComSelo}>
+                Pergunta <Selo origin={d.origin} />
+              </span>
               <input
                 value={d.name}
                 placeholder="ex.: Volume"
@@ -455,7 +534,9 @@ export default function TelaDeConhecimento() {
               <div key={o.id} className={styles.opcao}>
                 <div className={styles.opcaoGrade}>
                   <label>
-                    Resposta
+                    <span className={styles.rotuloComSelo}>
+                      Resposta <Selo origin={o.origin} />
+                    </span>
                     <input
                       value={o.label}
                       placeholder="ex.: Muito volumoso"
@@ -507,7 +588,13 @@ export default function TelaDeConhecimento() {
                           ...dd,
                           options: [
                             ...dd.options,
-                            { id: idNovo(), label: '', description: '', photos: [] },
+                            {
+                              id: idNovo(),
+                              label: '',
+                              description: '',
+                              origin: 'SALAO',
+                              photos: [],
+                            },
                           ],
                         }
                   )
@@ -520,11 +607,56 @@ export default function TelaDeConhecimento() {
         </article>
       ))}
 
+      {sugestoes.length > 0 && (
+        <section className={styles.oferta}>
+          <h2>O padrão do sistema tem mais estas</h2>
+          <p className={styles.nota}>
+            São perguntas que a maioria dos salões usa. Não entram sozinhas: quem decide o que este
+            salão observa é você. Ao adotar, as palavras vêm prontas e você reescreve o que quiser.
+          </p>
+          {sugestoes.map((sg) => (
+            <div key={sg.code} className={styles.ofertaItem}>
+              <div>
+                <strong>{sg.name}</strong>
+                <span>{sg.options.map((o) => o.label).join(' · ')}</span>
+              </div>
+              <button className={styles.ghost} onClick={() => adotar(sg)}>
+                Adotar
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {regras.length > 0 && (
+        <section className={styles.regras}>
+          <h2>O que o sistema já sabe sobre cabelo</h2>
+          <p className={styles.nota}>
+            Estas regras valem em qualquer salão, então não são campo: elas não têm dono. É delas
+            que sai a explicação quando o plano de cor diz que um caso precisa de descoloração ou de
+            teste de mecha. Se você discorda de alguma, fale com a gente — mudar aqui mudaria para
+            todos os salões.
+          </p>
+          {regras.map((r) => (
+            <details key={r.code} className={styles.regra}>
+              <summary>
+                <strong>{r.title}</strong>
+                <span className={styles.regraAssunto}>{r.subject.toLowerCase()}</span>
+              </summary>
+              <p>{r.statement}</p>
+            </details>
+          ))}
+        </section>
+      )}
+
       <div className={styles.rodape}>
         <button
           className={styles.principal}
           onClick={() =>
-            mexer([...dimensoes, { id: idNovo(), name: '', whatToLookAt: '', options: [] }])
+            mexer([
+              ...dimensoes,
+              { id: idNovo(), name: '', whatToLookAt: '', origin: 'SALAO', options: [] },
+            ])
           }
         >
           Adicionar pergunta
