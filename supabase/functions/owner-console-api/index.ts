@@ -70,6 +70,10 @@ const ACTION_RPC = {
   // altura de tom e lida da imagem depois. Numero digitado nao entra aqui.
   addTonePhoto: 'site_add_tone_family_photo',
   updateTonePhoto: 'site_update_tone_family_photo',
+  // As fotos que a cliente mandou na conversa, como candidatas a rosto da
+  // ficha. A lista NAO traz imagem: traz a data e o que o agente leu. Ver e
+  // adotar sao tratados fora deste mapa, porque precisam falar com a Meta.
+  clientPhotoCandidates: 'site_client_photo_candidates',
 } as const;
 
 type Action = keyof typeof ACTION_RPC;
@@ -101,6 +105,174 @@ function emailFromVerifiedJwt(authorizationHeader: string | null): string | null
   }
 }
 
+// --------------------------------------------------------------------------
+// A foto que a cliente mandou na conversa, virando rosto da ficha.
+//
+// POR QUE ESTAS DUAS ACOES NAO SAO PROXY DE RPC COMO O RESTO DESTE ARQUIVO.
+// Elas precisam de bytes que so a Meta tem, e do token que so uma Edge Function
+// enxerga. Poderiam morar numa funcao propria -- e a forma deste arquivo
+// ficaria mais limpa --, mas isso obrigaria a dona a cadastrar mais uma URL no
+// deploy do site. Trocar a limpeza de forma por um passo de configuracao a
+// mais, num sistema que ela opera sozinha, seria um mau negocio.
+//
+// A REGRA DE SEMPRE CONTINUA VALENDO. Ver a foto baixa e devolve, sem gravar --
+// e a mesma leitura descartavel que o agente ja faz, so que quem le e um olho
+// humano. Gravar acontece so no "usar como foto", e o banco recusa se a cliente
+// nao tiver consentimento marcado na ficha.
+// --------------------------------------------------------------------------
+const GRAPH_VERSION = 'v21.0';
+const TETO_BYTES = 8 * 1024 * 1024;
+
+async function rpc(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  fn: string,
+  body: Record<string, unknown>
+): Promise<unknown> {
+  const r = await fetch(`${supabaseUrl}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`RPC ${fn}: ${r.status} ${await r.text()}`);
+  return await r.json();
+}
+
+async function baixarDaMeta(
+  mediaId: string,
+  accessToken: string
+): Promise<{ bytes: Uint8Array; mime: string }> {
+  const meta = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!meta.ok) throw new Error(`META_${meta.status}`);
+  const info = (await meta.json()) as { url?: string; mime_type?: string };
+  if (!info.url) throw new Error('MIDIA_SEM_URL');
+
+  const arquivo = await fetch(info.url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!arquivo.ok) throw new Error(`DOWNLOAD_${arquivo.status}`);
+  const bytes = new Uint8Array(await arquivo.arrayBuffer());
+  if (bytes.byteLength === 0) throw new Error('ARQUIVO_VAZIO');
+  if (bytes.byteLength > TETO_BYTES) throw new Error('ARQUIVO_ACIMA_DO_TETO');
+  return { bytes, mime: info.mime_type ?? 'image/jpeg' };
+}
+
+function paraBase64(bytes: Uint8Array): string {
+  // Em pedacos: String.fromCharCode com centenas de milhares de argumentos
+  // estoura a pilha.
+  let binario = '';
+  const passo = 0x8000;
+  for (let i = 0; i < bytes.length; i += passo) {
+    binario += String.fromCharCode(...bytes.subarray(i, i + passo));
+  }
+  return btoa(binario);
+}
+
+async function fotoDaConversa(
+  acao: 'previewClientMedia' | 'adoptClientPhoto',
+  input: Record<string, unknown>,
+  common: { target_site_project_id: string; target_email: string },
+  tenantId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<Response> {
+  if (typeof input.profileId !== 'string' || typeof input.messageId !== 'string') {
+    return json(400, { error: 'INVALID_CLIENT_MEDIA_REQUEST' });
+  }
+
+  const accessToken = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+  if (!accessToken) return json(503, { error: 'WHATSAPP_ACCESS_TOKEN_MISSING' });
+
+  // O banco confere que a mensagem e MESMA cliente. So o cracha do salao nao
+  // bastaria: dentro do mesmo salao, uma ficha nao pode puxar a foto da
+  // conversa de outra.
+  let localizada: { ok?: boolean; reason?: string; mediaId?: string };
+  try {
+    localizada = (await rpc(supabaseUrl, serviceRoleKey, 'site_client_media_id', {
+      ...common,
+      target_tenant_id: tenantId,
+      target_profile_id: input.profileId,
+      target_message_id: input.messageId,
+    })) as { ok?: boolean; reason?: string; mediaId?: string };
+  } catch {
+    return json(502, { error: 'DATABASE_REQUEST_FAILED' });
+  }
+  if (!localizada?.ok || !localizada.mediaId) {
+    return json(404, { error: localizada?.reason ?? 'MENSAGEM_NAO_ENCONTRADA' });
+  }
+
+  let baixada: { bytes: Uint8Array; mime: string };
+  try {
+    baixada = await baixarDaMeta(localizada.mediaId, accessToken);
+  } catch (e) {
+    // A Meta apaga a midia com o tempo. Dizer isso e mais util que "erro 404".
+    return json(410, { error: 'MIDIA_EXPIRADA_OU_INDISPONIVEL', detail: String(e).slice(0, 200) });
+  }
+
+  if (acao === 'previewClientMedia') {
+    // Devolve e esquece. Nada e gravado aqui.
+    return json(200, {
+      data: { base64: paraBase64(baixada.bytes), mimeType: baixada.mime },
+    });
+  }
+
+  const extensao =
+    baixada.mime === 'image/png' ? 'png' : baixada.mime === 'image/webp' ? 'webp' : 'jpg';
+  const caminho = `${tenantId}/perfil/${crypto.randomUUID()}.${extensao}`;
+
+  const subida = await fetch(`${supabaseUrl}/storage/v1/object/clientes/${caminho}`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      'content-type': baixada.mime,
+    },
+    body: baixada.bytes,
+  });
+  if (!subida.ok) {
+    return json(502, { error: 'UPLOAD_FAILED', detail: (await subida.text()).slice(0, 200) });
+  }
+
+  let gravada: { ok?: boolean; reason?: string; removedPath?: string };
+  try {
+    gravada = (await rpc(supabaseUrl, serviceRoleKey, 'site_adopt_client_photo', {
+      ...common,
+      target_tenant_id: tenantId,
+      target_profile_id: input.profileId,
+      target_message_id: input.messageId,
+      target_storage_path: caminho,
+    })) as { ok?: boolean; reason?: string; removedPath?: string };
+  } catch {
+    return json(502, { error: 'DATABASE_REQUEST_FAILED' });
+  }
+
+  if (!gravada?.ok) {
+    // O banco recusou -- consentimento faltando, quase sempre. O arquivo ja
+    // subiu, entao sai agora: arquivo sem registro e exatamente a foto guardada
+    // sem ninguem ter autorizado.
+    await fetch(`${supabaseUrl}/storage/v1/object/clientes/${caminho}`, {
+      method: 'DELETE',
+      headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` },
+    });
+    return json(409, { error: gravada?.reason ?? 'ADOCAO_RECUSADA' });
+  }
+
+  // O rosto antigo sai do balde junto. Registro sem arquivo, ou arquivo sem
+  // registro, e lixo dos dois jeitos.
+  if (gravada.removedPath) {
+    await fetch(`${supabaseUrl}/storage/v1/object/clientes/${gravada.removedPath}`, {
+      method: 'DELETE',
+      headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` },
+    });
+  }
+
+  return json(200, { data: { storagePath: caminho } });
+}
+
 Deno.serve(async (request: Request) => {
   if (request.method !== 'POST') {
     return json(405, { error: 'METHOD_NOT_ALLOWED' });
@@ -126,7 +298,8 @@ Deno.serve(async (request: Request) => {
   const action = input.action;
   const tenantId = input.tenantId;
 
-  if (typeof action !== 'string' || !(action in ACTION_RPC)) {
+  const falaComAMeta = action === 'previewClientMedia' || action === 'adoptClientPhoto';
+  if (typeof action !== 'string' || (!(action in ACTION_RPC) && !falaComAMeta)) {
     return json(400, { error: 'INVALID_REQUEST' });
   }
   if (action !== 'list' && typeof tenantId !== 'string') {
@@ -143,6 +316,18 @@ Deno.serve(async (request: Request) => {
     target_site_project_id: SITE_PROJECT_ID,
     target_email: userEmail,
   };
+
+  if (falaComAMeta) {
+    return await fotoDaConversa(
+      action as 'previewClientMedia' | 'adoptClientPhoto',
+      input,
+      common,
+      tenantId as string,
+      supabaseUrl,
+      serviceRoleKey
+    );
+  }
+
   let rpcBody: Record<string, unknown>;
 
   switch (action as Action) {
@@ -310,6 +495,17 @@ Deno.serve(async (request: Request) => {
         ...common,
         target_tenant_id: tenantId,
         target_conversation_id: input.conversationId,
+      };
+      break;
+    case 'clientPhotoCandidates':
+      if (typeof input.profileId !== 'string') {
+        return json(400, { error: 'INVALID_CLIENT_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_profile_id: input.profileId,
+        target_limit: Number.isInteger(input.limit) ? input.limit : 12,
       };
       break;
     case 'loadClients':

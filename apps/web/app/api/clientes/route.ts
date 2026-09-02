@@ -12,7 +12,17 @@ export const dynamic = 'force-dynamic';
 // A sessão é lida no servidor e o JWT do usuário vai para a Edge Function, que
 // resolve a identidade a partir do e-mail assinado. O navegador nunca escolhe
 // em nome de quem age.
-const ACTIONS = new Set(['loadClients', 'loadClient', 'saveClient']);
+const ACTIONS = new Set([
+  'loadClients',
+  'loadClient',
+  'saveClient',
+  // As fotos que a cliente mandou na conversa, como candidatas a rosto da
+  // ficha. `previewClientMedia` baixa e devolve sem gravar nada; só
+  // `adoptClientPhoto` grava, e só com consentimento marcado.
+  'clientPhotoCandidates',
+  'previewClientMedia',
+  'adoptClientPhoto',
+]);
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -68,6 +78,7 @@ export async function POST(request: Request): Promise<Response> {
       tenantId: input.tenantId,
       limit: typeof input.limit === 'number' ? input.limit : undefined,
       profileId: typeof input.profileId === 'string' ? input.profileId : undefined,
+      messageId: typeof input.messageId === 'string' ? input.messageId : undefined,
       payload: input.payload,
     }),
   });

@@ -129,6 +129,15 @@ export type Ficha = {
 
 type Workspace = { tenantId: string; tenantName: string; timezone: string };
 
+// Uma foto que a cliente mandou na conversa. Note o que NÃO tem aqui: a imagem.
+// Ela só é baixada quando alguém clica em ver, e não fica guardada.
+type Candidata = {
+  messageId: string;
+  occurredAt: string;
+  understanding: string;
+  provavelmenteExpirada: boolean;
+};
+
 type Filtro = 'ATRASADAS' | 'PENDENCIAS' | 'TODAS';
 
 const ROTULO_PENDENCIA: Record<string, string> = {
@@ -363,6 +372,160 @@ function RostoDaFicha({
           Serve para reconhecer quem é quem na lista. Não é foto de cabelo nem de resultado.
         </p>
       </div>
+    </div>
+  );
+}
+
+// As fotos que a cliente mandou na conversa, como candidatas a rosto.
+//
+// A REGRA QUE ESTE COMPONENTE EXISTE PARA NÃO QUEBRAR: foto de conversa não é
+// guardada. Então a lista mostra só a data e o que o agente leu -- texto que a
+// mensagem já tem. Ver baixa da Meta e devolve sem gravar. Só "usar como foto"
+// grava, e o banco recusa se o consentimento não estiver marcado.
+//
+// A JANELA É DA META, NÃO NOSSA. Ela apaga a mídia depois de algumas semanas.
+// A lista marca o que provavelmente já expirou em vez de oferecer um botão que
+// vai falhar.
+function FotosDaConversa({
+  profileId,
+  temConsentimento,
+  tenantId,
+  onAdotou,
+  aoFalhar,
+}: {
+  profileId: string;
+  temConsentimento: boolean;
+  tenantId: string | null;
+  onAdotou: (storagePath: string) => void;
+  aoFalhar: (mensagem: string) => void;
+}) {
+  const [candidatas, setCandidatas] = useState<Candidata[] | null>(null);
+  const [previas, setPrevias] = useState<Record<string, string>>({});
+  const [ocupado, setOcupado] = useState<string | null>(null);
+
+  const buscar = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const r = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'clientPhotoCandidates', tenantId, profileId }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? 'FALHOU');
+      setCandidatas((body.data as Candidata[]) ?? []);
+    } catch {
+      setCandidatas([]);
+    }
+  }, [tenantId, profileId]);
+
+  useEffect(() => {
+    setPrevias({});
+    setCandidatas(null);
+    void buscar();
+  }, [buscar]);
+
+  async function ver(messageId: string) {
+    if (!tenantId) return;
+    setOcupado(messageId);
+    try {
+      const r = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'previewClientMedia', tenantId, profileId, messageId }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? 'FALHOU');
+      setPrevias((atual) => ({
+        ...atual,
+        [messageId]: `data:${body.data.mimeType};base64,${body.data.base64}`,
+      }));
+    } catch {
+      aoFalhar('Esta foto não está mais disponível — o WhatsApp já apagou.');
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  async function usar(messageId: string) {
+    if (!tenantId) return;
+    setOcupado(messageId);
+    try {
+      const r = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'adoptClientPhoto', tenantId, profileId, messageId }),
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        throw new Error(body.error === 'SEM_CONSENTIMENTO' ? 'SEM_CONSENTIMENTO' : 'FALHOU');
+      }
+      onAdotou(body.data.storagePath as string);
+    } catch (e) {
+      aoFalhar(
+        e instanceof Error && e.message === 'SEM_CONSENTIMENTO'
+          ? 'Marque o consentimento dela primeiro. Sem isso a foto não é guardada.'
+          : 'Não foi possível usar esta foto. O WhatsApp pode já ter apagado.'
+      );
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  if (candidatas === null) {
+    return <p className={styles.nota}>Procurando fotos que ela mandou…</p>;
+  }
+  if (candidatas.length === 0) {
+    return (
+      <p className={styles.nota}>
+        Ela não mandou nenhuma foto nas conversas que o sistema tem. Use o botão acima para subir
+        uma.
+      </p>
+    );
+  }
+
+  return (
+    <div className={styles.candidatas}>
+      {!temConsentimento && (
+        <p className={styles.nota}>
+          Para usar qualquer uma delas, marque antes o consentimento dela mais abaixo. Ver não
+          guarda nada; usar guarda.
+        </p>
+      )}
+      {candidatas.map((c) => (
+        <div key={c.messageId} className={styles.candidata}>
+          {previas[c.messageId] ? (
+            <img src={previas[c.messageId]} alt="Foto que ela mandou" />
+          ) : (
+            <button
+              type="button"
+              className={styles.verFoto}
+              disabled={ocupado === c.messageId || c.provavelmenteExpirada}
+              onClick={() => void ver(c.messageId)}
+            >
+              {c.provavelmenteExpirada
+                ? 'o WhatsApp já apagou'
+                : ocupado === c.messageId
+                  ? 'abrindo…'
+                  : 'ver'}
+            </button>
+          )}
+          <div className={styles.candidataTexto}>
+            <strong>{new Date(c.occurredAt).toLocaleDateString('pt-BR')}</strong>
+            <span>{c.understanding || 'sem leitura registrada'}</span>
+            {previas[c.messageId] && (
+              <button
+                type="button"
+                className={styles.principal}
+                disabled={ocupado === c.messageId || !temConsentimento}
+                onClick={() => void usar(c.messageId)}
+              >
+                {ocupado === c.messageId ? 'gravando…' : 'usar como foto'}
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -935,6 +1098,40 @@ export default function TelaDeClientes() {
                   onMudou={(photos) => editar({ photos })}
                   aoFalhar={setAviso}
                 />
+                <details className={styles.candidatasAbre}>
+                  <summary>Usar uma foto que ela mandou no WhatsApp</summary>
+                  <FotosDaConversa
+                    profileId={ficha.profileId}
+                    temConsentimento={ficha.photoConsentGrantedAt != null}
+                    tenantId={workspace?.tenantId ?? null}
+                    onAdotou={(storagePath) => {
+                      // Já está gravada no banco. Espelhar aqui SEM marcar a
+                      // ficha como suja é o que impede o próximo "Gravar" de
+                      // apagá-la: o salvamento substitui a lista de fotos pelo
+                      // que a tela tiver, e a tela precisa ter esta.
+                      setFicha((atual) =>
+                        atual
+                          ? {
+                              ...atual,
+                              photos: [
+                                ...atual.photos.filter((f) => f.kind !== 'PERFIL'),
+                                {
+                                  id: `perfil:${storagePath}`,
+                                  kind: 'PERFIL',
+                                  storagePath,
+                                  caption: null,
+                                  takenOn: null,
+                                },
+                              ],
+                            }
+                          : atual
+                      );
+                      setAviso('Foto gravada na ficha.');
+                      void buscarLista();
+                    }}
+                    aoFalhar={setAviso}
+                  />
+                </details>
                 {ficha.photos.filter((f) => f.kind !== 'PERFIL').length > 0 && (
                   <p className={styles.nota}>
                     {ficha.photos.filter((f) => f.kind !== 'PERFIL').length} foto(s) de trabalho
