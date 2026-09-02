@@ -18,9 +18,12 @@
 // tela sempre manda tudo que carregou, e apagar aqui é apagar de verdade — daí
 // a confirmação.
 //
-// FOTOS. As fotos de referência que já existem são preservadas e podem ser
-// removidas, mas ainda NÃO dá para subir foto nova por esta tela: falta a rota
-// de upload. Isso está dito na tela, em vez de um botão que não funciona.
+// FOTOS. Cada resposta pode ter fotos de referência, e agora dá para subir por
+// aqui. Elas existem porque descrever cabelo em texto funciona mal: "ocupa mais
+// que a largura dos ombros" quer dizer coisas diferentes para pessoas
+// diferentes, e uma foto resolve a ambiguidade que três linhas de texto não
+// resolvem. A foto é o que o dono usa para ensinar, e é contra ela que o motor
+// compara a foto que a cliente manda.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './conhecimento.module.css';
@@ -49,6 +52,127 @@ function idNovo(): string {
   return `novo:${Math.random().toString(36).slice(2)}`;
 }
 const ehNovo = (id: string) => id.startsWith('novo:');
+
+// As fotos de uma resposta: subir, ver, legendar e remover.
+//
+// Subir grava o arquivo no balde na hora, mas a LIGAÇÃO entre a foto e a
+// resposta só existe depois de Gravar -- porque `site_save_knowledge`
+// substitui a árvore inteira, e é ela quem decide o que fica. Por isso a foto
+// entra no estado da tela e o aviso lembra de gravar: sem isso, o arquivo
+// ficaria no balde sem ninguém apontando para ele.
+function FotosDaOpcao({
+  fotos,
+  rotulo,
+  tenantId,
+  onMudou,
+  aoFalhar,
+}: {
+  fotos: Foto[];
+  rotulo: string;
+  tenantId: string | null;
+  onMudou: (fotos: Foto[]) => void;
+  aoFalhar: (mensagem: string) => void;
+}) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [subindo, setSubindo] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const novas: Record<string, string> = {};
+      for (const foto of fotos) {
+        try {
+          const r = await fetch(
+            `/api/conhecimento/foto?path=${encodeURIComponent(foto.storagePath)}`
+          );
+          const body = await r.json();
+          if (r.ok && body.data?.url) novas[foto.id] = body.data.url as string;
+        } catch {
+          /* foto que não abre vira moldura vazia, não derruba a tela */
+        }
+      }
+      if (vivo) setUrls(novas);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [fotos]);
+
+  async function subir(arquivos: FileList | null) {
+    if (!arquivos || arquivos.length === 0 || !tenantId) return;
+    setSubindo(true);
+    try {
+      const novas: Foto[] = [];
+      for (const arquivo of Array.from(arquivos)) {
+        const formulario = new FormData();
+        formulario.append('tenantId', tenantId);
+        formulario.append('file', arquivo);
+        const r = await fetch('/api/conhecimento/foto', { method: 'POST', body: formulario });
+        const body = await r.json();
+        if (!r.ok) throw new Error(body.error ?? 'UPLOAD_FALHOU');
+        novas.push({ id: idNovo(), storagePath: body.data.storagePath as string, caption: null });
+      }
+      onMudou([...fotos, ...novas]);
+      aoFalhar('Foto subida. Ela só fica ligada a esta resposta depois de você gravar.');
+    } catch {
+      aoFalhar('Não foi possível subir a foto. Aceita JPG, PNG e WEBP até 8 MB.');
+    } finally {
+      setSubindo(false);
+    }
+  }
+
+  return (
+    <div className={styles.fotos}>
+      {fotos.length > 0 && (
+        <div className={styles.tiras}>
+          {fotos.map((f, iFoto) => (
+            <figure key={f.id} className={styles.tira}>
+              {urls[f.id] ? (
+                // <img> e não next/image de propósito: a URL é assinada e
+                // expira em dez minutos, e o otimizador guardaria em cache uma
+                // imagem cujo link já morreu.
+                <img src={urls[f.id]} alt={f.caption ?? `Referência de ${rotulo}`} />
+              ) : (
+                <div className={styles.tiraVazia} />
+              )}
+              <figcaption>
+                <input
+                  value={f.caption ?? ''}
+                  placeholder="legenda"
+                  onChange={(e) =>
+                    onMudou(
+                      fotos.map((ff, j) => (j === iFoto ? { ...ff, caption: e.target.value } : ff))
+                    )
+                  }
+                />
+                <button
+                  type="button"
+                  className={styles.ghostPerigo}
+                  onClick={() => onMudou(fotos.filter((_, j) => j !== iFoto))}
+                >
+                  Remover
+                </button>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+
+      <label className={styles.subir}>
+        {subindo
+          ? 'subindo…'
+          : `+ foto de referência${rotulo ? ` de ${rotulo.toLowerCase()}` : ''}`}
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          disabled={subindo || !tenantId}
+          onChange={(e) => void subir(e.target.files)}
+        />
+      </label>
+    </div>
+  );
+}
 
 export default function TelaDeConhecimento() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -362,36 +486,13 @@ export default function TelaDeConhecimento() {
                   </button>
                 </div>
 
-                {o.photos.length > 0 && (
-                  <div className={styles.fotos}>
-                    {o.photos.map((f, iFoto) => (
-                      <div key={f.id} className={styles.foto}>
-                        <code>{f.storagePath}</code>
-                        <input
-                          value={f.caption ?? ''}
-                          placeholder="legenda"
-                          onChange={(e) =>
-                            editarOpcao(iDim, iOpt, {
-                              photos: o.photos.map((ff, j) =>
-                                j === iFoto ? { ...ff, caption: e.target.value } : ff
-                              ),
-                            })
-                          }
-                        />
-                        <button
-                          className={styles.ghostPerigo}
-                          onClick={() =>
-                            editarOpcao(iDim, iOpt, {
-                              photos: o.photos.filter((_, j) => j !== iFoto),
-                            })
-                          }
-                        >
-                          Remover foto
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <FotosDaOpcao
+                  fotos={o.photos}
+                  rotulo={o.label}
+                  tenantId={workspace?.tenantId ?? null}
+                  onMudou={(fotos) => editarOpcao(iDim, iOpt, { photos: fotos })}
+                  aoFalhar={setAviso}
+                />
               </div>
             ))}
 
@@ -429,8 +530,8 @@ export default function TelaDeConhecimento() {
           Adicionar pergunta
         </button>
         <p className={styles.nota}>
-          Subir foto de referência nova ainda não é possível por aqui — falta a rota de upload. As
-          fotos que já existem continuam valendo e podem ser removidas.
+          As fotos são privadas: só quem tem sessão no configurador vê, por link que expira em dez
+          minutos.
         </p>
       </div>
     </main>
