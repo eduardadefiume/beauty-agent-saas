@@ -20,6 +20,7 @@ import {
   MoreHorizontal,
   Network,
   Radio,
+  MessagesSquare,
   Palette,
   ScanLine,
   ShieldCheck,
@@ -77,6 +78,15 @@ const navItems: NavItem[] = [
   // e por isso não vive no configurador (que congela quando o negócio está
   // publicado).
   { label: 'Clientes', icon: Users, target: 'clientes', href: '/clientes' },
+  // O dono fala e a IA preenche o rascunho. Fica no topo da lista de propósito:
+  // é por onde um salão novo começa, e é onde um salão antigo vai quando
+  // percebe que tem cinquenta serviços sem preço.
+  {
+    label: 'Me conta como funciona',
+    icon: MessagesSquare,
+    target: 'onboarding',
+    href: '/onboarding',
+  },
   // As regras que a dona escreve para o agente. Também fora do configurador:
   // regra corrigida às 11h tem que valer no atendimento das 11h05.
   { label: 'Agente e regras', icon: Sparkles, target: 'agente', href: '/agente' },

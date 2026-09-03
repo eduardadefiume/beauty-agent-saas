@@ -1,0 +1,296 @@
+/* Mesma paleta do dashboard, WhatsApp, Clientes, Conhecimento e Cor. */
+
+.shell {
+  --ink: #1e2b2a;
+  --paper: #f4f0e8;
+  --olive: #6e7a4a;
+  --lime: #a5b47a;
+  --muted: #858a80;
+  --alerta: #a8412f;
+  min-height: 100vh;
+  padding: clamp(20px, 4vw, 44px);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Manrope, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.estado {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 28px;
+  background: #f4f0e8;
+  color: #1e2b2a;
+  font-family: Manrope, Arial, sans-serif;
+}
+.estadoCard {
+  width: min(100%, 550px);
+  padding: clamp(30px, 6vw, 58px);
+  border: 1px solid rgba(30, 43, 42, 0.14);
+  background: rgba(255, 255, 255, 0.46);
+}
+.estadoCard h1 {
+  margin: 18px 0 0;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(30px, 5vw, 46px);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+
+.eyebrow {
+  display: block;
+  color: var(--olive);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.voltar {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+.voltar:hover {
+  color: var(--ink);
+}
+
+.topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+.topo h1 {
+  margin: 6px 0 0;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: clamp(26px, 4vw, 40px);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+.contadorGrande {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+.contadorGrande strong {
+  color: var(--olive);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.aviso {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--alerta);
+  background: rgba(168, 65, 47, 0.07);
+  color: var(--alerta);
+  font-size: 13px;
+}
+
+.explicacao {
+  max-width: 68ch;
+  margin: 0 0 1.4rem;
+  color: #566;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.pauta {
+  margin-bottom: 1.4rem;
+}
+
+.modulo {
+  margin-bottom: 0.5rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid rgba(30, 43, 42, 0.12);
+  background: #fff;
+}
+.modulo summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  cursor: pointer;
+  gap: 1rem;
+}
+.quantas {
+  color: var(--olive);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.modulo ul {
+  margin: 0.7rem 0 0;
+  padding-left: 1.1rem;
+}
+.modulo li {
+  margin-bottom: 0.5rem;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.modulo li span {
+  display: block;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.eMais {
+  color: var(--muted);
+  font-style: italic;
+  list-style: none;
+}
+
+.tudoCerto {
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid rgba(110, 122, 74, 0.3);
+  background: rgba(165, 180, 122, 0.12);
+  font-size: 14px;
+}
+
+.conversa {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid rgba(30, 43, 42, 0.12);
+  background: #fff;
+}
+
+.balao {
+  max-width: 78%;
+  padding: 0.6rem 0.85rem;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.balao p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.doDono {
+  align-self: flex-end;
+  background: rgba(165, 180, 122, 0.26);
+  border-bottom-right-radius: 3px;
+}
+.doSistema {
+  align-self: flex-start;
+  background: rgba(30, 43, 42, 0.05);
+  border-bottom-left-radius: 3px;
+}
+.selo {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.entrada {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.7rem;
+  margin: 0.8rem 0 1.6rem;
+}
+.entrada textarea {
+  flex: 1;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(30, 43, 42, 0.2);
+  background: #fff;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.botoes {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.principal,
+.ghost,
+.ghostPerigo {
+  padding: 0.55rem 1rem;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.principal {
+  border: 1px solid var(--olive);
+  background: var(--olive);
+  color: #fff;
+}
+.principal:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ghost {
+  border: 1px solid rgba(30, 43, 42, 0.24);
+  background: transparent;
+  color: var(--ink);
+}
+.ghostPerigo {
+  border: 1px solid rgba(168, 65, 47, 0.4);
+  background: transparent;
+  color: var(--alerta);
+}
+
+.bloco {
+  margin-bottom: 1.3rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid rgba(30, 43, 42, 0.12);
+  background: #fff;
+}
+.bloco h2 {
+  margin: 0 0 0.3rem;
+  font-size: 15px;
+}
+
+.nota {
+  margin: 0 0 0.6rem;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(30, 43, 42, 0.07);
+}
+.linha div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.linha strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.linha span {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.rodape {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(30, 43, 42, 0.1);
+}

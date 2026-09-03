@@ -26,10 +26,22 @@ const JSON_HEADERS = {
 
 // Espelha o que o balde aceita. Repetir aqui é o que faz um arquivo recusado
 // morrer antes de subir, em vez de subir e falhar depois.
-const MIMES = new Map<string, string>([
+const IMAGENS = new Map<string, string>([
   ['image/jpeg', 'jpg'],
   ['image/png', 'png'],
   ['image/webp', 'webp'],
+]);
+
+// O onboarding por conversa também aceita áudio: o dono fala em vez de digitar.
+// Os tipos são os que o WhatsApp e o gravador do navegador produzem.
+const AUDIOS = new Map<string, string>([
+  ['audio/mpeg', 'mp3'],
+  ['audio/mp4', 'm4a'],
+  ['audio/m4a', 'm4a'],
+  ['audio/ogg', 'ogg'],
+  ['audio/webm', 'webm'],
+  ['audio/wav', 'wav'],
+  ['audio/x-wav', 'wav'],
 ]);
 
 const TETO_BYTES = 8 * 1024 * 1024;
@@ -38,7 +50,12 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-export async function subirFoto(request: Request, balde: Balde, pasta: string): Promise<Response> {
+export async function subirFoto(
+  request: Request,
+  balde: Balde,
+  pasta: string,
+  aceita: 'IMAGEM' | 'IMAGEM_OU_AUDIO' = 'IMAGEM'
+): Promise<Response> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { session },
@@ -65,7 +82,9 @@ export async function subirFoto(request: Request, balde: Balde, pasta: string): 
     return json(400, { error: 'FILE_REQUIRED' });
   }
 
-  const extensao = MIMES.get(arquivo.type);
+  const extensao =
+    IMAGENS.get(arquivo.type) ??
+    (aceita === 'IMAGEM_OU_AUDIO' ? AUDIOS.get(arquivo.type) : undefined);
   if (!extensao) {
     return json(415, { error: 'UNSUPPORTED_MEDIA_TYPE', mime: arquivo.type });
   }
