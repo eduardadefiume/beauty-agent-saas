@@ -56,7 +56,12 @@ Deno.serve(async (request: Request) => {
     // Sem corpo é o caso normal: o pg_cron chama sem nada.
   }
 
-  const fila = (await rpc(supabaseUrl, chave, 'wa_archive_claim', { p_limit: limite })) as {
+  // Pegar a fila fica dentro de um try de proposito. Na primeira versao nao
+  // ficava, e as funcoes do worker tinham nascido no schema `app`, que o
+  // PostgREST nao expoe -- o 404 virava lance sem dono e o worker devolvia
+  // `500 Internal Server Error` sem texto nenhum. Worker que falha mudo custa
+  // uma tarde para diagnosticar.
+  let fila: {
     archive_id: string;
     tenant_id: string;
     storage_path: string;
@@ -64,6 +69,14 @@ Deno.serve(async (request: Request) => {
     contact_label: string;
     owner_label: string | null;
   }[];
+  try {
+    fila = (await rpc(supabaseUrl, chave, 'wa_archive_claim', { p_limit: limite })) as typeof fila;
+  } catch (erro) {
+    return json(502, {
+      error: 'FILA_INDISPONIVEL',
+      detail: erro instanceof Error ? erro.message.slice(0, 300) : 'desconhecido',
+    });
+  }
 
   if (!Array.isArray(fila) || fila.length === 0) {
     return json(200, { data: { lidos: 0, fila: 0 } });
