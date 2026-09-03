@@ -34,6 +34,7 @@ type Conversa = {
   erro: string | null;
   contactId: string | null;
   clienteNoCrm: string | null;
+  origem: 'EXPORT_TXT' | 'COEXISTENCE';
 };
 
 type Resumo = {
@@ -42,8 +43,23 @@ type Resumo = {
   naFila: number;
   falhas: number;
   semAmarra: number;
+  daMeta: number;
   mensagens: number;
 };
+
+// O andamento da importação pela Meta. As três fases chegam em pedaços, fora de
+// ordem, ao longo de horas — sem isso na tela o dono clica em importar, não vê
+// nada e conclui que não funcionou, justamente enquanto está funcionando.
+type Coexistencia = {
+  entregas: number;
+  mensagensLidas: number;
+  contatosLidos: number;
+  fase: number | null;
+  progresso: number | null;
+  ultimaEm: string | null;
+  guardadasSemLer: number;
+  ultimoErro: string | null;
+} | null;
 
 type Autorizacao = {
   autorizadoPor: string;
@@ -52,7 +68,12 @@ type Autorizacao = {
   nota: string | null;
 } | null;
 
-type Estado = { autorizacao: Autorizacao; resumo: Resumo; conversas: Conversa[] };
+type Estado = {
+  autorizacao: Autorizacao;
+  resumo: Resumo;
+  coexistencia: Coexistencia;
+  conversas: Conversa[];
+};
 
 type Fala = {
   position: number;
@@ -159,7 +180,13 @@ export default function TelaDeHistorico() {
   // Enquanto houver arquivo na fila, a tela volta a olhar: a leitura acontece
   // por fora, de cinco em cinco minutos, e ficar apertando F5 não é resposta.
   useEffect(() => {
-    if (!estado || estado.resumo.naFila === 0) return;
+    const chegando =
+      estado != null &&
+      (estado.resumo.naFila > 0 ||
+        (estado.coexistencia != null &&
+          estado.coexistencia.entregas > 0 &&
+          (estado.coexistencia.fase ?? 0) < 2));
+    if (!chegando) return;
     const t = setInterval(() => void buscar(), 20000);
     return () => clearInterval(t);
   }, [estado, buscar]);
@@ -281,6 +308,7 @@ export default function TelaDeHistorico() {
 
   const resumo = estado?.resumo;
   const autorizacao = estado?.autorizacao ?? null;
+  const coexistencia = estado?.coexistencia ?? null;
 
   return (
     <main className={styles.shell}>
@@ -321,12 +349,39 @@ export default function TelaDeHistorico() {
             ['na fila', resumo.naFila],
             ['mensagens', resumo.mensagens],
             ['sem cliente amarrada', resumo.semAmarra],
+            ['vindas da Meta', resumo.daMeta],
           ].map(([rotulo, valor]) => (
             <div key={String(rotulo)} className={styles.contador}>
               <strong>{String(valor)}</strong>
               <span>{rotulo}</span>
             </div>
           ))}
+        </section>
+      )}
+
+      {coexistencia && coexistencia.entregas > 0 && (
+        <section className={styles.bloco}>
+          <h2>O histórico está chegando pela Meta</h2>
+          <p className={styles.nota}>
+            {coexistencia.fase == null
+              ? 'A Meta já mandou a agenda de contatos. As conversas vêm em seguida.'
+              : `Fase ${coexistencia.fase} de 2${
+                  coexistencia.progresso == null ? '' : ` · ${coexistencia.progresso}%`
+                }. A fase 0 é o dia de hoje, a 1 vai até 90 dias, a 2 até 180. Elas chegam em pedaços e fora de ordem — a ordem certa aparece na conversa, não aqui.`}
+          </p>
+          <p className={styles.nota}>
+            {coexistencia.entregas} entrega{coexistencia.entregas === 1 ? '' : 's'} recebida
+            {coexistencia.entregas === 1 ? '' : 's'} · {coexistencia.mensagensLidas} mensagens ·{' '}
+            {coexistencia.contatosLidos} contatos com nome
+            {coexistencia.ultimaEm ? ` · última em ${dia(coexistencia.ultimaEm)}` : ''}
+          </p>
+          {coexistencia.ultimoErro && (
+            <p className={styles.aviso}>
+              Uma entrega chegou e não foi entendida: {coexistencia.ultimoErro}. Ela ficou guardada
+              inteira, do jeito que veio — nada foi perdido, e dá para reler depois de corrigir a
+              leitura.
+            </p>
+          )}
         </section>
       )}
 
@@ -389,6 +444,7 @@ export default function TelaDeHistorico() {
                 <div>
                   <strong>{c.nome}</strong>
                   <span>
+                    {c.origem === 'COEXISTENCE' ? 'veio da Meta' : 'veio do arquivo'} ·{' '}
                     {ROTULO[c.status]}
                     {c.status === 'PRONTO' &&
                       ` · ${c.mensagens} mensagens · ${dia(c.de)} a ${dia(c.ate)}`}

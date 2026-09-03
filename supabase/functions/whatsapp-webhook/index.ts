@@ -1,11 +1,19 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
 import {
+  extractCoexistenceChanges,
   extractWhatsAppEvents,
   sha256Hex,
   verifyMetaSignature,
   verifyToken,
 } from './whatsapp-webhook.ts';
+
+// Uma entrega comum da Cloud API cabe folgada em 1 MB. Um pedaco de `history`
+// do Coexistence carrega meses de conversa de varias clientes de uma vez, e
+// nao cabe. O teto maior vale so depois de a assinatura da Meta conferir --
+// nada nao assinado chega a ser lido como JSON.
+const TETO_PADRAO = 1_000_000;
+const TETO_HISTORICO = 12_000_000;
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -62,13 +70,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return json({ code: 'METHOD_NOT_ALLOWED' }, 405);
 
   const declaredLength = Number(req.headers.get('content-length') ?? '0');
-  if (Number.isFinite(declaredLength) && declaredLength > 1_000_000) {
+  if (Number.isFinite(declaredLength) && declaredLength > TETO_HISTORICO) {
     return json({ code: 'PAYLOAD_TOO_LARGE' }, 413);
   }
 
   const rawBody = await req.text();
-  if (rawBody.length === 0 || rawBody.length > 1_000_000) {
-    return json({ code: 'INVALID_PAYLOAD_SIZE' }, rawBody.length > 1_000_000 ? 413 : 400);
+  if (rawBody.length === 0 || rawBody.length > TETO_HISTORICO) {
+    return json({ code: 'INVALID_PAYLOAD_SIZE' }, rawBody.length > TETO_HISTORICO ? 413 : 400);
   }
 
   if (!(await verifyMetaSignature(rawBody, appSecret, req.headers.get('x-hub-signature-256')))) {
@@ -84,14 +92,69 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ code: 'INVALID_JSON', correlationId }, 400);
   }
 
+  const coexistencia = extractCoexistenceChanges(payload);
+
+  // Fora do Coexistence o teto continua sendo o de sempre.
+  if (coexistencia.length === 0 && rawBody.length > TETO_PADRAO) {
+    return json({ code: 'PAYLOAD_TOO_LARGE', correlationId }, 413);
+  }
+
   const delivery = extractWhatsAppEvents(payload, payloadSha256);
-  if (!delivery) return json({ code: 'INVALID_WHATSAPP_PAYLOAD', correlationId }, 400);
+  if (!delivery && coexistencia.length === 0) {
+    return json({ code: 'INVALID_WHATSAPP_PAYLOAD', correlationId }, 400);
+  }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const secretKey = readSecretKey();
   if (!supabaseUrl || !secretKey) {
     return json({ code: 'DATABASE_INTEGRATION_NOT_CONFIGURED', correlationId }, 503);
   }
+
+  // O historico entra primeiro e sem recorte. Se o banco recusar, a resposta
+  // NAO e 200: a Meta reenvia, e reenvio e a unica chance de recuperar um
+  // pedaco de historico que so e oferecido uma vez.
+  for (const mudanca of coexistencia) {
+    const resposta = await fetch(`${supabaseUrl}/rest/v1/rpc/ingest_whatsapp_coexistence`, {
+      method: 'POST',
+      headers: {
+        apikey: secretKey,
+        Authorization: `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        p_waba_id: mudanca.wabaId,
+        p_phone_number_id: mudanca.phoneNumberId,
+        p_field: mudanca.field,
+        p_payload_sha256: payloadSha256,
+        p_value: mudanca.value,
+      }),
+    });
+
+    if (!resposta.ok) {
+      console.error(
+        JSON.stringify({
+          event: 'whatsapp_coexistence_persistence_failed',
+          correlationId,
+          field: mudanca.field,
+          status: resposta.status,
+        })
+      );
+      return json({ code: 'COEXISTENCE_PERSISTENCE_FAILED', correlationId }, 503);
+    }
+
+    const lido = (await resposta.json()) as Record<string, unknown>;
+    console.log(
+      JSON.stringify({
+        event: 'whatsapp_coexistence_persisted',
+        correlationId,
+        field: mudanca.field,
+        duplicada: lido.duplicada ?? false,
+        parseFalhou: lido.parseFalhou ?? false,
+      })
+    );
+  }
+
+  if (!delivery) return json({ received: true, correlationId }, 200);
 
   const databaseResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/ingest_whatsapp_webhook`, {
     method: 'POST',

@@ -30,6 +30,51 @@ function compactPayload(
   return { object, entryId, field, metadata, [itemKind]: item };
 }
 
+// Os tres campos que a Meta manda quando o numero do salao esta em
+// Coexistence: o aplicativo de negocios dele e a Cloud API no mesmo numero.
+// Eles NAO passam pelo caminho de eventos abaixo -- `extractWhatsAppEvents`
+// guarda so a metadata de cada mudanca, e um `history` guardado assim seria
+// respondido com 200 e perderia os 180 dias de conversa em silencio.
+export const CAMPOS_COEXISTENCE = ['history', 'smb_app_state_sync', 'smb_message_echoes'];
+
+export type CoexistenceChange = {
+  wabaId: string;
+  phoneNumberId: string;
+  field: string;
+  value: Record<string, unknown>;
+};
+
+// Aqui o `value` inteiro sobrevive, sem recorte. O banco guarda o cru antes de
+// interpretar, entao errar a forma do payload vira "releio amanha" em vez de
+// "perdi o historico do salao".
+export function extractCoexistenceChanges(payload: unknown): CoexistenceChange[] {
+  if (!isRecord(payload) || payload.object !== 'whatsapp_business_account') return [];
+
+  const entries = Array.isArray(payload.entry) ? payload.entry : [];
+  const changes: CoexistenceChange[] = [];
+
+  for (const entryValue of entries) {
+    if (!isRecord(entryValue)) continue;
+    const wabaId = typeof entryValue.id === 'string' ? entryValue.id : '';
+    const entryChanges = Array.isArray(entryValue.changes) ? entryValue.changes : [];
+
+    for (const rawChange of entryChanges) {
+      if (!isRecord(rawChange)) continue;
+      const field = typeof rawChange.field === 'string' ? rawChange.field : '';
+      if (!CAMPOS_COEXISTENCE.includes(field)) continue;
+      if (!isRecord(rawChange.value)) continue;
+
+      const metadata = isRecord(rawChange.value.metadata) ? rawChange.value.metadata : {};
+      const phoneNumberId =
+        typeof metadata.phone_number_id === 'string' ? metadata.phone_number_id : '';
+
+      changes.push({ wabaId, phoneNumberId, field, value: rawChange.value });
+    }
+  }
+
+  return changes;
+}
+
 export function extractWhatsAppEvents(
   payload: unknown,
   deliverySha256: string
@@ -51,6 +96,9 @@ export function extractWhatsAppEvents(
       if (!isRecord(rawChange)) continue;
       const change = rawChange as WhatsAppChange;
       const field = cleanToken(change.field, 'unknown');
+      // Coexistence tem porta propria. Se passasse por aqui, viraria um evento
+      // "houve uma mudanca" sem conteudo -- e o conteudo e justamente o ponto.
+      if (CAMPOS_COEXISTENCE.includes(field)) continue;
       if (!isRecord(change.value)) continue;
       const value = change.value;
       const metadata = isRecord(value.metadata) ? value.metadata : {};
