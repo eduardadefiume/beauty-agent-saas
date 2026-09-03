@@ -506,6 +506,38 @@ function formatMoneyFromMinor(minor: number | null): string {
   return (minor / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// Preço se digita em reais, porque é assim que dono de salão fala de preço.
+//
+// O campo pedia CENTAVOS, e o rótulo dizia isso -- mas ninguém digita 12000
+// quando quer dizer cento e vinte reais. A Duda digitou 120 querendo R$ 120 e
+// o sistema entendeu R$ 1,20, que é exatamente o que o campo prometia e
+// exatamente o que ninguém quer. Num catálogo de cinquenta serviços, esse
+// campo erra cinquenta vezes.
+//
+// Guardar em centavos continua certo: dinheiro em ponto flutuante acumula
+// erro. O que muda é quem faz a conversão -- o sistema, e não a pessoa.
+export function reaisParaMinor(texto: string): number | null {
+  const semMoeda = texto.replace(/R\$/g, '').replace(/\s/g, '');
+  if (semMoeda === '') return null;
+
+  // O ponto é ambíguo em português e o desempate é a vírgula: onde ela
+  // aparece, ela é o decimal e o ponto vira separador de milhar ("1.200,50").
+  // Sem vírgula, o ponto é decimal -- é o que `input type="number"` devolve,
+  // sempre, e foi por confundir os dois que a primeira versão disto
+  // transformou 120.50 em cento e vinte mil.
+  const normalizado = semMoeda.includes(',')
+    ? semMoeda.replace(/\./g, '').replace(',', '.')
+    : semMoeda;
+
+  const reais = Number(normalizado);
+  if (!Number.isFinite(reais) || reais < 0) return null;
+  return Math.round(reais * 100);
+}
+
+export function minorParaCampo(minor: number | null): string {
+  return minor == null ? '' : String(minor / 100);
+}
+
 /**
  * Texto da política de cancelamento, gerado a partir da configuração do
  * dono. Não é digitado à mão: data, horário e essa cláusula entram
@@ -1496,16 +1528,19 @@ export default function Configurator({ user }: { user: { displayName: string; em
                       </div>
                       {config.cancellationChargeType === 'FIXED_AMOUNT' && (
                         <label>
-                          Valor fixo (R$, em centavos)
+                          Valor fixo (R$)
                           <input
                             type="number"
                             min={0}
+                            step="0.01"
+                            placeholder="50,00"
                             disabled={!editable}
-                            value={config.cancellationChargeAmountMinor ?? ''}
+                            value={minorParaCampo(config.cancellationChargeAmountMinor)}
                             onChange={(e) =>
                               change((draft) => {
-                                draft.cancellationChargeAmountMinor =
-                                  e.target.value === '' ? null : Number(e.target.value);
+                                draft.cancellationChargeAmountMinor = reaisParaMinor(
+                                  e.target.value
+                                );
                               })
                             }
                           />
@@ -2786,18 +2821,19 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                 />
                               </label>
                               <label>
-                                Preço base (R$, em centavos)
+                                Preço base (R$)
                                 <input
                                   type="number"
                                   min={0}
+                                  step="0.01"
+                                  placeholder="120,00"
                                   disabled={!editable}
-                                  value={service.basePriceMinor ?? ''}
+                                  value={minorParaCampo(service.basePriceMinor)}
                                   onChange={(e) =>
                                     change((draft) => {
                                       const target = draft.services[serviceIndex];
                                       if (target)
-                                        target.basePriceMinor =
-                                          e.target.value === '' ? null : Number(e.target.value);
+                                        target.basePriceMinor = reaisParaMinor(e.target.value);
                                     })
                                   }
                                 />
@@ -2949,16 +2985,16 @@ export default function Configurator({ user }: { user: { displayName: string; em
                                   <input
                                     type="number"
                                     min={0}
+                                    step="0.01"
                                     disabled={!editable}
-                                    value={variation.priceMinor ?? ''}
-                                    placeholder="Centavos"
+                                    value={minorParaCampo(variation.priceMinor)}
+                                    placeholder="Preço em R$"
                                     onChange={(e) =>
                                       change((draft) => {
                                         const target =
                                           draft.services[serviceIndex]?.variations[variationIndex];
                                         if (target)
-                                          target.priceMinor =
-                                            e.target.value === '' ? null : Number(e.target.value);
+                                          target.priceMinor = reaisParaMinor(e.target.value);
                                       })
                                     }
                                   />
