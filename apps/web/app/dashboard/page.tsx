@@ -20,6 +20,7 @@ import {
   MoreHorizontal,
   Network,
   Radio,
+  Archive,
   MessagesSquare,
   Palette,
   ScanLine,
@@ -87,6 +88,10 @@ const navItems: NavItem[] = [
     target: 'onboarding',
     href: '/onboarding',
   },
+  // O arquivo das conversas que o dono ja teve no WhatsApp. Fica perto do
+  // onboarding porque e a outra metade da mesma ideia: em vez de o dono
+  // contar como atende, o sistema le como ele ja atendeu.
+  { label: 'Histórico do WhatsApp', icon: Archive, target: 'historico', href: '/historico' },
   // As regras que a dona escreve para o agente. Também fora do configurador:
   // regra corrigida às 11h tem que valer no atendimento das 11h05.
   { label: 'Agente e regras', icon: Sparkles, target: 'agente', href: '/agente' },

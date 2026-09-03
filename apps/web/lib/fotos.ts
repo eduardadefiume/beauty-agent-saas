@@ -44,7 +44,12 @@ const AUDIOS = new Map<string, string>([
   ['audio/x-wav', 'wav'],
 ]);
 
+// O export do WhatsApp é o único arquivo que pode ser grande aqui: conversa de
+// dois anos passa fácil de 8 MB. Foto de ficha continua no teto de sempre.
+const EXPORTS = new Map<string, string>([['text/plain', 'txt']]);
+
 const TETO_BYTES = 8 * 1024 * 1024;
+const TETO_EXPORT_BYTES = 64 * 1024 * 1024;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -54,7 +59,7 @@ export async function subirFoto(
   request: Request,
   balde: Balde,
   pasta: string,
-  aceita: 'IMAGEM' | 'IMAGEM_OU_AUDIO' = 'IMAGEM'
+  aceita: 'IMAGEM' | 'IMAGEM_OU_AUDIO' | 'EXPORT_DE_CONVERSA' = 'IMAGEM'
 ): Promise<Response> {
   const supabase = await createSupabaseServerClient();
   const {
@@ -83,15 +88,20 @@ export async function subirFoto(
   }
 
   const extensao =
-    IMAGENS.get(arquivo.type) ??
-    (aceita === 'IMAGEM_OU_AUDIO' ? AUDIOS.get(arquivo.type) : undefined);
+    aceita === 'EXPORT_DE_CONVERSA'
+      ? // O navegador manda `text/plain` vazio em alguns Android; o nome do
+        // arquivo desempata, porque quem exporta conversa manda .txt.
+        (EXPORTS.get(arquivo.type) ?? (/\.txt$/i.test(arquivo.name) ? 'txt' : undefined))
+      : (IMAGENS.get(arquivo.type) ??
+        (aceita === 'IMAGEM_OU_AUDIO' ? AUDIOS.get(arquivo.type) : undefined));
   if (!extensao) {
     return json(415, { error: 'UNSUPPORTED_MEDIA_TYPE', mime: arquivo.type });
   }
   if (arquivo.size === 0) {
     return json(400, { error: 'EMPTY_FILE' });
   }
-  if (arquivo.size > TETO_BYTES) {
+  const teto = aceita === 'EXPORT_DE_CONVERSA' ? TETO_EXPORT_BYTES : TETO_BYTES;
+  if (arquivo.size > teto) {
     return json(413, { error: 'FILE_TOO_LARGE' });
   }
 

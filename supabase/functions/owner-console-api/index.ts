@@ -34,6 +34,14 @@ const ACTION_RPC = {
   onboardingOpen: 'site_onboarding_open',
   onboardingUndo: 'site_onboarding_undo',
   onboardingClose: 'site_onboarding_close',
+  // O arquivo das conversas que o dono ja teve no WhatsApp. A leitura em si e
+  // worker (whatsapp-history-reader); daqui saem so o registro do arquivo, a
+  // consulta e o apagar.
+  waArchives: 'site_wa_archives',
+  waArchiveAdd: 'site_wa_archive_add',
+  waArchiveRead: 'site_wa_archive_read',
+  waSetOwnerLabel: 'site_wa_set_owner_label',
+  forgetContactHistory: 'site_forget_contact_history',
   setAgentAutomation: 'site_set_agent_automation',
   answerOwnerQuestion: 'site_answer_owner_question',
   dismissOwnerQuestion: 'site_dismiss_owner_question',
@@ -866,7 +874,55 @@ Deno.serve(async (request: Request) => {
     case 'loadColorModel':
     case 'onboardingState':
     case 'onboardingClose':
+    case 'waArchives':
       rpcBody = { ...common, target_tenant_id: tenantId };
+      break;
+    case 'waArchiveAdd':
+      // O caminho vem da rota de upload, que o montou no servidor a partir do
+      // tenant. A RPC confere de novo que ele comeca pela pasta do proprio
+      // salao: conferir duas vezes e barato, e um arquivo de conversa
+      // registrado dentro de outro negocio nao e.
+      if (
+        typeof input.storagePath !== 'string' ||
+        typeof input.filename !== 'string' ||
+        typeof input.contactLabel !== 'string'
+      ) {
+        return json(400, { error: 'INVALID_ARCHIVE_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_storage_path: input.storagePath,
+        target_filename: input.filename,
+        target_contact_label: input.contactLabel,
+        target_phone_digits: typeof input.phoneDigits === 'string' ? input.phoneDigits : null,
+      };
+      break;
+    case 'waArchiveRead':
+      if (typeof input.archiveId !== 'string') {
+        return json(400, { error: 'INVALID_ARCHIVE_REQUEST' });
+      }
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_archive_id: input.archiveId,
+        target_offset: Number.isInteger(input.offset) ? input.offset : 0,
+        target_limit: Number.isInteger(input.limit) ? input.limit : 200,
+      };
+      break;
+    case 'waSetOwnerLabel':
+      if (typeof input.ownerLabel !== 'string') {
+        return json(400, { error: 'INVALID_ARCHIVE_REQUEST' });
+      }
+      rpcBody = { ...common, target_tenant_id: tenantId, target_owner_label: input.ownerLabel };
+      break;
+    case 'forgetContactHistory':
+      // Apagar o historico de uma cliente e irreversivel de proposito: e o que
+      // se faz quando ela pede para apagar os dados dela.
+      if (typeof input.contactId !== 'string') {
+        return json(400, { error: 'INVALID_FORGET_REQUEST' });
+      }
+      rpcBody = { ...common, target_tenant_id: tenantId, target_contact_id: input.contactId };
       break;
     case 'onboardingOpen':
       rpcBody = {
