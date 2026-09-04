@@ -8,6 +8,7 @@ const ACTIONS = new Set([
   'waArchiveAdd',
   'waArchiveRead',
   'waSetOwnerLabel',
+  'waBackupAbsorb',
   'forgetContactHistory',
 ]);
 
@@ -35,8 +36,11 @@ export async function POST(request: Request): Promise<Response> {
     return json(503, { error: 'CONFIGURATOR_NOT_AVAILABLE' });
   }
 
+  // O backup do aparelho chega em lotes de conversa, que sao maiores que
+  // qualquer outra chamada desta tela -- mas ainda bem abaixo do limite de
+  // corpo da plataforma. As demais acoes continuam apertadas.
   const contentLength = Number(request.headers.get('content-length') ?? '0');
-  if (contentLength > 65_536) {
+  if (contentLength > 3_000_000) {
     return json(413, { error: 'PAYLOAD_TOO_LARGE' });
   }
 
@@ -52,6 +56,9 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (typeof input.tenantId !== 'string') {
     return json(400, { error: 'TENANT_REQUIRED' });
+  }
+  if (input.action !== 'waBackupAbsorb' && contentLength > 65_536) {
+    return json(413, { error: 'PAYLOAD_TOO_LARGE' });
   }
 
   const upstream = await fetch(endpoint, {
@@ -70,6 +77,7 @@ export async function POST(request: Request): Promise<Response> {
       archiveId: input.archiveId,
       contactId: input.contactId,
       ownerLabel: input.ownerLabel,
+      conversas: input.conversas,
       offset: input.offset,
       limit: input.limit,
     }),

@@ -19,6 +19,8 @@
 // para todos os arquivos.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackupIlegivel } from '../../lib/whatsapp-backup/crypt15';
+import { type EstadoDaImportacao, importarBackup } from '../../lib/whatsapp-backup/importar';
 import styles from './historico.module.css';
 
 type Conversa = {
@@ -34,7 +36,7 @@ type Conversa = {
   erro: string | null;
   contactId: string | null;
   clienteNoCrm: string | null;
-  origem: 'EXPORT_TXT' | 'COEXISTENCE';
+  origem: 'EXPORT_TXT' | 'COEXISTENCE' | 'BACKUP_CRYPT15';
 };
 
 type Resumo = {
@@ -119,6 +121,12 @@ export default function TelaDeHistorico() {
   const [aberta, setAberta] = useState<string | null>(null);
   const [falas, setFalas] = useState<Fala[]>([]);
   const tenantRef = useRef<string | null>(null);
+  // A chave de 64 dígitos do dono. Ela existe só neste estado, enquanto a
+  // aba está aberta: não vai para o servidor, não vai para o localStorage, e
+  // some quando ele fecha a página.
+  const [chaveDoBackup, setChaveDoBackup] = useState('');
+  const [backup, setBackup] = useState<File | null>(null);
+  const [importacao, setImportacao] = useState<EstadoDaImportacao | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -233,6 +241,47 @@ export default function TelaDeHistorico() {
       setErro(e instanceof Error ? e.message : 'Não consegui subir os arquivos.');
     } finally {
       setSubindo(false);
+    }
+  }
+
+  async function abrirOBackup() {
+    const arquivo = backup;
+    if (!arquivo) return;
+    setErro(null);
+    setAviso(null);
+    setImportacao({ passo: 'ABRINDO', andamento: null, conversas: 0, mensagens: 0 });
+
+    try {
+      const bytes = new Uint8Array(await arquivo.arrayBuffer());
+      const fim = await importarBackup(
+        bytes,
+        chaveDoBackup,
+        async (lote) => {
+          const r = (await chamar({ action: 'waBackupAbsorb', conversas: lote })) as {
+            ok?: boolean;
+            reason?: string;
+          };
+          if (!r?.ok) throw new Error(r?.reason ?? 'LOTE_RECUSADO');
+        },
+        setImportacao
+      );
+      setAviso(
+        `${fim.conversas} ${fim.conversas === 1 ? 'conversa' : 'conversas'} e ${fim.mensagens} mensagens vieram do backup do aparelho.`
+      );
+      // A chave sai da memória assim que deixa de ser necessária.
+      setChaveDoBackup('');
+      setBackup(null);
+      await buscar();
+    } catch (e: unknown) {
+      setErro(
+        e instanceof BackupIlegivel
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'Não consegui abrir o backup.'
+      );
+    } finally {
+      setImportacao(null);
     }
   }
 
@@ -386,6 +435,59 @@ export default function TelaDeHistorico() {
       )}
 
       <section className={styles.bloco}>
+        <h2>O que veio antes: o backup do aparelho</h2>
+        <p className={styles.nota}>
+          A Meta entrega os últimos 180 dias. O que é mais antigo que isso, e os grupos, só existem
+          no backup que o WhatsApp grava no celular:{' '}
+          <code>Android/media/com.whatsapp/WhatsApp/Databases/msgstore.db.crypt15</code>. Copie esse
+          arquivo para o computador e escolha ele aqui.
+        </p>
+        <p className={styles.nota}>
+          A chave de 64 dígitos está em{' '}
+          <strong>Ajustes › Conversas › Backup › Backup criptografado</strong>, no celular.{' '}
+          <strong>Ela não sai deste computador.</strong> O arquivo é aberto aqui no navegador e só
+          as mensagens já lidas viajam — a chave abre qualquer backup do WhatsApp deste número, e
+          por isso ela não tem por que existir do lado do sistema.
+        </p>
+
+        <div className={styles.linhaDeCampo}>
+          <input
+            type="file"
+            accept=".crypt15"
+            disabled={importacao != null || !autorizacao}
+            onChange={(e) => setBackup(e.target.files?.[0] ?? null)}
+          />
+        </div>
+        <div className={styles.linhaDeCampo}>
+          <input
+            type="password"
+            placeholder="a chave de 64 dígitos"
+            autoComplete="off"
+            spellCheck={false}
+            value={chaveDoBackup}
+            disabled={importacao != null}
+            onChange={(e) => setChaveDoBackup(e.target.value)}
+          />
+          <button
+            className={styles.principal}
+            disabled={importacao != null || !backup || !autorizacao}
+            onClick={() => void abrirOBackup()}
+          >
+            {importacao ? 'Abrindo…' : 'Importar o backup'}
+          </button>
+        </div>
+
+        {importacao && (
+          <p className={styles.nota}>
+            {importacao.passo === 'ABRINDO' && 'Abrindo o arquivo com a sua chave…'}
+            {importacao.passo === 'LENDO' && 'Lendo as conversas do banco do WhatsApp…'}
+            {importacao.passo === 'MANDANDO' &&
+              `Mandando: ${importacao.andamento?.mensagensEnviadas ?? 0} de ${importacao.andamento?.totalDeMensagens ?? 0} mensagens.`}
+          </p>
+        )}
+      </section>
+
+      <section className={styles.bloco}>
         <h2>Como o seu nome aparece nas conversas</h2>
         <p className={styles.nota}>
           O WhatsApp não marca “eu” e “ela”: marca o nome de quem escreveu. Em conversa equilibrada
@@ -444,8 +546,12 @@ export default function TelaDeHistorico() {
                 <div>
                   <strong>{c.nome}</strong>
                   <span>
-                    {c.origem === 'COEXISTENCE' ? 'veio da Meta' : 'veio do arquivo'} ·{' '}
-                    {ROTULO[c.status]}
+                    {c.origem === 'COEXISTENCE'
+                      ? 'veio da Meta'
+                      : c.origem === 'BACKUP_CRYPT15'
+                        ? 'veio do backup do aparelho'
+                        : 'veio do arquivo'}{' '}
+                    · {ROTULO[c.status]}
                     {c.status === 'PRONTO' &&
                       ` · ${c.mensagens} mensagens · ${dia(c.de)} a ${dia(c.ate)}`}
                     {c.comMidia > 0 && ` · ${c.comMidia} com foto`}

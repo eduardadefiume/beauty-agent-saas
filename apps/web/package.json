@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
-    "dev": "next dev --port 3000",
+    "build": "node scripts/copiar-sqlite-wasm.mjs && next build",
+    "dev": "node scripts/copiar-sqlite-wasm.mjs && next dev --port 3000",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
@@ -16,12 +16,14 @@
     "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "sonner": "^2.0.8"
+    "sonner": "^2.0.8",
+    "sql.js": "^1.14.2"
   },
   "devDependencies": {
     "@types/node": "22.19.19",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
+    "@types/sql.js": "^1.4.11",
     "typescript": "6.0.3"
   }
 }

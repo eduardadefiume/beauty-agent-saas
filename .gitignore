@@ -21,3 +21,6 @@ config/backup/*.json
 
 # Config da plataforma Manus (contém segredos). Nunca versionar.
 .project-config.json
+
+# copiado de node_modules no build (apps/web/scripts/copiar-sqlite-wasm.mjs)
+apps/web/public/sql-wasm.wasm

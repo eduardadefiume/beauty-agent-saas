@@ -41,6 +41,10 @@ const ACTION_RPC = {
   waArchiveAdd: 'site_wa_archive_add',
   waArchiveRead: 'site_wa_archive_read',
   waSetOwnerLabel: 'site_wa_set_owner_label',
+  // O backup do aparelho (msgstore.db.crypt15). Ele e aberto no navegador do
+  // dono, e nao aqui: a chave de 64 digitos que abre TODO backup do WhatsApp
+  // dele nao precisa existir do lado do SaaS para as mensagens chegarem.
+  waBackupAbsorb: 'site_wa_backup_absorb',
   forgetContactHistory: 'site_forget_contact_history',
   setAgentAutomation: 'site_set_agent_automation',
   answerOwnerQuestion: 'site_answer_owner_question',
@@ -586,8 +590,11 @@ Deno.serve(async (request: Request) => {
     return json(401, { error: 'UNAUTHENTICATED' });
   }
 
+  // O lote do backup do aparelho e a unica chamada grande desta porta: sao
+  // conversas inteiras de uma vez. As demais continuam apertadas em 256 KB,
+  // conferidas logo abaixo, depois que da para saber qual acao e.
   const contentLength = Number(request.headers.get('content-length') ?? '0');
-  if (contentLength > 262_144) {
+  if (contentLength > 3_000_000) {
     return json(413, { error: 'PAYLOAD_TOO_LARGE' });
   }
 
@@ -600,6 +607,10 @@ Deno.serve(async (request: Request) => {
 
   const action = input.action;
   const tenantId = input.tenantId;
+
+  if (action !== 'waBackupAbsorb' && contentLength > 262_144) {
+    return json(413, { error: 'PAYLOAD_TOO_LARGE' });
+  }
 
   const falaComAMeta = action === 'previewClientMedia' || action === 'adoptClientPhoto';
   const falaComOModelo = action === 'onboardingSay';
@@ -909,6 +920,12 @@ Deno.serve(async (request: Request) => {
         target_offset: Number.isInteger(input.offset) ? input.offset : 0,
         target_limit: Number.isInteger(input.limit) ? input.limit : 200,
       };
+      break;
+    case 'waBackupAbsorb':
+      if (!Array.isArray(input.conversas)) {
+        return json(400, { error: 'INVALID_BACKUP_REQUEST' });
+      }
+      rpcBody = { ...common, target_tenant_id: tenantId, p_conversas: input.conversas };
       break;
     case 'waSetOwnerLabel':
       if (typeof input.ownerLabel !== 'string') {
