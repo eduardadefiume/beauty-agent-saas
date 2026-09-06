@@ -249,6 +249,9 @@ type Uso = {
   output_tokens?: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
+  // Quantas idas ao modelo esta mensagem custou. E o numero que diz se o
+  // agente esta resolvendo de primeira ou tateando.
+  voltas?: number;
 };
 
 // Chama a scheduling-api com o cracha de worker. O motor de disponibilidade
@@ -452,6 +455,7 @@ async function decidir(
     output_tokens: 0,
     cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
+    voltas: 0,
   };
   let agendou: { quando: string; appointmentId: string } | null = null;
 
@@ -465,7 +469,23 @@ async function decidir(
       // cache fica no segundo bloco e cobre o prefixo inteiro: por isso a
       // ordem dos blocos do prompt e deterministica no banco.
       system: [
-        { type: 'text', text: regras },
+        // DUAS CAMADAS DE CACHE, E A PRIMEIRA E O GANHO DE SER MULTIEMPRESA.
+        //
+        // As ferramentas e estas regras sao IGUAIS para todo salao -- sao a
+        // regua da profissao, nao o vocabulario de um negocio. Com um ponto de
+        // cache aqui, essa camada e escrita uma vez e lida por todos os saloes:
+        // com um cliente economiza pouco, com cinquenta a escrita deixa de ser
+        // paga cinquenta vezes. E ela fica quente sozinha, porque basta um
+        // salao com movimento para renovar.
+        //
+        // O segundo ponto fecha o prefixo do salao. Sem os dois, o prefixo
+        // inteiro vira um bloco unico por salao e a parte global e paga de novo
+        // em cada um.
+        {
+          type: 'text',
+          text: regras,
+          cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
+        },
         {
           type: 'text',
           text: 'DADOS DESTE NEGÓCIO (JSON):\n' + JSON.stringify(estavel),
@@ -480,6 +500,7 @@ async function decidir(
     });
 
     const u = (resposta.usage ?? {}) as Uso;
+    usage.voltas! += 1;
     usage.input_tokens! += u.input_tokens ?? 0;
     usage.output_tokens! += u.output_tokens ?? 0;
     usage.cache_creation_input_tokens! += u.cache_creation_input_tokens ?? 0;
@@ -853,6 +874,31 @@ Deno.serve(async (req) => {
       somaUso.output_tokens! += usage.output_tokens ?? 0;
       somaUso.cache_creation_input_tokens! += usage.cache_creation_input_tokens ?? 0;
       somaUso.cache_read_input_tokens! += usage.cache_read_input_tokens ?? 0;
+
+      // O CUSTO DO TURNO VIRA LINHA NO BANCO.
+      //
+      // Ate aqui o `usage` era calculado, logado no console e jogado fora. Preco
+      // de assinatura decidido sobre um numero que ninguem mede e chute, e o
+      // console some. Gravar falha nao pode derrubar o atendimento da cliente:
+      // por isso vai em try proprio.
+      try {
+        await rpc(supabaseUrl, serviceKey, 'agent_record_usage', {
+          p_tenant_id: item.tenant_id,
+          p_conversation_id: item.conversation_id,
+          p_modelo: MODELO,
+          p_esforco: ESFORCO,
+          p_voltas: usage.voltas ?? 1,
+          p_input: usage.input_tokens ?? 0,
+          p_output: usage.output_tokens ?? 0,
+          p_cache_write: usage.cache_creation_input_tokens ?? 0,
+          p_cache_read: usage.cache_read_input_tokens ?? 0,
+          p_desfecho: decisao ? (decisao.action ?? null) : (motivoFalha ?? 'SEM_DECISAO'),
+        });
+      } catch (erroDoMedidor) {
+        console.error(
+          JSON.stringify({ event: 'agent_usage_not_recorded', erro: String(erroDoMedidor) })
+        );
+      }
 
       if (!decisao) {
         throw new Error(motivoFalha ?? 'SEM_DECISAO');
