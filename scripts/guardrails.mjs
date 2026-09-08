@@ -81,6 +81,69 @@ for (const path of ruleFiles) {
   }
 }
 
+// PORTA ANÔNIMA EM FUNÇÃO SECURITY DEFINER
+//
+// No PostgreSQL, `create function` concede EXECUTE ao papel PUBLIC por padrão, e
+// `anon` -- a chave pública que vai no JavaScript do site -- herda de PUBLIC.
+// Escrever `grant execute ... to service_role` no fim da migração não fecha
+// nada: é uma concessão a mais sobre uma porta já aberta.
+//
+// Foi assim que 33 funções nasceram alcançáveis por qualquer pessoa na
+// internet, uma de cada vez, cada uma copiando o formato da anterior. Nenhuma
+// revisão pegou porque o defeito não está no que a migração escreve -- está no
+// que ela deixa de escrever.
+//
+// A verificação vale para migrações a partir da varredura que fechou as 33. As
+// anteriores foram corrigidas lá, e cobrá-las aqui só quebraria o CI sem
+// ensinar nada.
+const CORTE_PORTA_ANONIMA = '20260908';
+
+// Exceções legítimas: funções que PRECISAM ser chamadas por quem está logado,
+// e que por isso autorizam pela sessão (`auth.uid()` / `auth.jwt()`), nunca por
+// parâmetro que o chamador manda.
+const CHAMAVEIS_POR_USUARIO = new Set([
+  'app.storage_folder_is_my_tenant',
+  'public.complete_owner_signup',
+  'api.check_configuration_readiness',
+  'api.publish_configuration',
+]);
+
+const migracoes = trackedFiles.filter(
+  (path) => path.startsWith('supabase/migrations/') && path.endsWith('.sql')
+);
+
+for (const path of migracoes) {
+  const nomeDoArquivo = path.split('/').pop() ?? '';
+  if (nomeDoArquivo.slice(0, 8) < CORTE_PORTA_ANONIMA) continue;
+
+  const sql = readFileSync(path, 'utf8');
+  const criacoes = sql.matchAll(
+    /create\s+(?:or\s+replace\s+)?function\s+(public|app|api)\.([a-z0-9_]+)\s*\(([\s\S]*?)\bas\s+\$/gi
+  );
+
+  for (const [, esquema, nome, corpo] of criacoes) {
+    if (!/security\s+definer/i.test(corpo)) continue;
+
+    const alvoCompleto = `${esquema}.${nome}`;
+    if (CHAMAVEIS_POR_USUARIO.has(alvoCompleto)) continue;
+
+    const revoga = new RegExp(
+      `revoke[\\s\\S]{0,200}?on\\s+function\\s+${esquema}\\.${nome}\\b[\\s\\S]{0,300}?\\bfrom\\b[^;]*\\bpublic\\b`,
+      'i'
+    );
+
+    if (!revoga.test(sql)) {
+      failures.push(
+        `${path}: ${alvoCompleto} é SECURITY DEFINER e a migração não revoga EXECUTE de public. ` +
+          'Sem isso ela nasce chamável pelo papel anon. ' +
+          'Acrescente: revoke all on function ' +
+          alvoCompleto +
+          '(...) from public, anon, authenticated;'
+      );
+    }
+  }
+}
+
 for (const path of textFiles) {
   const content = readFileSync(path, 'utf8');
   if (secretPatterns.some((pattern) => pattern.test(content))) {
@@ -94,5 +157,6 @@ if (failures.length > 0) {
 }
 
 process.stdout.write(
-  'Guardrails aprovados: sem regra por nome de piloto e sem segredo detectado.\n'
+  'Guardrails aprovados: sem regra por nome de piloto, sem segredo detectado e ' +
+    'sem função SECURITY DEFINER aberta ao papel anônimo.\n'
 );
