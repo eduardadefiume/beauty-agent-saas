@@ -112,11 +112,50 @@ const migracoes = trackedFiles.filter(
   (path) => path.startsWith('supabase/migrations/') && path.endsWith('.sql')
 );
 
+// TABELA NOVA SEM RLS
+//
+// Mesmo defeito de forma da porta anônima: o padrão do PostgreSQL é permissivo,
+// e a proteção depende de alguém lembrar de escrever uma linha. Vinte e nove
+// tabelas nasceram sem RLS -- inclusive as que guardam o histórico de WhatsApp
+// das clientes.
+//
+// Hoje isso não é exposição porque nenhuma delas concede privilégio a `anon` ou
+// `authenticated`. Mas a segurança delas depende INTEIRAMENTE de ninguém nunca
+// escrever um `grant`, e este repositório já provou que esquece exatamente esse
+// tipo de linha. Com RLS ligada e sem política, um `grant` escrito por distração
+// é inofensivo em vez de abrir a tabela inteira.
+const CORTE_RLS = '20260908';
+
+const rlsDispensada = new Set([
+  // Tabelas de infraestrutura do próprio worker, sem dado de pessoa. Se alguma
+  // um dia guardar dado de cliente, sai desta lista.
+]);
+
 for (const path of migracoes) {
   const nomeDoArquivo = path.split('/').pop() ?? '';
+  const sql = readFileSync(path, 'utf8');
+
+  if (nomeDoArquivo.slice(0, 8) >= CORTE_RLS) {
+    for (const [, tabela] of sql.matchAll(
+      /create\s+table\s+(?:if\s+not\s+exists\s+)?app\.([a-z0-9_]+)/gi
+    )) {
+      if (rlsDispensada.has(tabela)) continue;
+      const liga = new RegExp(
+        `alter\\s+table\\s+(?:only\\s+)?app\\.${tabela}\\s+enable\\s+row\\s+level\\s+security`,
+        'i'
+      );
+      if (!liga.test(sql)) {
+        failures.push(
+          `${path}: app.${tabela} é criada sem ligar RLS. ` +
+            'Sem isso, um `grant` escrito depois abre a tabela inteira. ' +
+            `Acrescente: alter table app.${tabela} enable row level security;`
+        );
+      }
+    }
+  }
+
   if (nomeDoArquivo.slice(0, 8) < CORTE_PORTA_ANONIMA) continue;
 
-  const sql = readFileSync(path, 'utf8');
   const criacoes = sql.matchAll(
     /create\s+(?:or\s+replace\s+)?function\s+(public|app|api)\.([a-z0-9_]+)\s*\(([\s\S]*?)\bas\s+\$/gi
   );
@@ -158,5 +197,5 @@ if (failures.length > 0) {
 
 process.stdout.write(
   'Guardrails aprovados: sem regra por nome de piloto, sem segredo detectado e ' +
-    'sem função SECURITY DEFINER aberta ao papel anônimo.\n'
+    'sem função SECURITY DEFINER aberta ao papel anônimo e sem tabela nova sem RLS.\n'
 );

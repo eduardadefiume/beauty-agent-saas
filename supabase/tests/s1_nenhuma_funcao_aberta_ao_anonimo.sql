@@ -42,8 +42,39 @@ begin
                                   || 'app.storage_folder_is_my_tenant, public.complete_owner_signup' then
     raise exception 'A lista de funcoes chamaveis por usuario logado mudou: %', coalesce(v_para_logado, '(nenhuma)');
   end if;
+
+  -- Toda tabela do salao com RLS. Sem politica ela nega tudo, o que e o
+  -- comportamento certo para tabela que so o service_role alcanca -- e faz um
+  -- `grant` escrito por distracao ser inofensivo em vez de abrir tudo.
+  select string_agg(c.relname, ', ' order by c.relname) into v_abertas
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'app' and c.relkind = 'r' and not c.relrowsecurity;
+
+  if v_abertas is not null then
+    raise exception 'Tabelas de app sem RLS: %', v_abertas;
+  end if;
+
+  -- E o caso que realmente machuca: tabela alcancavel por quem esta logado, com
+  -- RLS ligada e nenhuma politica que isole por salao.
+  select string_agg(c.relname, ', ' order by c.relname) into v_abertas
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'app' and c.relkind = 'r'
+     and exists (select 1 from information_schema.role_table_grants g
+                  where g.table_schema = 'app' and g.table_name = c.relname
+                    and g.grantee in ('anon', 'authenticated'))
+     and not exists (
+       select 1 from pg_policy p
+        where p.polrelid = c.oid
+          and coalesce(pg_get_expr(p.polqual, p.polrelid),
+                       pg_get_expr(p.polwithcheck, p.polrelid), '')
+              ~* 'has_tenant_role|auth\.uid|tenant_memberships|email_belongs_to_tenant'
+     );
+
+  if v_abertas is not null then
+    raise exception 'Tabelas alcancaveis por usuario logado sem politica que isole por salao: %', v_abertas;
+  end if;
 end $$;
 
-select 'S1 OK: nenhuma funcao SECURITY DEFINER aberta ao anonimo' as resultado;
+select 'S1 OK: nenhuma funcao aberta ao anonimo, nenhuma tabela sem RLS' as resultado;
 
 rollback;
