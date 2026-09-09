@@ -2765,6 +2765,24 @@ export default function Configurator({ user }: { user: { displayName: string; em
                     Cada serviço pode ter variações (ex.: por comprimento ou volume de cabelo) e
                     etapas internas com duração, competência e recurso exigidos.
                   </p>
+                  {/* A conta de quantos serviços ainda estão sem preço.
+                      Sem ela a falta ficava espalhada por dezenas de cards e
+                      ninguém sabia o tamanho dela: no piloto eram 27 de 53, e
+                      cada um desses é uma pergunta que o agente não responde. */}
+                  {(() => {
+                    const semPreco = config.services.filter((s) => s.basePriceMinor == null).length;
+                    if (semPreco === 0) return null;
+                    return (
+                      <p className="hint">
+                        <strong>
+                          {semPreco} de {config.services.length}
+                        </strong>{' '}
+                        {semPreco === 1 ? 'serviço está' : 'serviços estão'} sem preço. Enquanto
+                        estiver assim, o agente não fala o valor desse serviço: ele para a conversa
+                        e pergunta a você.
+                      </p>
+                    );
+                  })()}
                   {config.services.length === 0 && (
                     <p className="empty">Nenhum serviço cadastrado ainda.</p>
                   )}
@@ -2775,10 +2793,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
                         <div className="item-summary">
                           <div className="item-summary-text">
                             <strong>{service.name || 'Novo serviço'}</strong>
-                            {service.basePriceMinor != null && (
+                            {service.basePriceMinor != null ? (
                               <span className="item-badge">
                                 {formatMoneyFromMinor(service.basePriceMinor)}
                               </span>
+                            ) : (
+                              <span className="item-badge falta">sem preço</span>
                             )}
                             <span className="item-badge">
                               {service.steps.length}{' '}

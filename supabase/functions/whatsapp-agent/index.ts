@@ -31,6 +31,8 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
+import { precosDoNegocio, precosSemLastro } from './preco-com-lastro.ts';
+
 // Sonnet 5 e nao Opus 5: com o cache ligado, a diferenca de qualidade nesta
 // tarefa (conversa curta sobre um catalogo pequeno) nao paga a diferenca de
 // preco de saida. Trocar de volta e uma linha, se a conversa cair de nivel.
@@ -923,7 +925,35 @@ Deno.serve(async (req) => {
         /(est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad)/i;
       const mentiuAgendamento = agendou == null && textos.some((t) => AFIRMA_AGENDAMENTO.test(t));
 
+      // PRECO SEM LASTRO NAO SAI DAQUI.
+      //
+      // Irmao da trava de cima, e pelo mesmo motivo: o prompt manda nao
+      // inventar preco, e prompt falha calado. Aqui a pergunta nao e se o
+      // modelo acha que sabe o preco, e se o numero que ele escreveu existe em
+      // algum lugar dos dados desta conversa. O porque de cada fonte esta em
+      // preco-com-lastro.ts.
+      //
+      // O desfecho reaproveita o que ja existe: vira ASK_OWNER, e a regra logo
+      // abaixo rebaixa para HANDOFF quando nao ha pergunta para a dona. Perder
+      // a resposta inteira por causa de um numero e caro; mandar o numero
+      // errado e mais caro, porque a cliente cobra ele na cadeira.
+      const soltos =
+        decisao.action === 'REPLY'
+          ? precosSemLastro(textos, precosDoNegocio(contexto.stable, contexto.volatile))
+          : [];
+
       let acao = decisao.action;
+      if (soltos.length > 0) {
+        console.error(
+          JSON.stringify({
+            event: 'preco_sem_lastro',
+            conversationId: item.conversation_id,
+            valores: soltos.map((s) => s.trecho),
+            textos,
+          })
+        );
+        acao = 'ASK_OWNER';
+      }
       if (mentiuAgendamento) {
         console.error(
           JSON.stringify({
@@ -950,6 +980,7 @@ Deno.serve(async (req) => {
           contextSummary: decisao.contextSummary,
           agendou: agendou ?? undefined,
           mentiuAgendamento: mentiuAgendamento || undefined,
+          precoSemLastro: soltos.length > 0 ? soltos.map((s) => s.trecho) : undefined,
           usage,
           dryRun: true,
         });
@@ -1019,9 +1050,17 @@ Deno.serve(async (req) => {
         p_tenant_id: item.tenant_id,
         p_message_id: item.last_inbound_message_id,
         p_decision: acao,
+        // O painel da equipe precisa saber que a decisao foi trocada por uma
+        // trava, e por qual: "estacionada, sem motivo" e o tipo de linha que
+        // ninguem investiga.
         p_reason: mentiuAgendamento
           ? 'BLOQUEADO: afirmou agendamento sem ter reservado. ' + (decisao.reason ?? '')
-          : decisao.reason,
+          : soltos.length > 0
+            ? 'BLOQUEADO: falou preço sem lastro nos dados (' +
+              soltos.map((s) => s.trecho).join(', ') +
+              '). ' +
+              (decisao.reason ?? '')
+            : decisao.reason,
       });
 
       try {
@@ -1045,7 +1084,8 @@ Deno.serve(async (req) => {
         action: acao,
         reason: decisao.reason,
         messages: acao === 'REPLY' ? textos : [],
-        bloqueadas: mentiuAgendamento ? textos : undefined,
+        bloqueadas: mentiuAgendamento || soltos.length > 0 ? textos : undefined,
+        precoSemLastro: soltos.length > 0 ? soltos.map((s) => s.trecho) : undefined,
         ownerQuestion: (decisao.ownerQuestion ?? '').trim() || undefined,
         agendou: agendou ?? undefined,
         enfileirados: enviados,
