@@ -16,9 +16,10 @@ import {
 // A cliente anota e cobra na cadeira. O salao honra ou desmente na frente dela.
 //
 // O contexto abaixo e o do salao-piloto de verdade, no dia em que este teste
-// foi escrito: 27 dos 53 servicos sem preco, `priceMinor` null no catalogo
-// inteiro, e os UNICOS numeros que o agente enxerga saindo da leitura de uma
-// arte de status.
+// foi escrito: `priceMinor` null no catalogo inteiro, e os UNICOS numeros que o
+// agente enxerga saindo da leitura de uma arte de status. Os precos existiam no
+// rascunho do configurador; nunca tinham sido publicados, e o agente le a
+// versao publicada.
 
 const ARTE_DO_PILOTO = [
   {
