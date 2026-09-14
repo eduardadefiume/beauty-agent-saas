@@ -790,6 +790,9 @@ async function decidir(
                 unitId: ambiente.unitId,
                 holdId,
                 customerLabel: ambiente.clienteNome,
+                // Sem o telefone, a agenda do salao mostra um primeiro nome e
+                // nada mais. Quem atende precisa saber para quem ligar.
+                contactRef: ambiente.clientePhone,
               }
             );
             if (!confirmacao.ok) {

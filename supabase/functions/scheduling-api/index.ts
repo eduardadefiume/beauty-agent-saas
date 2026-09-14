@@ -809,11 +809,21 @@ Deno.serve(async (request: Request) => {
   }
 
   if (action === 'confirmHold') {
-    const { holdId, customerLabel } = input as Record<string, unknown>;
+    const { holdId, customerLabel, contactRef, channelConnectionId } = input as Record<
+      string,
+      unknown
+    >;
     if (typeof holdId !== 'string') {
       return json(400, { error: 'INVALID_CONFIRM_REQUEST' });
     }
 
+    // QUEM E A CLIENTE, e nao so como ela se chama.
+    //
+    // Estes dois campos existem na tabela desde o comeco e chegavam aqui como
+    // `null` fixo. O efeito so apareceu quando a agenda precisou mostrar o
+    // atendimento: o agendamento sabia "Eduarda" e mais nada -- nem telefone,
+    // nem de qual conversa veio. Nome solto nao identifica ninguem num salao
+    // com duas Marias.
     const result = await rpc('schedule_confirm_hold', {
       target_site_project_id: SITE_PROJECT_ID,
       target_email: userEmail,
@@ -821,8 +831,12 @@ Deno.serve(async (request: Request) => {
       target_hold_id: holdId,
       target_correlation_id: crypto.randomUUID(),
       target_customer_label: typeof customerLabel === 'string' ? customerLabel : null,
-      target_channel_connection_id: null,
-      target_external_contact_ref: null,
+      target_channel_connection_id:
+        typeof channelConnectionId === 'string' ? channelConnectionId : null,
+      target_external_contact_ref:
+        typeof contactRef === 'string' && contactRef.trim().length > 0
+          ? contactRef.replace(/[^0-9]/g, '')
+          : null,
     });
     if (!result.ok) return json(result.status, { error: result.error, code: result.code });
 
