@@ -28,6 +28,26 @@
 /** Um horário concreto: "8h", "14:30", "quinta 04/09". */
 const HORARIO = /\b\d{1,2}\s*h(\s*\d{2})?\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\/\d{1,2}\b/i;
 
+// "Oi, boa tarde! Tudo bem?" tem interrogação e não é próximo passo nenhum.
+//
+// A primeira versão desta trava contava qualquer "?" como pergunta, e o
+// cumprimento a desarmou na primeira conversa de verdade: o agente abriu com
+// "Oi, boa tarde! Tudo bem?", respondeu o preço, parou -- e passou batido,
+// porque tecnicamente havia uma interrogação na leva. Cumprimento é educação,
+// não é pergunta: não devolve nada para a cliente decidir.
+//
+// A borda é `(?![\p{L}\p{N}])` e não `\b` de propósito: em JavaScript o `\b` é
+// ASCII, então "Olá" termina numa letra que ele não reconhece como letra e a
+// borda simplesmente não existe. Português sem acento não é opção aqui.
+const SO_CUMPRIMENTO =
+  /^(oi|ol[áa]|bom dia|boa tarde|boa noite|tudo bem|tudo bom|como vai|e a[íi])(?![\p{L}\p{N}])[^?]*\?+$/iu;
+
+/** A mensagem faz uma pergunta de verdade, que não seja o cumprimento. */
+function perguntaDeVerdade(texto: string): boolean {
+  const limpo = texto.trim();
+  return limpo.includes('?') && !SO_CUMPRIMENTO.test(limpo);
+}
+
 type Fala = { text?: unknown; direction?: unknown };
 
 /**
@@ -68,5 +88,5 @@ export function respostaSemProximoPasso(
 ): boolean {
   if (perguntasNaLeva(leva) === 0) return false;
   if (ofereceuHorario) return false;
-  return !textos.some((t) => t.includes('?') || HORARIO.test(t));
+  return !textos.some((t) => perguntaDeVerdade(t) || HORARIO.test(t));
 }

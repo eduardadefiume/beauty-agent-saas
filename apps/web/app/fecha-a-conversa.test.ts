@@ -108,6 +108,32 @@ describe('resposta sem próximo passo', () => {
     expect(respostaSemProximoPasso(['Tenho amanhã às 9h30'], leva, false)).toBe(false);
   });
 
+  it('o "Tudo bem?" do cumprimento NÃO conta como próximo passo', () => {
+    // A conversa de 14/09 às 15:45, com a ficha em branco: o agente abriu com
+    // "Oi, boa tarde! Tudo bem?", respondeu o preço e parou. A primeira versão
+    // desta trava deixou passar porque havia um "?" na leva.
+    const leva = ['Boa tarde', 'Gostaria de saber valor de luzes?'];
+    const resposta = [
+      'Oi, boa tarde! Tudo bem?',
+      'O valor fica a partir de R$ 430,00, incluso hidratação e reconstrução',
+      'Realizamos o teste de mechas e dando tudo certo fazemos o procedimento no mesmo dia',
+    ];
+    expect(respostaSemProximoPasso(resposta, leva, false)).toBe(true);
+  });
+
+  it('cumprimento seguido de pergunta de verdade continua passando', () => {
+    const leva = ['Gostaria de saber valor de luzes?'];
+    const resposta = ['Oi, boa tarde! Tudo bem?', 'Manda uma foto do seu cabelo hoje?'];
+    expect(respostaSemProximoPasso(resposta, leva, false)).toBe(false);
+  });
+
+  it('reconhece as formas de cumprimento que o salão usa', () => {
+    const leva = ['tem horário?'];
+    for (const cumprimento of ['Oi! Tudo bem?', 'Olá, tudo bom?', 'Bom dia! Tudo bem?', 'Tudo bem?']) {
+      expect(respostaSemProximoPasso([cumprimento, 'Fica R$ 430,00'], leva, false)).toBe(true);
+    }
+  });
+
   it('não confunde preço com horário', () => {
     const leva = ['quanto custa?'];
     expect(respostaSemProximoPasso(['Fica a partir de R$ 430,00'], leva, false)).toBe(true);
