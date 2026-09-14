@@ -32,10 +32,12 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
 import {
+  condicaoComercialIgnorada,
   respostaSemProximoPasso,
   ultimaLevaDaCliente,
 } from './fecha-a-conversa.ts';
 import { precosDoNegocio, precosSemLastro } from './preco-com-lastro.ts';
+import { camposCorrompidos } from './resposta-limpa.ts';
 
 // Sonnet 5 e nao Opus 5: com o cache ligado, a diferenca de qualidade nesta
 // tarefa (conversa curta sobre um catalogo pequeno) nao paga a diferenca de
@@ -467,6 +469,7 @@ async function decidir(
   // A cobranca do proximo passo acontece UMA vez por turno. Duas seria um
   // agente discutindo consigo mesmo, e cada volta custa dinheiro.
   let jaCobreiOProximoPasso = false;
+  let jaCobreiACorrupcao = false;
   const levaDaCliente = ultimaLevaDaCliente(volatil);
 
   for (let volta = 0; volta < MAX_VOLTAS; volta++) {
@@ -542,16 +545,59 @@ async function decidir(
       // que faltou. So faco isso quando `atender` veio sozinho: se o modelo
       // pediu outras ferramentas junto, cada uma precisa da propria resposta, e
       // o caminho normal ja cuida disso.
+      // A CHAMADA VEIO QUEBRADA: nao vale nem discutir o conteudo.
+      //
+      // Aconteceu duas vezes em 14/09, sempre no mesmo lugar: a marcacao da
+      // propria ferramenta escrita dentro de um campo de texto. O porque esta
+      // em resposta-limpa.ts. Pedir de novo resolve na maioria das vezes, e e
+      // mais barato que qualquer alternativa.
+      const sujos = camposCorrompidos(decisao);
+      if (sujos.length > 0 && !jaCobreiACorrupcao && volta < MAX_VOLTAS - 1) {
+        jaCobreiACorrupcao = true;
+        console.error(
+          JSON.stringify({
+            event: 'decisao_corrompida',
+            conversationId: ambiente.conversationId,
+            campos: sujos,
+          })
+        );
+        mensagens.push({ role: 'assistant', content: resposta.content });
+        mensagens.push({
+          role: 'user',
+          content: chamadas.map((c) => ({
+            type: 'tool_result' as const,
+            tool_use_id: c.id,
+            content:
+              c.id === desfecho.id
+                ? 'NAO ENVIEI: a sua chamada veio com marcacao de ferramenta dentro do texto, ' +
+                  'nos campos ' +
+                  sujos.join(', ') +
+                  '. Cada campo tem que conter SO o texto em portugues, sem nenhuma tag. ' +
+                  'Chame atender de novo, com os mesmos campos escritos limpos.'
+                : 'Ignorado: refaca junto com a chamada de atender.',
+          })),
+        });
+        continue;
+      }
+
       const semProximoPasso =
         decisao.action === 'REPLY' &&
         chamadas.length === 1 &&
         !jaCobreiOProximoPasso &&
         volta < MAX_VOLTAS - 1 &&
-        respostaSemProximoPasso(
+        (respostaSemProximoPasso(
           Array.isArray(decisao.messages) ? decisao.messages : [],
           levaDaCliente,
           estado.candidatos.length > 0 || agendou != null
-        );
+        ) ||
+          // A pergunta de dinheiro nao morre nem quando ha horario na resposta:
+          // ali a conversa anda, mas a duvida que decide se cabe no bolso dela
+          // fica para tras.
+          condicaoComercialIgnorada(
+            Array.isArray(decisao.messages) ? decisao.messages : [],
+            levaDaCliente,
+            typeof decisao.ownerQuestion === 'string' ? decisao.ownerQuestion : ''
+          ));
 
       if (semProximoPasso) {
         jaCobreiOProximoPasso = true;
@@ -576,7 +622,10 @@ async function decidir(
                 'a avaliacao). E a sua resposta terminou sem nada para ela fazer: nem pergunta, ' +
                 'nem horario. Se ainda falta saber alguma coisa do cabelo dela, pergunte. Se nao ' +
                 'falta, consulte a agenda com consultar_horarios e termine oferecendo UM horario ' +
-                'concreto. Depois chame atender de novo com as mensagens completas.',
+                'concreto. E se ela perguntou de pagamento, parcelamento, cartao, pix, sinal ou ' +
+                'desconto: isso NUNCA se inventa. Ou a resposta esta escrita nos dados do salao, ' +
+                'ou voce manda a pergunta para a dona em ownerQuestion, no MESMO atender. ' +
+                'Depois chame atender de novo com as mensagens completas.',
             },
           ],
         });
@@ -1003,7 +1052,29 @@ Deno.serve(async (req) => {
           ? precosSemLastro(textos, precosDoNegocio(contexto.stable, contexto.volatile))
           : [];
 
+      // ULTIMA LINHA CONTRA A CHAMADA QUEBRADA.
+      //
+      // O laco ja pediu a chamada limpa uma vez. Se ainda assim sobrou
+      // marcacao, aqui ela nao passa: campo sujo e apagado antes de virar
+      // linha no banco, e `messages` sujo nao e enviado de jeito nenhum --
+      // vai para uma pessoa. O painel da dona recebendo tag de XML ja
+      // aconteceu duas vezes; a cliente recebendo, nenhuma, e fica assim.
+      const corrompidos = camposCorrompidos(decisao);
+      if (corrompidos.length > 0) {
+        console.error(
+          JSON.stringify({
+            event: 'decisao_corrompida_apos_retentativa',
+            conversationId: item.conversation_id,
+            campos: corrompidos,
+          })
+        );
+        if (corrompidos.includes('ownerQuestion')) decisao.ownerQuestion = '';
+        if (corrompidos.includes('contextSummary')) decisao.contextSummary = '';
+        if (corrompidos.includes('reason')) decisao.reason = 'resposta do modelo veio quebrada';
+      }
+
       let acao = decisao.action;
+      if (corrompidos.includes('messages')) acao = 'HANDOFF';
       if (soltos.length > 0) {
         console.error(
           JSON.stringify({

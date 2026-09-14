@@ -90,3 +90,42 @@ export function respostaSemProximoPasso(
   if (ofereceuHorario) return false;
   return !textos.some((t) => perguntaDeVerdade(t) || HORARIO.test(t));
 }
+
+// A PERGUNTA DE DINHEIRO QUE NAO PODE MORRER.
+//
+// 14/09, conversa real. A cliente mandou duas coisas na mesma leva:
+//
+//   "Terça não consigo, tem sexta depois do almoço?"
+//   "Esse valor você dividi?"
+//
+// O agente respondeu a primeira com um horario e simplesmente seguiu. A
+// segunda ficou sem resposta -- e a trava de cima nao pegou, porque havia
+// horario na resposta: do ponto de vista dela, a conversa tinha proximo passo.
+//
+// Condicao comercial e a pior pergunta para deixar morrer, e a regra do prompt
+// ja diz isso com todas as letras: forma de pagamento, parcelamento, cartao,
+// sinal e desconto NAO se inventam -- ou estao escritos nos dados do salao, ou
+// e pergunta para a dona. Ficar calado nao e uma das opcoes: a cliente que
+// pergunta se parcela esta decidindo se cabe no bolso dela.
+//
+// Por isso esta trava e por assunto, e nao por contagem de interrogacao:
+// quando ela toca em dinheiro e nem a resposta nem a pergunta para a dona
+// tocam no assunto, o turno volta.
+
+const ASSUNTO_COMERCIAL =
+  /(parcel|dividi|divid[ae]|cart[ãa]o|pix|desconto|sinal|entrada|d[ée]bito|cr[ée]dito|boleto|forma de pagamento|meio de pagamento|pagamento|pagar|maquininha)/i;
+
+/**
+ * true quando a cliente perguntou de condicao comercial e ninguem tratou:
+ * nem a resposta, nem a pergunta enviada a dona.
+ */
+export function condicaoComercialIgnorada(
+  textos: string[],
+  leva: string[],
+  perguntaParaDona: string
+): boolean {
+  const ela = leva.filter((f) => f.includes('?'));
+  if (!ela.some((f) => ASSUNTO_COMERCIAL.test(f))) return false;
+  if (ASSUNTO_COMERCIAL.test(perguntaParaDona ?? '')) return false;
+  return !textos.some((t) => ASSUNTO_COMERCIAL.test(t));
+}

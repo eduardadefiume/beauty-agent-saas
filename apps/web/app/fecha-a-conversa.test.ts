@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  condicaoComercialIgnorada,
   perguntasNaLeva,
   respostaSemProximoPasso,
   ultimaLevaDaCliente,
@@ -137,5 +138,47 @@ describe('resposta sem próximo passo', () => {
   it('não confunde preço com horário', () => {
     const leva = ['quanto custa?'];
     expect(respostaSemProximoPasso(['Fica a partir de R$ 430,00'], leva, false)).toBe(true);
+  });
+});
+
+describe('condição comercial ignorada', () => {
+  // Conversa real de 14/09 às 16:32: duas perguntas na mesma leva, a de
+  // horário respondida e a de parcelamento no chão.
+  const LEVA_REAL = ['Terça não consigo, tem sexta depois do almoço?', 'Esse valor você dividi?'];
+
+  it('pega o caso real: horário respondido, parcelamento ignorado', () => {
+    expect(condicaoComercialIgnorada(['Tenho sexta, 18/09, às 13h, pode ser?'], LEVA_REAL, '')).toBe(
+      true
+    );
+  });
+
+  it('deixa passar quando a resposta fala do assunto', () => {
+    const resposta = ['Tenho sexta, 18/09, às 13h, pode ser?', 'Sobre parcelar, aceitamos em 3x.'];
+    expect(condicaoComercialIgnorada(resposta, LEVA_REAL, '')).toBe(false);
+  });
+
+  it('deixa passar quando a pergunta foi para a dona', () => {
+    const paraDona = 'A cliente perguntou se pode parcelar o valor. Aceita?';
+    expect(condicaoComercialIgnorada(['Tenho sexta às 13h, pode ser?'], LEVA_REAL, paraDona)).toBe(
+      false
+    );
+  });
+
+  it('não dispara quando ela não falou de dinheiro', () => {
+    const leva = ['Tem horário na sexta?'];
+    expect(condicaoComercialIgnorada(['Tenho sexta às 13h, pode ser?'], leva, '')).toBe(false);
+  });
+
+  it('reconhece as formas que as clientes usam', () => {
+    for (const p of [
+      'aceita cartão?',
+      'pode ser no pix?',
+      'dá desconto?',
+      'tem que pagar sinal?',
+      'qual a forma de pagamento?',
+      'dá pra parcelar?',
+    ]) {
+      expect(condicaoComercialIgnorada(['Tenho sexta às 13h, pode ser?'], [p], '')).toBe(true);
+    }
   });
 });
