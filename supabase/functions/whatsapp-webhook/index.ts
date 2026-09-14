@@ -156,13 +156,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!delivery) return json({ received: true, correlationId }, 200);
 
+  // SEM `Content-Profile: api`. O schema `api` nao esta na lista que o
+  // PostgREST expoe (so `public` e `graphql_public`), e com o cabecalho toda
+  // entrega recebia 406 "Invalid schema: api" -> este webhook devolvia 503 ->
+  // a Meta reenviava -> 406 de novo. Nenhuma mensagem chegou ao banco entre a
+  // v14 e a v15. O invólucro public.ingest_whatsapp_webhook chama o mesmo
+  // api.ingest_whatsapp_webhook; e o caminho que o Coexistence acima ja usa.
   const databaseResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/ingest_whatsapp_webhook`, {
     method: 'POST',
     headers: {
       apikey: secretKey,
       Authorization: `Bearer ${secretKey}`,
       'Content-Type': 'application/json',
-      'Content-Profile': 'api',
     },
     body: JSON.stringify({
       p_waba_id: delivery.wabaId,
