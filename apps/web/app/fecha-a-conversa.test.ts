@@ -1,0 +1,115 @@
+// A trava que impede a conversa de morrer sem próximo passo.
+//
+// O caso que a originou está por inteiro no primeiro teste: a conversa real de
+// 14/09, em que a cliente fez duas perguntas e recebeu uma resposta que não
+// tinha nem pergunta, nem horário, nem agendamento.
+
+import { describe, expect, it } from 'vitest';
+
+import {
+  perguntasNaLeva,
+  respostaSemProximoPasso,
+  ultimaLevaDaCliente,
+} from '../../../supabase/functions/whatsapp-agent/fecha-a-conversa';
+
+const CONVERSA_REAL = {
+  history: [
+    { at: '2026-09-14T14:27:05+00:00', text: 'Quero assim, acho lindo', direction: 'INBOUND' },
+    {
+      at: '2026-09-14T14:27:36+00:00',
+      text: 'Você acha que essa cor vai combinar comigo?',
+      direction: 'INBOUND',
+    },
+    {
+      at: '2026-09-14T14:27:36+00:00',
+      text: 'Acha que da certo fazer no meu cabelo?',
+      direction: 'INBOUND',
+    },
+  ],
+};
+
+const RESPOSTA_QUE_MORREU = [
+  'Amei a referência!',
+  'Isso quem confirma é o teste de mechas, que já entra junto com o procedimento. ' +
+    'Realizamos o teste e dando tudo certo fazemos no mesmo dia.',
+];
+
+describe('a última leva da cliente', () => {
+  it('pega as mensagens seguidas do fim, e só as dela', () => {
+    expect(ultimaLevaDaCliente(CONVERSA_REAL)).toEqual([
+      'Quero assim, acho lindo',
+      'Você acha que essa cor vai combinar comigo?',
+      'Acha que da certo fazer no meu cabelo?',
+    ]);
+  });
+
+  it('para na primeira mensagem do agente: o que veio antes dela já foi respondido', () => {
+    const leva = ultimaLevaDaCliente({
+      history: [
+        { text: 'quanto é luzes?', direction: 'INBOUND' },
+        { text: 'Fica a partir de R$ 430,00', direction: 'OUTBOUND' },
+        { text: 'e demora quanto?', direction: 'INBOUND' },
+      ],
+    });
+    expect(leva).toEqual(['e demora quanto?']);
+  });
+
+  it('não quebra quando não há histórico', () => {
+    expect(ultimaLevaDaCliente(null)).toEqual([]);
+    expect(ultimaLevaDaCliente({})).toEqual([]);
+    expect(ultimaLevaDaCliente({ history: 'nada disso' })).toEqual([]);
+  });
+});
+
+describe('quantas perguntas ela fez', () => {
+  it('conta uma por interrogação, inclusive duas na mesma mensagem', () => {
+    expect(perguntasNaLeva(['tem horário hoje? e amanhã?'])).toBe(2);
+  });
+
+  it('leva sem pergunta nenhuma conta zero', () => {
+    expect(perguntasNaLeva(['obrigada', 'até amanhã'])).toBe(0);
+  });
+});
+
+describe('resposta sem próximo passo', () => {
+  it('pega o caso real: duas perguntas, resposta sem horário e sem pergunta', () => {
+    const leva = ultimaLevaDaCliente(CONVERSA_REAL);
+    expect(respostaSemProximoPasso(RESPOSTA_QUE_MORREU, leva, false)).toBe(true);
+  });
+
+  it('deixa passar quando a resposta termina oferecendo horário', () => {
+    const leva = ultimaLevaDaCliente(CONVERSA_REAL);
+    const comFecho = [...RESPOSTA_QUE_MORREU, 'Tenho quinta 18/09 às 8h, pode ser?'];
+    expect(respostaSemProximoPasso(comFecho, leva, false)).toBe(false);
+  });
+
+  it('deixa passar quando a resposta devolve uma pergunta', () => {
+    const leva = ultimaLevaDaCliente(CONVERSA_REAL);
+    const comPergunta = [...RESPOSTA_QUE_MORREU, 'Seu cabelo está quebrando nas pontas?'];
+    expect(respostaSemProximoPasso(comPergunta, leva, false)).toBe(false);
+  });
+
+  it('deixa passar quando o agendamento acabou de ser fechado', () => {
+    const leva = ultimaLevaDaCliente(CONVERSA_REAL);
+    expect(respostaSemProximoPasso(['Marcado'], leva, true)).toBe(false);
+  });
+
+  it('não cobra fecho de quem só agradeceu: sem pergunta dela, sem cobrança', () => {
+    const leva = ultimaLevaDaCliente({
+      history: [{ text: 'obrigada, até amanhã!', direction: 'INBOUND' }],
+    });
+    expect(respostaSemProximoPasso(['Até amanhã!'], leva, false)).toBe(false);
+  });
+
+  it('reconhece horário em vários formatos', () => {
+    const leva = ['tem horário?'];
+    expect(respostaSemProximoPasso(['Tenho hoje às 14:30'], leva, false)).toBe(false);
+    expect(respostaSemProximoPasso(['Tenho dia 30/08 às 8h'], leva, false)).toBe(false);
+    expect(respostaSemProximoPasso(['Tenho amanhã às 9h30'], leva, false)).toBe(false);
+  });
+
+  it('não confunde preço com horário', () => {
+    const leva = ['quanto custa?'];
+    expect(respostaSemProximoPasso(['Fica a partir de R$ 430,00'], leva, false)).toBe(true);
+  });
+});

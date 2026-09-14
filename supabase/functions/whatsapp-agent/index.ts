@@ -31,6 +31,10 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
+import {
+  respostaSemProximoPasso,
+  ultimaLevaDaCliente,
+} from './fecha-a-conversa.ts';
 import { precosDoNegocio, precosSemLastro } from './preco-com-lastro.ts';
 
 // Sonnet 5 e nao Opus 5: com o cache ligado, a diferenca de qualidade nesta
@@ -460,6 +464,10 @@ async function decidir(
     voltas: 0,
   };
   let agendou: { quando: string; appointmentId: string } | null = null;
+  // A cobranca do proximo passo acontece UMA vez por turno. Duas seria um
+  // agente discutindo consigo mesmo, e cada volta custa dinheiro.
+  let jaCobreiOProximoPasso = false;
+  const levaDaCliente = ultimaLevaDaCliente(volatil);
 
   for (let volta = 0; volta < MAX_VOLTAS; volta++) {
     const resposta = await anthropic.messages.create({
@@ -522,7 +530,60 @@ async function decidir(
     // `atender` encerra, mesmo que o modelo tenha pedido outras coisas junto.
     const desfecho = chamadas.find((c) => c.name === 'atender');
     if (desfecho) {
-      return { decisao: desfecho.input as Decisao, usage, agendou };
+      const decisao = desfecho.input as Decisao;
+
+      // A CONVERSA NAO MORRE SEM PROXIMO PASSO.
+      //
+      // A cliente perguntou e a resposta nao devolveu nem pergunta, nem
+      // horario, nem agendamento: ela fica olhando para a tela sem saber o que
+      // fazer. O porque e o caso real estao em fecha-a-conversa.ts.
+      //
+      // Aqui eu NAO descarto a resposta -- devolvo o turno uma vez, dizendo o
+      // que faltou. So faco isso quando `atender` veio sozinho: se o modelo
+      // pediu outras ferramentas junto, cada uma precisa da propria resposta, e
+      // o caminho normal ja cuida disso.
+      const semProximoPasso =
+        decisao.action === 'REPLY' &&
+        chamadas.length === 1 &&
+        !jaCobreiOProximoPasso &&
+        volta < MAX_VOLTAS - 1 &&
+        respostaSemProximoPasso(
+          Array.isArray(decisao.messages) ? decisao.messages : [],
+          levaDaCliente,
+          estado.candidatos.length > 0 || agendou != null
+        );
+
+      if (semProximoPasso) {
+        jaCobreiOProximoPasso = true;
+        console.error(
+          JSON.stringify({
+            event: 'resposta_sem_proximo_passo',
+            conversationId: ambiente.conversationId,
+            perguntasDaCliente: levaDaCliente,
+          })
+        );
+        mensagens.push({ role: 'assistant', content: resposta.content });
+        mensagens.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: desfecho.id,
+              content:
+                'NAO ENVIEI. Releia a ultima leva da cliente e conte as perguntas: cada uma ' +
+                'precisa aparecer na sua resposta, inclusive a que voce nao pode responder com ' +
+                'promessa (essa voce responde dizendo o que determina a resposta e levando para ' +
+                'a avaliacao). E a sua resposta terminou sem nada para ela fazer: nem pergunta, ' +
+                'nem horario. Se ainda falta saber alguma coisa do cabelo dela, pergunte. Se nao ' +
+                'falta, consulte a agenda com consultar_horarios e termine oferecendo UM horario ' +
+                'concreto. Depois chame atender de novo com as mensagens completas.',
+            },
+          ],
+        });
+        continue;
+      }
+
+      return { decisao, usage, agendou };
     }
 
     mensagens.push({ role: 'assistant', content: resposta.content });

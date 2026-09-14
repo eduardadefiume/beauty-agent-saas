@@ -1,0 +1,83 @@
+# O DEPLOY DAS EDGE FUNCTIONS SAI DO REPOSITORIO, NAO DA MAO.
+#
+# Ate hoje publicar uma funcao significava alguem colar o conteudo inteiro do
+# arquivo numa chamada de API. O index.ts do whatsapp-agent tem 1.239 linhas:
+# copiar isso a mao e um erro esperando acontecer, e o erro cairia em producao,
+# no meio das conversas das clientes. Foi assim que o repositorio ja divergiu do
+# que estava publicado uma vez -- esta escrito no cabecalho do proprio arquivo.
+#
+# Aqui a fonte e o commit. O que esta no git e o que vai para o ar, byte a byte,
+# e o `verify_jwt` de cada funcao continua vindo do supabase/config.toml, que ja
+# e a fonte de verdade desde a F0-05.
+#
+# Publica so o que mudou no commit. Republicar funcao intocada nao quebra nada,
+# mas enche o historico de versoes e esconde a mudanca que importa.
+
+name: Publicar Edge Functions no DEV
+
+on:
+  workflow_dispatch:
+    inputs:
+      funcoes:
+        description: 'Funções a publicar, separadas por espaço. Vazio = as que mudaram no último commit.'
+        required: false
+        default: ''
+  push:
+    branches:
+      - feature/saas-com-dashboard-completo
+    paths:
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/deploy-edge-functions-dev.yml'
+
+concurrency:
+  group: deploy-edge-functions-dev
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Dois commits: o atual e o anterior, que e do que sai o diff.
+          fetch-depth: 2
+
+      - name: Instalar a CLI do Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Descobrir quais funções mudaram
+        id: alvo
+        env:
+          PEDIDAS: ${{ github.event.inputs.funcoes }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PEDIDAS:-}" ]; then
+            echo "Publicando o que foi pedido à mão: $PEDIDAS"
+            echo "funcoes=$PEDIDAS" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mudadas=$(git diff --name-only HEAD^ HEAD -- 'supabase/functions/*' \
+            | awk -F/ 'NF>=3 {print $3}' | sort -u | tr '\n' ' ')
+          echo "Mudaram: ${mudadas:-nenhuma}"
+          echo "funcoes=$mudadas" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar
+        if: steps.alvo.outputs.funcoes != ''
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          FUNCOES: ${{ steps.alvo.outputs.funcoes }}
+        run: |
+          set -euo pipefail
+          for f in $FUNCOES; do
+            if [ ! -d "supabase/functions/$f" ]; then
+              echo "pulando $f: a pasta não existe no repositório"
+              continue
+            fi
+            echo "::group::$f"
+            supabase functions deploy "$f" --project-ref hjghwryhphgusefyivbl
+            echo "::endgroup::"
+          done
