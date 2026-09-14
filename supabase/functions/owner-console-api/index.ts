@@ -22,6 +22,9 @@ const ACTION_RPC = {
   saveCalendarConnection: 'site_save_calendar_connection',
   disconnectCalendarConnection: 'site_disconnect_calendar_connection',
   listCalendarShifts: 'site_list_calendar_shifts',
+  // A agenda do SALAO, que e outra coisa da agenda do Google: aqui estao os
+  // atendimentos marcados, com cliente, telefone, procedimento e valor.
+  listAppointments: 'site_agenda_do_salao',
   listCalendarConnectionsForSync: 'site_list_calendar_connections_for_sync',
   recordCalendarShiftSync: 'site_record_calendar_shift_sync',
   // Console de WhatsApp: o que a dona vê acontecendo e o botão que desliga a
@@ -729,6 +732,23 @@ Deno.serve(async (request: Request) => {
     case 'listCalendarShifts':
       rpcBody = { ...common, target_tenant_id: tenantId };
       break;
+    case 'listAppointments': {
+      // A janela e calculada aqui, e nao pedida ao navegador: a tela carrega o
+      // periodo inteiro de uma vez e navega entre dias sem ir ao servidor, do
+      // mesmo jeito que ja faz com os compromissos do Google.
+      const agora = new Date();
+      const de = new Date(agora);
+      de.setDate(de.getDate() - 7);
+      const ate = new Date(agora);
+      ate.setDate(ate.getDate() + 90);
+      rpcBody = {
+        ...common,
+        target_tenant_id: tenantId,
+        target_de: de.toISOString(),
+        target_ate: ate.toISOString(),
+      };
+      break;
+    }
     case 'listCalendarConnectionsForSync':
       // Devolve token de acesso/atualização — só a rota /api/calendar-sync
       // chama esta ação, nunca o proxy genérico usado pelo navegador

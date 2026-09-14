@@ -1028,3 +1028,25 @@ footer {
     color: #f0ece1;
   }
 }
+
+/* O ATENDIMENTO DO SALAO, na mesma trilha do compromisso do Google.
+   Cor cheia e barra grossa: ele e o que importa na tela, o do Google e pano de
+   fundo. Quem bate o olho tem que ver primeiro quem vai sentar na cadeira. */
+.week-calendar-appointment {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: 6px;
+  background: var(--brand);
+  border-left: 4px solid var(--brand-dark);
+  color: #fff;
+  padding: 2px 5px;
+  font-size: 10px;
+  line-height: 1.3;
+  overflow: hidden;
+  z-index: 1;
+}
+.month-calendar-count.atendimento {
+  color: var(--brand-dark);
+  font-weight: 700;
+}

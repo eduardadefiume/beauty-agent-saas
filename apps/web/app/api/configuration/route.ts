@@ -16,6 +16,7 @@ const ACTIONS = new Set([
   'listCalendarConnections',
   'disconnectCalendarConnection',
   'listCalendarShifts',
+  'listAppointments',
 ]);
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',

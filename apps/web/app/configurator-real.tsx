@@ -718,6 +718,23 @@ type CalendarConnection = {
 };
 
 /** Compromisso já sincronizado do Google/Outlook, pronto pra desenhar na tela. */
+/**
+ * Um atendimento do SALAO. Nao confundir com CalendarShift, que e compromisso
+ * pessoal vindo do Google e so serve para bloquear horario.
+ *
+ * `rotulo` vem pronto do banco e nao e montado aqui de proposito: ele muda
+ * quando a cliente paga parte do valor, e quem sabe disso e o banco.
+ */
+type Atendimento = {
+  appointmentId: string;
+  inicio: string;
+  fim: string;
+  status: string;
+  rotulo: string;
+  servico: string | null;
+  telefone: string | null;
+};
+
 type CalendarShift = {
   id: string;
   connectionId: string;
@@ -809,15 +826,24 @@ function visibleHourRange(operatingHours: OperatingHourRow[]): { start: number; 
 }
 
 /**
- * Visualização da agenda sincronizada do Google. Abre no DIA, porque é assim
- * que um salão opera — semana e mês existem para planejar, e a escolha fica
- * guardada entre visitas. Só mostra o que já foi sincronizado (CalendarShift):
- * não é a agenda de atendimentos, é o que veio de fora bloqueando horário.
+ * A agenda do salão. Abre no DIA, porque é assim que um salão opera — semana e
+ * mês existem para planejar.
+ *
+ * Mostra DUAS camadas que não se misturam:
+ *   atendimentos — o que o salão marcou, com cliente, telefone, procedimento e
+ *                  valor. É a agenda de verdade.
+ *   compromissos — o que veio do Google e só serve para bloquear horário.
+ *
+ * Até 14/09 esta tela mostrava só a segunda, e a dona abriu o site depois de o
+ * agente marcar um horário e não viu nada. A reserva estava lá o tempo todo;
+ * faltava a tela.
  */
-function GoogleAgendaView({
+function AgendaView({
+  atendimentos,
   shifts,
   operatingHours,
 }: {
+  atendimentos: Atendimento[];
   shifts: CalendarShift[];
   operatingHours: OperatingHourRow[];
 }) {
@@ -857,6 +883,26 @@ function GoogleAgendaView({
       const startMs = Date.parse(shift.startsAt);
       return startMs >= dayStartMs && startMs < dayEndMs;
     });
+  }
+
+  function atendimentosForDay(day: Date): Atendimento[] {
+    const dayStartMs = startOfDay(day).getTime();
+    const dayEndMs = addDays(startOfDay(day), 1).getTime();
+    return atendimentos.filter((item) => {
+      const startMs = Date.parse(item.inicio);
+      return startMs >= dayStartMs && startMs < dayEndMs;
+    });
+  }
+
+  function faixa(inicioIso: string, fimIso: string): { top: string; height: string } {
+    const startMinute = Math.max(0, minutesSinceMidnight(inicioIso) - range.start * 60);
+    const endMinute = Math.min(
+      totalMinutes,
+      minutesSinceMidnight(fimIso) - range.start * 60 || totalMinutes
+    );
+    const top = (startMinute / totalMinutes) * 100;
+    const height = Math.max(2.5, ((endMinute - startMinute) / totalMinutes) * 100);
+    return { top: `${top}%`, height: `${height}%` };
   }
 
   function blockStyle(shift: CalendarShift): { top: string; height: string } {
@@ -942,6 +988,7 @@ function GoogleAgendaView({
           <div className="month-calendar-grid">
             {days.map((day) => {
               const dayShifts = shiftsForDay(day);
+              const dayAtendimentos = atendimentosForDay(day);
               const iso = toDateIso(day);
               const classes = [
                 'month-calendar-cell',
@@ -962,6 +1009,12 @@ function GoogleAgendaView({
                   title={`Abrir ${formatDatePtBr(iso)} no modo dia`}
                 >
                   <span className="month-calendar-daynumber">{day.getDate()}</span>
+                  {dayAtendimentos.length > 0 && (
+                    <span className="month-calendar-count atendimento">
+                      {dayAtendimentos.length}{' '}
+                      {dayAtendimentos.length === 1 ? 'atendimento' : 'atendimentos'}
+                    </span>
+                  )}
                   {dayShifts.length > 0 && (
                     <span className="month-calendar-count">
                       {dayShifts.length} {dayShifts.length === 1 ? 'compromisso' : 'compromissos'}
@@ -983,6 +1036,7 @@ function GoogleAgendaView({
           </div>
           {days.map((day) => {
             const dayShifts = shiftsForDay(day);
+            const dayAtendimentos = atendimentosForDay(day);
             const iso = toDateIso(day);
             return (
               <div className="week-calendar-day" key={iso}>
@@ -997,11 +1051,25 @@ function GoogleAgendaView({
                       style={{ top: `${(index / hourRows.length) * 100}%` }}
                     />
                   ))}
-                  {dayShifts.length === 0 && mode === 'DAY' && (
-                    <p className="week-calendar-empty">
-                      Nenhum compromisso sincronizado neste dia.
-                    </p>
+                  {dayShifts.length === 0 && dayAtendimentos.length === 0 && mode === 'DAY' && (
+                    <p className="week-calendar-empty">Nada marcado neste dia.</p>
                   )}
+                  {dayAtendimentos.map((item) => (
+                    <div
+                      className="week-calendar-appointment"
+                      style={faixa(item.inicio, item.fim)}
+                      key={item.appointmentId}
+                      title={item.rotulo}
+                    >
+                      <span className="week-calendar-event-time">
+                        {new Date(item.inicio).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      <span className="week-calendar-event-title">{item.rotulo}</span>
+                    </div>
+                  ))}
                   {dayShifts.map((shift) => (
                     <div
                       className="week-calendar-event"
@@ -1051,6 +1119,7 @@ export default function Configurator({ user }: { user: { displayName: string; em
   >([]);
   const [calendarConnections, setCalendarConnections] = useState<CalendarConnection[]>([]);
   const [calendarShifts, setCalendarShifts] = useState<CalendarShift[]>([]);
+  const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
   const [syncingCalendar, setSyncingCalendar] = useState(false);
   const [expandedSkills, setExpandedSkills] = useState<Set<number>>(new Set());
   const [expandedMembers, setExpandedMembers] = useState<Set<number>>(new Set());
@@ -1148,6 +1217,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
     void api({ action: 'listCalendarShifts', tenantId })
       .then((raw) => setCalendarShifts(raw as CalendarShift[]))
       .catch(() => setCalendarShifts([]));
+    void api({ action: 'listAppointments', tenantId })
+      .then((raw) => {
+        const corpo = raw as { atendimentos?: Atendimento[] } | null;
+        setAtendimentos(Array.isArray(corpo?.atendimentos) ? corpo.atendimentos : []);
+      })
+      .catch(() => setAtendimentos([]));
   }, [tenantId]);
 
   async function disconnectCalendar(connectionId: string) {
@@ -1905,11 +1980,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
                         </article>
                       ))}
                       <p className="hint small">
-                        Isto aqui é como se fosse a agenda do Google de verdade, só que só leitura:
-                        mostra os compromissos já sincronizados, que o motor de agenda usa pra
-                        fechar horário automático.
+                        Os atendimentos do salão aparecem em verde, com cliente, telefone,
+                        procedimento e valor. Em cinza, os compromissos que vieram do Google e só
+                        servem para bloquear horário.
                       </p>
-                      <GoogleAgendaView
+                      <AgendaView
+                        atendimentos={atendimentos}
                         shifts={calendarShifts}
                         operatingHours={config.operatingHours}
                       />
