@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   camposCorrompidos,
+  semMarcacao,
   temMarcacao,
 } from '../../../supabase/functions/whatsapp-agent/resposta-limpa';
 
@@ -10,6 +11,7 @@ import {
 // problema que este modulo existe para pegar.
 const FECHA_PARAMETRO = '<' + '/' + 'antml' + ':parameter>';
 const ABRE_PARAMETRO = '<' + 'parameter name="contextSummary">';
+const FECHA_INVOKE = '<' + '/' + 'invoke>';
 
 describe('marcação de ferramenta vazando no texto', () => {
   it('reconhece a tag de fechamento que apareceu no painel da dona', () => {
@@ -67,5 +69,24 @@ describe('campos corrompidos da decisão', () => {
   it('não quebra com decisão vazia', () => {
     expect(camposCorrompidos(null)).toEqual([]);
     expect(camposCorrompidos({})).toEqual([]);
+  });
+});
+
+describe('tirar a marcação em vez de apagar o campo', () => {
+  it('fica com o português que sobrou', () => {
+    expect(semMarcacao('A cliente quer parcelar em 3x')).toBe('A cliente quer parcelar em 3x');
+    expect(semMarcacao(ABRE_PARAMETRO + 'A cliente quer parcelar?')).toBe(
+      'A cliente quer parcelar?'
+    );
+    expect(semMarcacao('Ela pergunta ' + FECHA_INVOKE + ' se dá para dividir')).toBe(
+      'Ela pergunta se dá para dividir'
+    );
+  });
+
+  it('devolve vazio quando não sobra frase nenhuma', () => {
+    expect(semMarcacao(FECHA_PARAMETRO)).toBe('');
+    expect(semMarcacao('   ')).toBe('');
+    expect(semMarcacao(null)).toBe('');
+    expect(semMarcacao(42)).toBe('');
   });
 });

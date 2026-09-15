@@ -31,17 +31,14 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
-import {
-  falasDoAgente,
-  horarioSemProcedimentoOuPreco,
-} from './antes-do-horario.ts';
+import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
 import {
   condicaoComercialIgnorada,
   respostaSemProximoPasso,
   ultimaLevaDaCliente,
 } from './fecha-a-conversa.ts';
 import { precosDoNegocio, precosSemLastro } from './preco-com-lastro.ts';
-import { camposCorrompidos } from './resposta-limpa.ts';
+import { camposCorrompidos, semMarcacao } from './resposta-limpa.ts';
 
 // Sonnet 5 e nao Opus 5: com o cache ligado, a diferenca de qualidade nesta
 // tarefa (conversa curta sobre um catalogo pequeno) nao paga a diferenca de
@@ -332,6 +329,62 @@ type Foco = {
 // pegado. O servico continua valendo -- ele nao vence.
 const FOCO_CANDIDATOS_VALIDOS_MINUTOS = 12 * 60;
 
+/** Os nomes dos servicos do salao, sem repetir (rascunho e publicado). */
+function nomesDoCatalogo(estavel: unknown): string[] {
+  const catalogo = (estavel as { catalog?: unknown } | null)?.catalog;
+  if (!Array.isArray(catalogo)) return [];
+  const nomes = new Set<string>();
+  for (const servico of catalogo) {
+    const nome = (servico as { name?: unknown })?.name;
+    if (typeof nome === 'string' && nome.trim().length > 0) nomes.add(nome.trim());
+  }
+  return [...nomes];
+}
+
+/** O que devolver ao modelo quando a trava do procedimento pega a resposta. */
+function recadoDaTrava(
+  falta: 'PROCEDIMENTO' | 'PRECO' | 'AFIRMOU' | 'IRMAOS',
+  opcoes: string[],
+  servico: string | null
+): string {
+  if (falta === 'PRECO') {
+    return (
+      'NAO ENVIEI. Voce esta oferecendo horario sem a cliente ter ouvido QUANTO custa. ' +
+      'Diga o valor do procedimento antes do horario, na mesma leva. Ninguem marca sem ' +
+      'saber quanto vai pagar.'
+    );
+  }
+
+  if (falta === 'IRMAOS') {
+    return (
+      'NAO ENVIEI. O que ela pediu cabe em MAIS DE UM servico deste salao: ' +
+      opcoes.join(', ') +
+      '. Quem escolhe entre eles e ela, nunca voce -- e menos ainda pelo que voce leu na ' +
+      'ficha dela. Pergunte qual, dizendo as opcoes com o que diferencia uma da outra. ' +
+      'So depois da resposta dela e que existe preco e horario.'
+    );
+  }
+
+  if (falta === 'AFIRMOU') {
+    return (
+      'NAO ENVIEI. Voce escreveu "' +
+      (servico ?? 'esse procedimento') +
+      '" como se estivesse combinado, e a cliente NUNCA pediu isso (ou ja disse que nao e ' +
+      'isso). Quando voce afirma, ela le como decisao tomada. Se voce acha que e esse o ' +
+      'procedimento, PERGUNTE -- e se ela nao disse o que quer, a pergunta e essa, sem ' +
+      'nome de servico nenhum junto.'
+    );
+  }
+
+  return (
+    'NAO ENVIEI. Voce esta oferecendo horario de um procedimento que a CLIENTE nao escolheu. ' +
+    'Nao vale voce ter escrito o nome antes: o que vale e ela ter pedido, com as palavras ' +
+    'dela, ou ter dito sim quando voce perguntou. Antes do horario: pergunte o que ela quer ' +
+    'fazer, confirme com o nome do servico e diga o valor. As perguntas sobre o cabelo dela ' +
+    'so fazem sentido depois que voce souber o procedimento.'
+  );
+}
+
 // O teto de voltas existe para o caso de o modelo insistir em consultar sem
 // nunca decidir: sem ele, uma conversa confusa viraria uma sequencia infinita
 // de chamadas pagas.
@@ -475,7 +528,10 @@ async function decidir(
   let jaCobreiOProximoPasso = false;
   let jaCobreiACorrupcao = false;
   let jaCobreiOHorarioPrematuro = false;
-  const ditoAntes = falasDoAgente(volatil);
+  // A conversa inteira, as duas vozes. Sem a voz DELA nao da para saber se o
+  // procedimento foi escolhido ou se foi o agente que inventou.
+  const conversa = falasDaConversa(volatil);
+  const catalogoDeNomes = nomesDoCatalogo(estavel);
   const levaDaCliente = ultimaLevaDaCliente(volatil);
 
   for (let volta = 0; volta < MAX_VOLTAS; volta++) {
@@ -592,13 +648,14 @@ async function decidir(
       // sobre quimica e um "tenho amanha as 13h" no fim, de um servico que ela
       // nunca escolheu e cujo valor ela nunca ouviu.
       const fala = Array.isArray(decisao.messages) ? decisao.messages : [];
-      const prematuro =
+      const trava =
         decisao.action === 'REPLY' &&
         chamadas.length === 1 &&
         !jaCobreiOHorarioPrematuro &&
         volta < MAX_VOLTAS - 1
-          ? horarioSemProcedimentoOuPreco(fala, ditoAntes, estado.serviceName ?? null).falta
-          : null;
+          ? travaDoProcedimento(fala, conversa, estado.serviceName ?? null, catalogoDeNomes)
+          : { falta: null, opcoes: [] as string[] };
+      const prematuro = trava.falta;
 
       if (prematuro) {
         jaCobreiOHorarioPrematuro = true;
@@ -608,6 +665,7 @@ async function decidir(
             conversationId: ambiente.conversationId,
             falta: prematuro,
             servicoEmFoco: estado.serviceName ?? null,
+            opcoes: trava.opcoes,
           })
         );
         mensagens.push({ role: 'assistant', content: resposta.content });
@@ -617,17 +675,7 @@ async function decidir(
             {
               type: 'tool_result',
               tool_use_id: desfecho.id,
-              content:
-                prematuro === 'PROCEDIMENTO'
-                  ? 'NAO ENVIEI. Voce esta oferecendo horario e a cliente nunca ouviu de voce QUAL ' +
-                    'procedimento e esse. Ela pode nem ter escolhido ainda. Antes do horario: ' +
-                    'confirme com ela o que ela quer fazer, com o nome do servico, e diga o valor. ' +
-                    'Se ela ainda nao disse o que quer, a pergunta e essa -- e so essa. As ' +
-                    'perguntas sobre o cabelo dela so fazem sentido depois que voce souber o ' +
-                    'procedimento.'
-                  : 'NAO ENVIEI. Voce esta oferecendo horario sem a cliente ter ouvido QUANTO custa. ' +
-                    'Diga o valor do procedimento antes do horario, na mesma leva. Ninguem marca ' +
-                    'sem saber quanto vai pagar.',
+              content: recadoDaTrava(prematuro, trava.opcoes, estado.serviceName ?? null),
             },
           ],
         });
@@ -1123,11 +1171,24 @@ Deno.serve(async (req) => {
             event: 'decisao_corrompida_apos_retentativa',
             conversationId: item.conversation_id,
             campos: corrompidos,
+            // Sem o texto cru nao da para saber COMO ele quebra, e o pedido de
+            // refazer ja provou que sozinho nao resolve.
+            amostra: corrompidos
+              .map((campo) => campo + '=' + String((decisao as Record<string, unknown>)[campo] ?? '').slice(0, 200))
+              .join(' | '),
           })
         );
-        if (corrompidos.includes('ownerQuestion')) decisao.ownerQuestion = '';
-        if (corrompidos.includes('contextSummary')) decisao.contextSummary = '';
-        if (corrompidos.includes('reason')) decisao.reason = 'resposta do modelo veio quebrada';
+        // Nao apaga: tira a tag e fica com o portugues que sobrou. O painel da
+        // dona perdeu tres frases inteiras em 15/09 por causa do apagar.
+        if (corrompidos.includes('ownerQuestion')) {
+          decisao.ownerQuestion = semMarcacao(decisao.ownerQuestion);
+        }
+        if (corrompidos.includes('contextSummary')) {
+          decisao.contextSummary = semMarcacao(decisao.contextSummary);
+        }
+        if (corrompidos.includes('reason')) {
+          decisao.reason = semMarcacao(decisao.reason) || 'resposta do modelo veio quebrada';
+        }
       }
 
       let acao = decisao.action;
