@@ -32,6 +32,10 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
 import {
+  falasDoAgente,
+  horarioSemProcedimentoOuPreco,
+} from './antes-do-horario.ts';
+import {
   condicaoComercialIgnorada,
   respostaSemProximoPasso,
   ultimaLevaDaCliente,
@@ -470,6 +474,8 @@ async function decidir(
   // agente discutindo consigo mesmo, e cada volta custa dinheiro.
   let jaCobreiOProximoPasso = false;
   let jaCobreiACorrupcao = false;
+  let jaCobreiOHorarioPrematuro = false;
+  const ditoAntes = falasDoAgente(volatil);
   const levaDaCliente = ultimaLevaDaCliente(volatil);
 
   for (let volta = 0; volta < MAX_VOLTAS; volta++) {
@@ -576,6 +582,54 @@ async function decidir(
                   'Chame atender de novo, com os mesmos campos escritos limpos.'
                 : 'Ignorado: refaca junto com a chamada de atender.',
           })),
+        });
+        continue;
+      }
+
+      // HORARIO DE QUE, E POR QUANTO.
+      //
+      // O caso da Rayana esta inteiro em antes-do-horario.ts: oito perguntas
+      // sobre quimica e um "tenho amanha as 13h" no fim, de um servico que ela
+      // nunca escolheu e cujo valor ela nunca ouviu.
+      const fala = Array.isArray(decisao.messages) ? decisao.messages : [];
+      const prematuro =
+        decisao.action === 'REPLY' &&
+        chamadas.length === 1 &&
+        !jaCobreiOHorarioPrematuro &&
+        volta < MAX_VOLTAS - 1
+          ? horarioSemProcedimentoOuPreco(fala, ditoAntes, estado.serviceName ?? null).falta
+          : null;
+
+      if (prematuro) {
+        jaCobreiOHorarioPrematuro = true;
+        console.error(
+          JSON.stringify({
+            event: 'horario_antes_do_combinado',
+            conversationId: ambiente.conversationId,
+            falta: prematuro,
+            servicoEmFoco: estado.serviceName ?? null,
+          })
+        );
+        mensagens.push({ role: 'assistant', content: resposta.content });
+        mensagens.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: desfecho.id,
+              content:
+                prematuro === 'PROCEDIMENTO'
+                  ? 'NAO ENVIEI. Voce esta oferecendo horario e a cliente nunca ouviu de voce QUAL ' +
+                    'procedimento e esse. Ela pode nem ter escolhido ainda. Antes do horario: ' +
+                    'confirme com ela o que ela quer fazer, com o nome do servico, e diga o valor. ' +
+                    'Se ela ainda nao disse o que quer, a pergunta e essa -- e so essa. As ' +
+                    'perguntas sobre o cabelo dela so fazem sentido depois que voce souber o ' +
+                    'procedimento.'
+                  : 'NAO ENVIEI. Voce esta oferecendo horario sem a cliente ter ouvido QUANTO custa. ' +
+                    'Diga o valor do procedimento antes do horario, na mesma leva. Ninguem marca ' +
+                    'sem saber quanto vai pagar.',
+            },
+          ],
         });
         continue;
       }
