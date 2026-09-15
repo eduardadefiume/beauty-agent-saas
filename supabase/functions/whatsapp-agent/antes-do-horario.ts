@@ -91,12 +91,25 @@ export function palavrasDoServico(nome: string): string[] {
     .filter((p) => p.length > 3 && !IRRELEVANTES.has(p));
 }
 
+/**
+ * A raiz da palavra, sem a vogal de genero e numero.
+ *
+ * 15/09: a cliente escreveu "iluminado" e o catalogo diz "Mechas morena
+ * iluminada". Comparacao exata nao casou, a trava ficou cega, e o agente
+ * respondeu sobre o servico errado. "iluminada" -> "iluminad" casa com
+ * "iluminado" e com "iluminados"; palavra curta fica inteira, senao sobra
+ * raiz demais e tudo casa com tudo.
+ */
+function raiz(palavra: string): string {
+  return palavra.length > 4 ? palavra.slice(0, -1) : palavra;
+}
+
 /** O texto nomeia este serviço -- ainda que por uma palavra só. */
 export function mencionaServico(texto: string, nomeDoServico: string): boolean {
   const palavras = palavrasDoServico(nomeDoServico);
   if (palavras.length === 0) return false;
   const tudo = normalizar(texto);
-  return palavras.some((p) => tudo.includes(p));
+  return palavras.some((p) => tudo.includes(raiz(p)));
 }
 
 /** Alguma destas falas nomeia o serviço. */
@@ -182,15 +195,40 @@ export function escolhaDaCliente(historico: Fala[], nomeDoServico: string | null
   return escolha;
 }
 
-/** A última coisa que a cliente PEDIU, com as palavras dela. */
-function ultimoPedido(historico: Fala[]): string | null {
-  for (let i = historico.length - 1; i >= 0; i--) {
+/** Quantas falas dela entram no pedido, além da que tem o verbo. */
+const FALAS_DO_PEDIDO = 3;
+
+/**
+ * O que a cliente PEDIU, com as palavras dela.
+ *
+ * Nao cabe numa mensagem so, e o caso de 15/09 mostra por que: ela escreveu
+ * "Qual o valor da progressiva?" e, na mensagem seguinte, "Eu estava querendo
+ * fazer um iluminado tambem, qual eu faco primeiro?". Lendo so a ultima, o
+ * pedido e "iluminado"; lendo as duas, sao DOIS servicos e uma pergunta de
+ * ordem entre quimicas.
+ *
+ * Isto alarga so a deteccao de AMBIGUIDADE, e de proposito: o pior que
+ * acontece com uma mensagem antiga entrando aqui e o agente PERGUNTAR qual
+ * dos servicos ela quer. Perguntar demais custa uma mensagem; supor errado
+ * custa um cabelo. Quem decide se ela ESCOLHEU continua sendo
+ * `escolhaDaCliente`, que le mensagem por mensagem.
+ */
+function pedidoRecente(historico: Fala[]): string | null {
+  const dela: string[] = [];
+  let achouVerbo = false;
+
+  for (let i = historico.length - 1; i >= 0 && dela.length < FALAS_DO_PEDIDO + 1; i--) {
     const fala = historico[i];
     if (!fala || fala.direction !== 'INBOUND') continue;
     const texto = String(fala.text ?? '');
-    if (INTENCAO.test(texto)) return texto;
+    // "Nao e coloracao" e o contrario de um pedido. Com a janela mais larga,
+    // sem esta linha o servico que ela ACABOU de recusar voltava para a lista.
+    if (NEGACAO.test(texto) && !INTENCAO.test(texto)) continue;
+    dela.unshift(texto);
+    if (INTENCAO.test(texto)) achouVerbo = true;
   }
-  return null;
+
+  return achouVerbo ? dela.join(' ') : null;
 }
 
 /**
@@ -208,7 +246,7 @@ function pontuacao(pedido: string, nomeDoServico: string): number | null {
     if (new RegExp(`\\b${oposta}\\s+${palavra}\\b`).test(texto)) return null;
   }
 
-  return palavrasDoServico(nomeDoServico).filter((p) => texto.includes(p)).length;
+  return palavrasDoServico(nomeDoServico).filter((p) => texto.includes(raiz(p))).length;
 }
 
 /**
@@ -219,7 +257,7 @@ function pontuacao(pedido: string, nomeDoServico: string): number | null {
  * pergunta é obrigatória. Nenhum: o pedido não fala de serviço nenhum.
  */
 export function servicosQueCabem(historico: Fala[], catalogo: string[]): string[] {
-  const pedido = ultimoPedido(historico);
+  const pedido = pedidoRecente(historico);
   if (!pedido) return [];
 
   let melhor = 0;

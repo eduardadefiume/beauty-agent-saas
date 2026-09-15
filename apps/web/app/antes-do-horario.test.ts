@@ -11,6 +11,7 @@ import {
   type Fala,
   falasDaCliente,
   falasDoAgente,
+  mencionaServico,
   ofereceHorario,
   palavrasDoServico,
   precoFoiDito,
@@ -305,5 +306,53 @@ describe('as vozes da conversa', () => {
     expect(falasDoAgente(volatil)).toEqual(['olá!']);
     expect(falasDaCliente(volatil)).toEqual(['oi']);
     expect(falasDoAgente(null)).toEqual([]);
+  });
+});
+
+// 15/09, 15:44. A dona testando como cliente:
+//   "Qual o valor da progressiva?"
+//   "Eu estava querendo fazer um iluminado também, qual eu faço primeiro?"
+// A trava ficou cega duas vezes: "iluminado" não casou com "iluminada", e o
+// pedido dela estava repartido em duas mensagens.
+const PEDIDO_EM_DUAS_MENSAGENS = [
+  cliente('Boa tarde'),
+  cliente('Qual o valor da progressiva?'),
+  agente('Boa tarde! Tudo bem?'),
+  agente('A progressiva fica R$ 200,00.'),
+  agente('Qual o seu nome?'),
+  cliente('Eduarda'),
+  cliente('Eu estava querendo fazer um iluminado também, qual eu faço primeiro?'),
+];
+
+describe('o pedido dela não cabe numa mensagem só', () => {
+  it('PEGA O CASO REAL: "iluminado" é a "Mechas morena iluminada" do catálogo', () => {
+    expect(mencionaServico('quero um iluminado', 'Mechas morena iluminada')).toBe(true);
+    expect(mencionaServico('quero umas luzes loiras', 'Mechas loiras — teste na semana')).toBe(true);
+  });
+
+  it('a raiz não faz tudo casar com tudo', () => {
+    expect(mencionaServico('quero cortar a franja', 'Progressiva com formol')).toBe(false);
+    expect(mencionaServico('vou fazer as unhas', 'Botox capilar')).toBe(false);
+  });
+
+  it('PEGA O CASO REAL: lê as duas mensagens e acha os dois serviços', () => {
+    const cabem = servicosQueCabem(PEDIDO_EM_DUAS_MENSAGENS, CATALOGO);
+    expect(cabem).toContain('Mechas morena iluminada');
+    expect(cabem.filter((n) => n.startsWith('Progressiva'))).toHaveLength(5);
+  });
+
+  it('e aí oferecer horário de uma delas é prematuro', () => {
+    const r = travaDoProcedimento(
+      ['Tenho quinta às 14h para a progressiva, pode ser?'],
+      PEDIDO_EM_DUAS_MENSAGENS,
+      'Progressiva com formol',
+      CATALOGO
+    );
+    expect(r.falta).toBe('IRMAOS');
+  });
+
+  it('sem verbo de pedido em nenhuma das falas, não há pedido', () => {
+    const conversa = [cliente('Boa tarde'), cliente('Tudo bem?')];
+    expect(servicosQueCabem(conversa, CATALOGO)).toEqual([]);
   });
 });
