@@ -82,3 +82,9 @@ verify_jwt = true
 
 [functions.whatsapp-agent]
 verify_jwt = true
+
+# O Eddy. Mesma porta e mesmo cracha do agente das clientes: o gateway confere o
+# JWT e o x-worker-token confere que quem chamou foi o agendador, nao alguem com
+# a chave publica na mao.
+[functions.eddy-agent]
+verify_jwt = true
