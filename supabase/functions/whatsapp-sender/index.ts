@@ -28,7 +28,32 @@ type Reservada = {
   media_mime_type: string | null;
   media_filename: string | null;
   media_provider_id: string | null;
+  credential_ref: string | null;
 };
+
+// CADA CONEXAO CARREGA O NOME DO PROPRIO SEGREDO.
+//
+// 15/09: o numero de teste da Meta que vai ser o Eddy nasce numa WABA
+// diferente da do salao, e o token do salao nao alcanca ela -- o Graph
+// responde codigo 100, subcodigo 33, "missing permissions". Com um unico
+// WHATSAPP_ACCESS_TOKEN no ambiente, so da para ter um numero.
+//
+// `credential_ref` ja existia na tabela desde o comeco, escrito como
+// `edge-secret:NOME`, e estava sendo ignorado. Agora ele vale: cada conexao
+// diz de qual segredo o token dela sai, e quem nao diz nada continua no
+// WHATSAPP_ACCESS_TOKEN. Nenhum salao ja configurado precisa mudar.
+//
+// O nome e validado antes de virar leitura de ambiente: so letras, numeros e
+// underscore. `credential_ref` vem do banco, mas ler variavel de ambiente com
+// nome vindo de dado e o tipo de porta que nao se deixa encostada.
+const NOME_DE_SEGREDO = /^[A-Z][A-Z0-9_]{2,63}$/;
+
+function tokenDaConexao(ref: string | null, padrao: string): string | null {
+  if (!ref) return padrao;
+  const nome = ref.startsWith('edge-secret:') ? ref.slice('edge-secret:'.length).trim() : '';
+  if (!NOME_DE_SEGREDO.test(nome)) return null;
+  return Deno.env.get(nome) ?? null;
+}
 
 // A Meta agrupa midia em quatro tipos e cada um tem um campo proprio no corpo
 // da mensagem. O tipo sai do MIME, e nao da extensao do arquivo: extensao e
@@ -126,7 +151,7 @@ async function autorizado(req: Request, url: string, key: string): Promise<boole
 Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const accessToken = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+  const tokenPadrao = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
 
   if (!supabaseUrl || !serviceKey) {
     return json(500, { ok: false, reason: 'SUPABASE_ENV_MISSING' });
@@ -134,9 +159,10 @@ Deno.serve(async (req) => {
   if (!(await autorizado(req, supabaseUrl, serviceKey))) {
     return json(401, { ok: false, reason: 'WORKER_TOKEN_INVALID' });
   }
-  if (!accessToken) {
-    // Sem token nao ha o que tentar. Devolve cedo em vez de reservar mensagens
-    // e falhar todas, o que so gastaria tentativas do recuo exponencial.
+  // Sem nenhum token no ambiente nao ha o que tentar. Devolve cedo em vez de
+  // reservar mensagens e falhar todas, o que so gastaria tentativas do recuo
+  // exponencial. Conexao com segredo proprio e conferida mensagem a mensagem.
+  if (!tokenPadrao) {
     return json(500, { ok: false, reason: 'WHATSAPP_ACCESS_TOKEN_MISSING' });
   }
 
@@ -164,6 +190,13 @@ Deno.serve(async (req) => {
     try {
       if (!item.sender_id) {
         throw new Error('conexao sem external_sender_id — canal nao configurado');
+      }
+
+      const accessToken = tokenDaConexao(item.credential_ref, tokenPadrao);
+      if (!accessToken) {
+        throw new Error(
+          `token ausente para a conexao (credential_ref=${item.credential_ref ?? 'vazio'})`
+        );
       }
       if (item.kind !== 'TEXT' && item.kind !== 'MEDIA') {
         throw new Error(`tipo ${item.kind} ainda nao suportado pelo worker`);
