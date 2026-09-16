@@ -356,3 +356,106 @@ describe('o pedido dela não cabe numa mensagem só', () => {
     expect(servicosQueCabem(conversa, CATALOGO)).toEqual([]);
   });
 });
+
+// 16/09. A trava acima já estava no ar e não conferiu uma única resposta desta
+// conversa: `agent_scheduling_focus` tem ZERO linhas para ela, então
+// `nomeDoServico` chegava null e as portas exigiam ele para abrir.
+describe('sem foco de agenda, que é o estado normal da conversa', () => {
+  const DIA_16 = [
+    cliente('Boa tarde'),
+    cliente('Qual o valor da progressiva?'),
+    agente('Boa tarde! Tudo bem?'),
+    agente('A progressiva fica R$ 200,00.'),
+    agente('Qual o seu nome?'),
+    cliente('Tudo bem e com você?'),
+    cliente('Eduarda'),
+    cliente('Eu estava querendo fazer um iluminado também, qual eu faço primeiro?'),
+    agente('Progressiva primeiro, Eduarda, não indico fazer as duas químicas no mesmo período.'),
+    agente('Manda uma foto do seu cabelo hoje, como ele está?'),
+    cliente('Bom dia'),
+    cliente('Qual o valor da progressiva?'),
+  ];
+
+  it('PEGA O CASO REAL: dizer o preço da "progressiva" sem perguntar qual', () => {
+    const r = travaDoProcedimento(
+      ['Bom dia, Eduarda! A progressiva fica R$ 200,00.'],
+      DIA_16,
+      null,
+      CATALOGO
+    );
+    expect(r.falta).toBe('IRMAOS');
+  });
+
+  it('PEGA O CASO REAL: responder "com formol" escolhe uma das cinco por ela', () => {
+    const ate1056 = [
+      ...DIA_16,
+      agente('Bom dia, Eduarda! A progressiva fica R$ 200,00.'),
+      cliente('Esse valor é com formol ou sem formol?'),
+    ];
+    const r = travaDoProcedimento(['Com formol, Eduarda.'], ate1056, null, CATALOGO);
+    expect(r.falta).toBe('IRMAOS');
+    expect(r.opcoes).toContain('Progressiva com formol');
+    expect(r.opcoes).toContain('Progressiva sem formol');
+  });
+
+  it('a pergunta dela traz as DUAS polaridades, e nenhuma é descartada', () => {
+    const conversa = [
+      cliente('Quero fazer progressiva'),
+      agente('Certo!'),
+      cliente('Esse valor é com formol ou sem formol?'),
+    ];
+    const cabem = servicosQueCabem(conversa, CATALOGO);
+    expect(cabem).toContain('Progressiva com formol');
+    expect(cabem).toContain('Progressiva sem formol');
+  });
+
+  it('mas quando ela escolhe um lado, o irmão sai', () => {
+    const conversa = [cliente('Queria fazer uma progressiva sem formol')];
+    expect(servicosQueCabem(conversa, CATALOGO)).toEqual(['Progressiva sem formol']);
+  });
+
+  it('a resposta que PERGUNTA qual passa, mesmo dizendo o valor', () => {
+    const r = travaDoProcedimento(
+      [
+        'Bom dia, Eduarda! Qualquer progressiva fica R$ 200,00 aqui.',
+        'Temos 3D, 4D, japonesa, com formol e sem formol. Qual delas você quer?',
+      ],
+      DIA_16,
+      null,
+      CATALOGO
+    );
+    expect(r.falta).toBeNull();
+  });
+
+  it('mas "pode ser?" não é perguntar qual: é confirmar o que ele decidiu', () => {
+    const r = travaDoProcedimento(
+      ['Tenho quinta às 14h para a progressiva, pode ser?'],
+      DIA_16,
+      null,
+      CATALOGO
+    );
+    expect(r.falta).toBe('IRMAOS');
+  });
+
+  it('nem oferecer dois horários com "ou" no meio', () => {
+    const r = travaDoProcedimento(
+      ['Tenho quinta às 14h ou sexta às 16h para a progressiva, qual fica melhor?'],
+      DIA_16,
+      null,
+      CATALOGO
+    );
+    expect(r.falta).toBe('IRMAOS');
+  });
+
+  it('pergunta de preço de um serviço só não vira perguntação', () => {
+    const conversa = [cliente('Bom dia'), cliente('Quanto custa o corte?')];
+    expect(servicosQueCabem(conversa, CATALOGO)).toEqual(['Corte']);
+    expect(travaDoProcedimento(['O corte fica R$ 90,00.'], conversa, null, CATALOGO).falta).toBeNull();
+  });
+
+  it('ela pedindo DUAS coisas traz as duas famílias, não só a melhor', () => {
+    const cabem = servicosQueCabem(DIA_16, CATALOGO);
+    expect(cabem).toContain('Mechas morena iluminada');
+    expect(cabem.filter((n) => n.startsWith('Progressiva'))).toHaveLength(5);
+  });
+});

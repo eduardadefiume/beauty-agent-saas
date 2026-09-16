@@ -85,11 +85,15 @@ const DINHEIRO = /R\$\s*[\d.,]+|\b[\d.,]+\s*(reais|real)\b/i;
 // Conectivo, palavra genérica de catálogo e verbo de pedido. Nada aqui
 // identifica um serviço: "fazer" casaria com qualquer frase, e "teste" casaria
 // com a conversa sobre teste de mecha.
+// Desde que o corte de tamanho saiu de `palavrasDoServico`, conectivo de duas
+// letras chega aqui: "Corte junto com alisamento -- cabelo médio OU longo"
+// casava com qualquer pedido que tivesse um "ou" dentro.
 const IRRELEVANTES = new Set([
   'de', 'da', 'do', 'com', 'sem', 'para', 'por', 'e', 'a', 'o', 'as', 'os',
   'no', 'na', 'em', 'um', 'uma', 'teste', 'dia', 'mesmo', 'semana',
   'quero', 'queria', 'gostaria', 'fazer', 'marcar', 'agendar', 'procedimento',
   'cabelo', 'adicional', 'junto',
+  'ou', 'nem', 'mas', 'ao', 'aos', 'se', 'que', 'ate', 'sob', 'apos', 'ja',
 ]);
 
 // O que a cliente diz quando está PEDINDO, e não contando a história dela.
@@ -290,12 +294,18 @@ function pedidoRecente(historico: Fala[]): string | null {
 }
 
 /**
- * Quantas palavras do nome do serviço estão no pedido dela. `null` quer dizer
- * que este serviço está DESCARTADO: ela disse "sem formol" e o nome é "com
- * formol" (ou o contrário). É o par que separa serviços irmãos no catálogo, e
+ * As palavras do nome do serviço que estão no pedido dela.
+ *
+ * `null` quer dizer que este serviço está DESCARTADO: ela disse "sem formol" e
+ * o nome é "com formol". É o par que separa serviços irmãos no catálogo, e
  * confundir os dois é justo o erro caro -- formol em cima de formol.
+ *
+ * Polaridade só descarta quando ela escolheu um lado. "Esse valor é com formol
+ * ou sem formol?" traz as duas, e é pergunta, não preferência: descartar ali
+ * jogava fora os dois irmãos exatamente na frase em que ela pede a diferença
+ * entre eles.
  */
-function pontuacao(pedido: string, nomeDoServico: string): number | null {
+function palavrasQueCasam(pedido: string, nomeDoServico: string): string[] | null {
   const texto = normalizar(pedido);
   const nome = normalizar(nomeDoServico);
 
@@ -303,27 +313,10 @@ function pontuacao(pedido: string, nomeDoServico: string): number | null {
     const oposta = preposicao === 'com' ? 'sem' : 'com';
     const temOposta = new RegExp(`\\b${oposta}\\s+${palavra}\\b`).test(texto);
     const temEsta = new RegExp(`\\b${preposicao}\\s+${palavra}\\b`).test(texto);
-    // 16/09: "Esse valor e com formol ou sem formol?" tem as DUAS polaridades.
-    // Descartar pela oposta jogava fora os dois irmaos exatamente na frase em
-    // que ela pergunta a diferenca entre eles. Polaridade so descarta quando ela
-    // escolheu um lado: escreveu a oposta e NAO escreveu esta.
     if (temOposta && !temEsta) return null;
   }
 
-  // FRAÇÃO DO NOME, E NÃO CONTAGEM BRUTA.
-  //
-  // Contagem bruta premiava nome comprido: "Quanto custa o corte?" empatava
-  // "Corte" com "Corte junto com alisamento -- cabelo curto (no fim)", porque
-  // as duas casavam uma palavra. Cinco opções para uma pergunta que tem uma
-  // resposta só, e a trava virava perguntação inútil.
-  //
-  // Fração resolve: "Corte" fica 1/1, os adicionais ficam 1/3. Já "progressiva"
-  // continua empatando as cinco progressivas em 1/2 cada, porque nenhuma delas
-  // é coberta inteira -- que é exatamente a ambiguidade de verdade.
-  const palavras = palavrasDoServico(nomeDoServico);
-  if (palavras.length === 0) return null;
-  const casadas = palavras.filter((p) => texto.includes(raiz(p))).length;
-  return casadas === 0 ? 0 : casadas / palavras.length;
+  return palavrasDoServico(nomeDoServico).filter((p) => texto.includes(raiz(p)));
 }
 
 /**
@@ -332,26 +325,68 @@ function pontuacao(pedido: string, nomeDoServico: string): number | null {
  * Um só: ela escolheu, ainda que sem dizer o nome inteiro. Mais de um: ela
  * pediu "uma progressiva" e o salão tem cinco -- quem escolhe é ela, e a
  * pergunta é obrigatória. Nenhum: o pedido não fala de serviço nenhum.
+ *
+ * A conta não é "quantas palavras casaram", é QUAIS casaram. Contagem bruta
+ * empatava "Corte" com "Corte junto com alisamento -- cabelo curto (no fim)" na
+ * pergunta "quanto custa o corte?", e cinco opções para uma pergunta que tem
+ * uma resposta só vira perguntação inútil. Fração pura tinha o defeito oposto:
+ * matava o "iluminado" quando ela pedia progressiva E iluminado na mesma leva.
+ *
+ * Então os candidatos são agrupados pelo QUE casou:
+ *
+ *   {progressiva} .............. as cinco progressivas
+ *   {iluminada} ................ Mechas morena iluminada
+ *   {progressiva, formol} ...... Progressiva com/sem formol
+ *
+ * Grupo diferente é assunto diferente, e ela pode ter pedido dois: os dois
+ * primeiros convivem. Já {progressiva} é um pedaço de {progressiva, formol} --
+ * quando ela diz as duas palavras, a versão mais específica ganha e a genérica
+ * sai. Dentro de um grupo sobra quem cobre mais do próprio nome, que é o que
+ * separa "Corte" dos adicionais de corte.
  */
 export function servicosQueCabem(historico: Fala[], catalogo: string[]): string[] {
   const pedido = pedidoRecente(historico);
   if (!pedido) return [];
 
-  let melhor = 0;
-  const pontos = new Map<string, number>();
+  type Grupo = { chave: Set<string>; melhor: number; nomes: Map<string, number> };
+  const grupos = new Map<string, Grupo>();
+
   for (const nome of catalogo) {
     if (typeof nome !== 'string' || nome.trim().length === 0) continue;
-    const ponto = pontuacao(pedido, nome);
-    if (ponto == null || ponto === 0) continue;
+    const casadas = palavrasQueCasam(pedido, nome);
+    if (casadas == null || casadas.length === 0) continue;
+
+    const total = palavrasDoServico(nome).length;
+    if (total === 0) continue;
+    const ponto = casadas.length / total;
+
+    const chave = [...casadas].sort().join('|');
+    let grupo = grupos.get(chave);
+    if (!grupo) {
+      grupo = { chave: new Set(casadas), melhor: 0, nomes: new Map() };
+      grupos.set(chave, grupo);
+    }
     // Nomes repetidos no catálogo (rascunho e publicado) são o mesmo serviço.
-    if (!pontos.has(nome)) pontos.set(nome, ponto);
-    if (ponto > melhor) melhor = ponto;
+    if (!grupo.nomes.has(nome)) grupo.nomes.set(nome, ponto);
+    if (ponto > grupo.melhor) grupo.melhor = ponto;
   }
 
-  return [...pontos.entries()]
-    .filter(([, ponto]) => ponto === melhor)
-    .map(([nome]) => nome)
-    .sort();
+  const todos = [...grupos.values()];
+  const escolhidos = new Set<string>();
+  for (const grupo of todos) {
+    const engolido = todos.some(
+      (outro) =>
+        outro !== grupo &&
+        outro.chave.size > grupo.chave.size &&
+        [...grupo.chave].every((p) => outro.chave.has(p))
+    );
+    if (engolido) continue;
+    for (const [nome, ponto] of grupo.nomes) {
+      if (ponto === grupo.melhor) escolhidos.add(nome);
+    }
+  }
+
+  return [...escolhidos].sort();
 }
 
 /** A resposta afirma o serviço como fechado, em vez de perguntar. */
@@ -364,6 +399,12 @@ const PERGUNTA_DE_ESCOLHA = /\b(qual|quais|prefere|voc[êe] quer|pode ser|confir
 // de ser dita, sem repetir os nomes.
 const PERGUNTA_DE_REFERENCIA =
   /\bqual(?:is)?\s+(?:delas|deles|dessas|desses|das duas|dos dois|voc[êe]\s+(?:quer|prefere|gostaria))\b/i;
+
+// A pergunta que de fato devolve a escolha para ela. É mais estreita que
+// PERGUNTA_DE_ESCOLHA de propósito: "pode ser?" e "confirma?" são pedido de
+// confirmação do que ELE já decidiu, e "Tenho quinta às 14h para a progressiva,
+// pode ser?" nomeia o serviço, tem interrogação, e não pergunta qual.
+const QUAL_DOS_SERVICOS = /\b(qual|quais|prefere)\b/i;
 
 export function afirmaServico(textos: string[], nomeDoServico: string): boolean {
   return textos.some((texto) => {
@@ -393,7 +434,10 @@ export function perguntaQualServico(textos: string[], opcoes: string[]): boolean
     const nomeiaOpcao = opcoes.some((nome) => mencionaServico(texto, nome));
     for (const frase of texto.split(/(?<=[.!?…])\s+|\n+/)) {
       if (!frase.includes('?')) continue;
-      if (!PERGUNTA_DE_ESCOLHA.test(frase) && !PERGUNTA_COM_OU.test(frase)) continue;
+      if (!QUAL_DOS_SERVICOS.test(frase) && !PERGUNTA_COM_OU.test(frase)) continue;
+      // "Tenho quinta às 14h ou sexta às 16h?" é pergunta com "ou" e não é
+      // sobre qual serviço. Horário dentro da frase tira ela da conta.
+      if (HORARIO.test(frase)) continue;
       // A pergunta nomeia o serviço: "Qual progressiva você quer?".
       if (opcoes.some((nome) => mencionaServico(frase, nome))) return true;
       // Ou ela aponta para a lista que veio na frase anterior: "Temos 3D, 4D,

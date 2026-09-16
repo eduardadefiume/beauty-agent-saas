@@ -41,8 +41,19 @@ const CURTA_DEMAIS = 20;
 /** Quantas palavras de conteúdo a frase precisa ter para a comparação valer. */
 const CONTEUDO_MINIMO = 4;
 
-/** Quanto do conteúdo da frase menor precisa estar na maior para serem a mesma. */
-const PARECIDO = 0.8;
+/**
+ * Quanto do conteúdo da frase menor precisa estar na maior para serem a mesma.
+ *
+ * 0,7 e não 0,8 por causa deste par real, que é a mesma pergunta duas vezes:
+ *
+ *   "Manda uma foto do seu cabelo hoje, como ele está?"
+ *   "Ainda estou esperando aquela foto do seu cabelo hoje, pode me mandar?"
+ *
+ * Três palavras de conteúdo em comum de quatro, 0,75. O que segura o falso
+ * positivo aqui não é o limite, é `marcasConcretas`: número e polaridade
+ * diferentes já separam as frases antes da conta de parecença.
+ */
+const PARECIDO = 0.7;
 
 const VAZIAS = new Set([
   'para', 'pelo', 'pela', 'esse', 'essa', 'isso', 'aqui', 'ainda', 'tambem',
