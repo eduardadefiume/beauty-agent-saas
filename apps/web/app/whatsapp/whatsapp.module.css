@@ -715,3 +715,32 @@
     opacity: 0.25;
   }
 }
+
+/* O botão de conectar o WhatsApp do salão, na mesma faixa da conexão. */
+.conectar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.botaoConectar {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: #1877f2;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.botaoConectar:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.conectarNota {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}

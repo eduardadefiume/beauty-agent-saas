@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './whatsapp.module.css';
+import { ConectarWhatsApp } from './ConectarWhatsApp';
 
 const INTERVALO_MS = 5000;
 
@@ -753,6 +754,7 @@ export default function WhatsAppConsole() {
         ) : (
           <span className={styles.pillAlerta}>nenhum número de WhatsApp conectado</span>
         )}
+        {workspace && <ConectarWhatsApp tenantId={workspace.tenantId} />}
       </section>
 
       <section className={styles.contadores}>

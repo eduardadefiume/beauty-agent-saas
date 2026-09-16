@@ -239,6 +239,7 @@ async function conectarOWhatsApp(
   // 1. O codigo vira token. Sem `redirect_uri`: o Embedded Signup usa o fluxo
   //    do Facebook Login for Business, que nao tem pagina de retorno.
   let token = '';
+  let expiraEm: number | null = null;
   try {
     const troca = await fetch(
       `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token` +
@@ -246,11 +247,19 @@ async function conectarOWhatsApp(
         `&client_secret=${encodeURIComponent(appSecret)}` +
         `&code=${encodeURIComponent(code)}`
     );
-    const corpo = (await troca.json()) as { access_token?: string; error?: { message?: string } };
+    const corpo = (await troca.json()) as {
+      access_token?: string;
+      expires_in?: number;
+      error?: { message?: string };
+    };
     if (!troca.ok || !corpo.access_token) {
       return json(502, { error: 'TROCA_DE_CODIGO_FALHOU', detail: corpo?.error?.message ?? '' });
     }
     token = corpo.access_token;
+    // O modelo que a Meta oferece hoje entrega token de 60 dias. Guardar a
+    // data de morte junto e o que separa "o salao para de responder um dia
+    // desses" de "avisamos dez dias antes".
+    expiraEm = typeof corpo.expires_in === 'number' && corpo.expires_in > 0 ? corpo.expires_in : null;
   } catch (erro) {
     return json(502, { error: 'META_INDISPONIVEL', detail: String(erro).slice(0, 200) });
   }
@@ -347,6 +356,7 @@ async function conectarOWhatsApp(
       p_verified_name: verifiedName,
       p_history_state: historico,
       p_actor: common.target_email,
+      p_expires_in: expiraEm,
     })) as string;
   } catch (erro) {
     return json(502, { error: 'GRAVACAO_DA_CONEXAO_FALHOU', detail: String(erro).slice(0, 200) });
