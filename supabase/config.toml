@@ -88,3 +88,6 @@ verify_jwt = true
 # a chave publica na mao.
 [functions.eddy-agent]
 verify_jwt = true
+
+[functions.wa-archive-miner]
+verify_jwt = true

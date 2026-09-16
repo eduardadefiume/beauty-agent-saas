@@ -747,3 +747,9 @@ end;
 $function$;
 
 revoke all on function app.onboarding_write(uuid, text, text, numeric) from public, anon, authenticated;
+
+-- A permissao da porta do site continua onde estava: so o papel de servico,
+-- que e quem o proxy da tela usa. `create or replace` preserva a ACL, mas
+-- migracao que nao diz isso na cara e migracao que confia em memoria.
+revoke all on function public.site_start_new_draft(text, text, uuid, text) from public, anon, authenticated;
+grant execute on function public.site_start_new_draft(text, text, uuid, text) to service_role;
