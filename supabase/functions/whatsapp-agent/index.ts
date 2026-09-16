@@ -39,7 +39,7 @@ import {
   ultimaLevaDaCliente,
 } from './fecha-a-conversa.ts';
 import { precosDoNegocio, precosSemLastro } from './preco-com-lastro.ts';
-import { camposCorrompidos, semMarcacao } from './resposta-limpa.ts';
+import { camposCorrompidos, semEscapes, semMarcacao } from './resposta-limpa.ts';
 
 // Sonnet 5 e nao Opus 5: com o cache ligado, a diferenca de qualidade nesta
 // tarefa (conversa curta sobre um catalogo pequeno) nao paga a diferenca de
@@ -344,7 +344,7 @@ function nomesDoCatalogo(estavel: unknown): string[] {
 
 /** O que devolver ao modelo quando a trava do procedimento pega a resposta. */
 function recadoDaTrava(
-  falta: 'PROCEDIMENTO' | 'PRECO' | 'AFIRMOU' | 'IRMAOS',
+  falta: 'PROCEDIMENTO' | 'PRECO' | 'AFIRMOU' | 'IRMAOS' | 'AVALIAR',
   opcoes: string[],
   servico: string | null
 ): string {
@@ -353,6 +353,20 @@ function recadoDaTrava(
       'NAO ENVIEI. Voce esta oferecendo horario sem a cliente ter ouvido QUANTO custa. ' +
       'Diga o valor do procedimento antes do horario, na mesma leva. Ninguem marca sem ' +
       'saber quanto vai pagar.'
+    );
+  }
+
+  if (falta === 'AVALIAR') {
+    return (
+      'NAO ENVIEI. Ela te pediu INDICACAO, e voce respondeu com cardapio.\n' +
+      '"Qual e melhor" nao tem resposta de catalogo, tem resposta de cabelo. Quem indica ' +
+      'quimica precisa saber o TOM que ela quer e COMO O CABELO DELA ESTA hoje -- e as duas ' +
+      'coisas voce ainda nao tem na ficha. Listar servico antes disso e empurrar a escolha ' +
+      'para ela, que e justo quem nao tem como escolher: ela veio perguntar porque nao sabe.\n' +
+      'Entao a resposta deste turno e PEDIR o que decide: a foto do cabelo dela hoje e o tom ' +
+      'que ela quer alcancar, uma coisa por vez. Diga em uma linha por que voce esta pedindo ' +
+      '("pra te indicar a certa eu preciso ver como ele esta"), e so.\n' +
+      'Preco, lista de opcoes e horario ficam para depois da foto.'
     );
   }
 
@@ -366,6 +380,10 @@ function recadoDaTrava(
       'Reescreva assim: diga as opcoes COM O QUE DIFERENCIA uma da outra, em uma linha ' +
       'cada, e termine perguntando qual. Se o valor for o mesmo em todas, pode dizer o ' +
       'valor -- desde que a pergunta de qual esteja na mesma resposta.\n' +
+      'MAS ATENCAO: isso vale quando o que separa os irmaos e PREFERENCIA DELA. Quando o ' +
+      'que separa depende do CABELO dela -- o tom, a textura, se tem cor, o estado do fio -- ' +
+      'listar nao ajuda, porque ela nao tem como escolher. Ai a resposta e pedir a foto do ' +
+      'cabelo e o tom que ela quer, e indicar depois de ver.\n' +
       'E se voce JA tinha afirmado um deles antes nesta conversa, comece reconhecendo: ' +
       'ela precisa saber que aquilo mudou, senao fica achando que ja estava combinado.'
     );
@@ -675,7 +693,13 @@ async function decidir(
         chamadas.length === 1 &&
         !jaCobreiOHorarioPrematuro &&
         volta < MAX_VOLTAS - 1
-          ? travaDoProcedimento(fala, conversa, estado.serviceName ?? null, catalogoDeNomes)
+          ? travaDoProcedimento(
+              fala,
+              conversa,
+              estado.serviceName ?? null,
+              catalogoDeNomes,
+              faltas.map((f) => f.campo)
+            )
           : { falta: null, opcoes: [] as string[] };
       const prematuro = trava.falta;
 
@@ -1195,6 +1219,10 @@ Deno.serve(async (req) => {
         .map((t) => (typeof t === 'string' ? t.trim() : ''))
         .filter((t) => t.length > 0)
         .slice(0, 3)
+        // O escape do JSON escrito como letra. 16/09: a cliente leu
+        // "Luzes \\u00e9 uma fam\\u00edlia tamb\\u00e9m". O porque esta em
+        // resposta-limpa.ts.
+        .map((t) => semEscapes(t))
         // Cinto e suspensorio para a regra do travessao: mesmo instruido, o
         // modelo escorrega, e um travessao sozinho ja entrega a maquina.
         .map((t) => t.replace(/\s*—\s*/g, ' - ').replace(/\s*–\s*/g, ' - '));
@@ -1251,10 +1279,10 @@ Deno.serve(async (req) => {
         // Nao apaga: tira a tag e fica com o portugues que sobrou. O painel da
         // dona perdeu tres frases inteiras em 15/09 por causa do apagar.
         if (corrompidos.includes('ownerQuestion')) {
-          decisao.ownerQuestion = semMarcacao(decisao.ownerQuestion);
+          decisao.ownerQuestion = semEscapes(semMarcacao(decisao.ownerQuestion));
         }
         if (corrompidos.includes('contextSummary')) {
-          decisao.contextSummary = semMarcacao(decisao.contextSummary);
+          decisao.contextSummary = semEscapes(semMarcacao(decisao.contextSummary));
         }
         if (corrompidos.includes('reason')) {
           decisao.reason = semMarcacao(decisao.reason) || 'resposta do modelo veio quebrada';

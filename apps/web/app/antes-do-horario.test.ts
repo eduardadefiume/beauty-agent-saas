@@ -459,3 +459,87 @@ describe('sem foco de agenda, que é o estado normal da conversa', () => {
     expect(cabem.filter((n) => n.startsWith('Progressiva'))).toHaveLength(5);
   });
 });
+
+// 16/09, 16:23. "Quero fazer luzes qual delas é melhor?" e "E qual eu faço
+// primeiro?". Ele listou mechas e morena iluminada, listou as cinco
+// progressivas, e devolveu "qual desse efeito te agrada mais?" -- com a ficha
+// dela sem foto, sem tom, sem cor, sem química e sem textura.
+describe('ela pediu indicação, não cardápio', () => {
+  const FICHA_VAZIA = ['FOTO_ATUAL', 'TEM_QUIMICA', 'TEM_COLORACAO', 'TOM_QUE_QUER'];
+
+  const ATE_1623 = [
+    cliente('Boa tarde'),
+    cliente('Qual o valor da progressiva?'),
+    agente('Aqui tem progressiva com formol e sem formol, o valor é o mesmo nas duas, R$ 200,00. Qual delas você quer fazer?'),
+    cliente('Quero fazer luzes qual delas é melhor?'),
+    cliente('E qual eu faço primeiro?'),
+  ];
+
+  const O_QUE_ELE_MANDOU = [
+    'Luzes é uma família também, Eduarda: pode ser mechas, que clareiam mais os fios, ou morena iluminada, que mantém o fundo escuro.',
+    'Qual desse efeito te agrada mais?',
+    'E sobre a progressiva: temos com formol, sem formol, 3D, 4D e japonesa, todas R$ 200,00. Qual delas você prefere?',
+  ];
+
+  it('PEGA O CASO REAL: listar a família sem ter visto o cabelo', () => {
+    const r = travaDoProcedimento(O_QUE_ELE_MANDOU, ATE_1623, null, CATALOGO, FICHA_VAZIA);
+    expect(r.falta).toBe('AVALIAR');
+  });
+
+  it('e vem ANTES de IRMAOS: listar é justamente o erro aqui', () => {
+    const r = travaDoProcedimento(O_QUE_ELE_MANDOU, ATE_1623, null, CATALOGO, FICHA_VAZIA);
+    expect(r.falta).not.toBe('IRMAOS');
+  });
+
+  it('pedir a foto passa', () => {
+    const r = travaDoProcedimento(
+      [
+        'Luzes tem mais de um caminho aqui, e qual é melhor depende de como o seu cabelo está hoje.',
+        'Me manda uma foto do seu cabelo agora? Com ela eu te digo qual indico.',
+      ],
+      ATE_1623,
+      null,
+      CATALOGO,
+      FICHA_VAZIA
+    );
+    expect(r.falta).toBeNull();
+  });
+
+  it('pedir o tom também passa', () => {
+    const r = travaDoProcedimento(
+      ['Me manda uma foto do tom que você quer alcançar?'],
+      ATE_1623,
+      null,
+      CATALOGO,
+      FICHA_VAZIA
+    );
+    expect(r.falta).toBeNull();
+  });
+
+  it('com a foto e o tom já na ficha, indicar volta a ser permitido', () => {
+    const r = travaDoProcedimento(O_QUE_ELE_MANDOU, ATE_1623, null, CATALOGO, ['TEM_QUIMICA']);
+    expect(r.falta).not.toBe('AVALIAR');
+  });
+
+  it('"qual eu faço primeiro?" de 15/09 também cai aqui', () => {
+    const conversa = [
+      cliente('Qual o valor da progressiva?'),
+      agente('A progressiva fica R$ 200,00.'),
+      cliente('Eu estava querendo fazer um iluminado também, qual eu faço primeiro?'),
+    ];
+    const r = travaDoProcedimento(
+      ['Progressiva primeiro, Eduarda, não indico fazer as duas químicas no mesmo período.'],
+      conversa,
+      null,
+      CATALOGO,
+      FICHA_VAZIA
+    );
+    expect(r.falta).toBe('AVALIAR');
+  });
+
+  it('pergunta de preço simples não vira pedido de foto', () => {
+    const conversa = [cliente('Bom dia'), cliente('Quanto custa o corte?')];
+    const r = travaDoProcedimento(['Bom dia! O corte fica R$ 90,00.'], conversa, null, CATALOGO, FICHA_VAZIA);
+    expect(r.falta).toBeNull();
+  });
+});

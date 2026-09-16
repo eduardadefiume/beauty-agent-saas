@@ -109,6 +109,17 @@ const INTENCAO =
 // "quero fazer progressiva".
 const PERGUNTA_DE_PRECO = /\b(valor|valores|pre[çc]o|pre[çc]os|quanto|custa|sai por|fica quanto)\b/i;
 
+// "qual delas é melhor?", "qual eu faço primeiro?", "o que você indica?" --
+// ela não está pedindo cardápio, está pedindo INDICAÇÃO. E quem indica química
+// precisa ver o cabelo: o tom decide se cabe o Violet, a textura decide se cabe
+// alisamento suave ou os outros, e as duas coisas só se sabem pela foto.
+const PEDIU_INDICACAO =
+  /\bqual\b[^.!?\n]*\bmelhor\b|\bmelhor\b[^.!?\n]*\bqual\b|\bqual\s+(?:eu\s+)?(?:fa[çc]o|devo|pego|escolho)\b|\b(?:voc[êe]|vc)\s+(?:indica|recomenda|acha|sugere)\b|\bme\s+(?:indica|recomenda)\b|\bo\s+que\s+(?:voc[êe]|vc)\s+(?:indica|recomenda|acha)\b/iu;
+
+// A resposta pede o que decide a indicação: a foto do cabelo hoje, o tom que
+// ela quer, a referência.
+const PEDE_O_QUE_DECIDE = /\b(foto|fotinha|tom|tons|refer[êe]ncia|textura)\b/i;
+
 // "com formol ou sem formol?", "3D ou 4D?" -- ela está PERGUNTANDO a diferença,
 // não escolhendo. Frase com "ou" dentro de uma pergunta reabre a escolha em vez
 // de fechá-la.
@@ -416,7 +427,30 @@ export function afirmaServico(textos: string[], nomeDoServico: string): boolean 
   });
 }
 
-export type Falta = 'PROCEDIMENTO' | 'PRECO' | 'AFIRMOU' | 'IRMAOS';
+export type Falta = 'PROCEDIMENTO' | 'PRECO' | 'AFIRMOU' | 'IRMAOS' | 'AVALIAR';
+
+/** Os campos da ficha que decidem qual química indicar. */
+const DECIDEM_A_INDICACAO = ['FOTO_ATUAL', 'TOM_QUE_QUER'];
+
+/** Ela pediu indicação em alguma das falas recentes dela. */
+export function pediuIndicacao(historico: Fala[]): boolean {
+  const dela: string[] = [];
+  for (let i = historico.length - 1; i >= 0 && dela.length < FALAS_DO_PEDIDO + 1; i--) {
+    const fala = historico[i];
+    if (!fala || fala.direction !== 'INBOUND') continue;
+    dela.push(String(fala.text ?? ''));
+  }
+  return dela.some((t) => PEDIU_INDICACAO.test(t));
+}
+
+/** A resposta pede a foto, o tom ou a referência -- o que decide a indicação. */
+export function pedeOQueDecide(textos: string[]): boolean {
+  return textos.some((texto) =>
+    texto
+      .split(/(?<=[.!?…])\s+|\n+/)
+      .some((frase) => frase.includes('?') && PEDE_O_QUE_DECIDE.test(frase))
+  );
+}
 
 /**
  * A resposta PERGUNTA qual dos serviços, em vez de escolher um.
@@ -476,13 +510,41 @@ export function travaDoProcedimento(
   textos: string[],
   historico: Fala[],
   nomeDoServico: string | null,
-  catalogo: string[] = []
+  catalogo: string[] = [],
+  pendenciasDaFicha: string[] = []
 ): { falta: Falta | null; opcoes: string[] } {
   const vazio = { falta: null, opcoes: [] as string[] };
   if (textos.length === 0) return vazio;
 
   const escolha = escolhaDaCliente(historico, nomeDoServico);
   const cabem = servicosQueCabem(historico, catalogo);
+
+  // ELA PEDIU INDICAÇÃO, NÃO CARDÁPIO.
+  //
+  // 16/09, 16:23: "Quero fazer luzes qual delas é melhor?" e "E qual eu faço
+  // primeiro?". A resposta listou mechas e morena iluminada, listou as cinco
+  // progressivas, e perguntou qual efeito agrada mais. Na ficha dela, naquele
+  // instante, faltavam as CINCO coisas que decidem a resposta: a foto do
+  // cabelo hoje, o tom que ela quer, se é colorido, se já tem química e a
+  // textura.
+  //
+  // "Qual é melhor" não tem resposta de catálogo. Tem resposta de cabelo: o
+  // tom decide se entra o Violet, a textura decide se o Violet cabe -- ele é
+  // alisamento com hidratação, e em cabelo crespo ou grosso a indicação é
+  // outra. Nada disso se sabe sem ver.
+  //
+  // Vem ANTES de IRMAOS de propósito. IRMAOS manda listar as opções com o que
+  // diferencia uma da outra, e nesse caso listar é justamente o erro: o que
+  // diferencia não é preferência dela, é o cabelo dela.
+  const faltaOQueDecide = DECIDEM_A_INDICACAO.some((campo) => pendenciasDaFicha.includes(campo));
+  if (
+    faltaOQueDecide &&
+    pediuIndicacao(historico) &&
+    !pedeOQueDecide(textos) &&
+    (cabem.length > 0 || textos.some((t) => DINHEIRO.test(t) || HORARIO.test(t)))
+  ) {
+    return { falta: 'AVALIAR', opcoes: cabem };
+  }
 
   // Afirmar um serviço que ela nunca pediu -- ou que ela já disse que não é --
   // é a frase que fecha a decisão no lugar dela.

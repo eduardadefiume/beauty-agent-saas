@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   camposCorrompidos,
+  semEscapes,
+  temEscapeLiteral,
   semMarcacao,
   temMarcacao,
 } from '../../../supabase/functions/whatsapp-agent/resposta-limpa';
@@ -88,5 +90,36 @@ describe('tirar a marcação em vez de apagar o campo', () => {
     expect(semMarcacao('   ')).toBe('');
     expect(semMarcacao(null)).toBe('');
     expect(semMarcacao(42)).toBe('');
+  });
+});
+
+// 16/09, 16:24. A cliente leu, na tela do WhatsApp dela:
+//   "Luzes \\u00e9 uma fam\\u00edlia tamb\\u00e9m, Eduarda"
+// No banco: 194 bytes para 194 caracteres. Português com acento sempre tem
+// mais bytes que caracteres; quando batem, não sobrou acento nenhum.
+describe('o escape do JSON escrito como letra', () => {
+  it('PEGA O CASO REAL: devolve os acentos que se perderam', () => {
+    expect(semEscapes('Luzes \\u00e9 uma fam\\u00edlia tamb\\u00e9m, e ilumina s\\u00f3 no contorno.')).toBe(
+      'Luzes é uma família também, e ilumina só no contorno.'
+    );
+  });
+
+  it('e reconhece que o texto está sujo', () => {
+    expect(temEscapeLiteral('Luzes \\u00e9 uma fam\\u00edlia')).toBe(true);
+    expect(temEscapeLiteral('Luzes é uma família')).toBe(false);
+  });
+
+  it('texto limpo passa intacto', () => {
+    const limpo = 'A progressiva com formol fica R$ 200,00, Eduarda. Qual você prefere?';
+    expect(semEscapes(limpo)).toBe(limpo);
+  });
+
+  it('barra invertida que não é escape fica onde está', () => {
+    expect(semEscapes('um caminho C:\\temp que fica')).toBe('um caminho C:\\temp que fica');
+    expect(semEscapes('50\\50 entre as duas')).toBe('50\\50 entre as duas');
+  });
+
+  it('quebra de linha escrita como letra vira quebra de linha', () => {
+    expect(semEscapes('primeira\\nsegunda')).toBe('primeira\nsegunda');
   });
 });

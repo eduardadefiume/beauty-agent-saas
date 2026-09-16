@@ -85,3 +85,60 @@ export function semMarcacao(texto: unknown): string {
     .trim();
   return temMarcacao(limpo) ? '' : limpo;
 }
+
+// O MODELO ESCAPOU O PROPRIO JSON, E O ESCAPE FOI PARA A TELA DA CLIENTE.
+//
+// 16/09, 16:24, no numero de verdade. A cliente leu isto:
+//
+//   "Luzes é uma família também, Eduarda: pode ser mechas, que
+//    clareiam mais os fios, ou morena iluminada, que mantém o fundo
+//    escuro e ilumina só em fios finos e no contorno."
+//
+// No banco a prova e aritmetica: 194 bytes para 194 caracteres. Texto em
+// portugues com acento SEMPRE tem mais bytes que caracteres em UTF-8; quando
+// os dois numeros batem, nao sobrou acento nenhum -- eles viraram as seis
+// letras `é`. A mensagem de dois minutos antes, na mesma conversa, tinha
+// 114 bytes para 112 caracteres: essa estava certa.
+//
+// A causa e irma da marcacao de ferramenta la em cima: o modelo montou o
+// campo escrevendo o escape do JSON DENTRO da string, num turno em que a
+// trava do procedimento devolveu a resposta para ele reescrever. Nao e
+// comportamento e nao adianta pedir em portugues: e formato.
+//
+// Aqui NAO se descarta o texto, se decodifica. `é` no meio de uma frase
+// em portugues nunca e intencao -- e sempre um "é" que se perdeu no caminho.
+// Recusar custaria a resposta inteira; desescapar devolve a frase que o
+// modelo quis escrever.
+
+/**
+ * `\uXXXX` e `\n` escritos como texto, e nao como escape.
+ *
+ * So estes dois, e o corte e deliberado. `\t` tambem seria escape de JSON, e
+ * desfazer ele quebrava "C:\temp" em "C: emp" -- uma barra invertida no meio
+ * de um texto pode ser uma barra invertida de verdade. Estes dois nao: `\u00e9`
+ * e `\n` escritos com letra, numa frase em portugues, nunca sao intencao.
+ */
+const ESCAPE_LITERAL = /\\(u[0-9a-fA-F]{4}|n)/g;
+
+/**
+ * O texto com os escapes de JSON desfeitos.
+ *
+ * So mexe no que e escape de verdade: `é` vira "é", `\n` vira quebra de
+ * linha. Uma barra invertida solta, ou seguida de qualquer outra coisa, fica
+ * como esta -- nao e papel desta funcao adivinhar.
+ */
+export function semEscapes(texto: string): string {
+  return texto.replace(ESCAPE_LITERAL, (inteiro, corpo: string) => {
+    if (corpo === 'n') return '\n';
+    const ponto = Number.parseInt(corpo.slice(1), 16);
+    // Substituto solitario nao e caractere: sozinho ele vira o losango de
+    // interrogacao na tela, que e pior que a barra invertida.
+    if (ponto >= 0xd800 && ponto <= 0xdfff) return inteiro;
+    return String.fromCodePoint(ponto);
+  });
+}
+
+/** O texto ainda carrega escape de JSON escrito como letra. */
+export function temEscapeLiteral(texto: unknown): boolean {
+  return typeof texto === 'string' && new RegExp(ESCAPE_LITERAL.source).test(texto);
+}
