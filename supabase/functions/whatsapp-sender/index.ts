@@ -29,6 +29,7 @@ type Reservada = {
   media_filename: string | null;
   media_provider_id: string | null;
   credential_ref: string | null;
+  connection_id: string | null;
 };
 
 // CADA CONEXAO CARREGA O NOME DO PROPRIO SEGREDO.
@@ -48,11 +49,44 @@ type Reservada = {
 // nome vindo de dado e o tipo de porta que nao se deixa encostada.
 const NOME_DE_SEGREDO = /^[A-Z][A-Z0-9_]{2,63}$/;
 
-function tokenDaConexao(ref: string | null, padrao: string): string | null {
+// A TERCEIRA FORMA, E A QUE FAZ O PRODUTO SER MULTIEMPRESA.
+//
+// `edge-secret:` resolve os numeros da casa, que sao dois. `db:conexao` resolve
+// todo salao que entrar pelo Embedded Signup: cada um autoriza o app e devolve
+// um token do WABA dele, cifrado na propria linha da conexao. Variavel de
+// ambiente nao tem plural; a tabela tem.
+//
+// O token e pedido UMA vez por conexao, e nao por mensagem: o mesmo salao
+// costuma ter varias mensagens no mesmo lote, e token que viaja junto de cada
+// uma e token que aparece em log.
+async function tokenDaConexao(
+  item: Reservada,
+  padrao: string,
+  supabaseUrl: string,
+  serviceKey: string,
+  cache: Map<string, string | null>
+): Promise<string | null> {
+  const ref = item.credential_ref;
   if (!ref) return padrao;
-  const nome = ref.startsWith('edge-secret:') ? ref.slice('edge-secret:'.length).trim() : '';
-  if (!NOME_DE_SEGREDO.test(nome)) return null;
-  return Deno.env.get(nome) ?? null;
+
+  if (ref.startsWith('edge-secret:')) {
+    const nome = ref.slice('edge-secret:'.length).trim();
+    if (!NOME_DE_SEGREDO.test(nome)) return null;
+    return Deno.env.get(nome) ?? null;
+  }
+
+  if (ref === 'db:conexao') {
+    if (!item.connection_id) return null;
+    if (cache.has(item.connection_id)) return cache.get(item.connection_id) ?? null;
+    const token = (await rpc(supabaseUrl, serviceKey, 'whatsapp_token', {
+      p_connection_id: item.connection_id,
+    })) as string | null;
+    const limpo = typeof token === 'string' && token.trim().length > 0 ? token : null;
+    cache.set(item.connection_id, limpo);
+    return limpo;
+  }
+
+  return null;
 }
 
 // A Meta agrupa midia em quatro tipos e cada um tem um campo proprio no corpo
@@ -181,6 +215,7 @@ Deno.serve(async (req) => {
 
   let enviadas = 0;
   let falhadas = 0;
+  const tokensPorConexao = new Map<string, string | null>();
 
   for (const item of reservadas) {
     let sucesso = false;
@@ -192,7 +227,13 @@ Deno.serve(async (req) => {
         throw new Error('conexao sem external_sender_id — canal nao configurado');
       }
 
-      const accessToken = tokenDaConexao(item.credential_ref, tokenPadrao);
+      const accessToken = await tokenDaConexao(
+        item,
+        tokenPadrao,
+        supabaseUrl,
+        serviceKey,
+        tokensPorConexao
+      );
       if (!accessToken) {
         throw new Error(
           `token ausente para a conexao (credential_ref=${item.credential_ref ?? 'vazio'})`

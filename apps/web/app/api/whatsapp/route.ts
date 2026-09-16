@@ -21,6 +21,10 @@ const ACTIONS = new Set([
   'agentParkedConversations',
   'resumeParkedConversation',
   'sendMessage',
+  // Conectar o WhatsApp do salão: o navegador devolve o código do Embedded
+  // Signup e a edge function troca por token. O segredo do app não passa por
+  // aqui nem pelo navegador.
+  'conectarWhatsApp',
 ]);
 
 const JSON_HEADERS = {

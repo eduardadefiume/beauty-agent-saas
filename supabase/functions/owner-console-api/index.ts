@@ -194,6 +194,176 @@ function paraBase64(bytes: Uint8Array): string {
   return btoa(binario);
 }
 
+// ---------------------------------------------------------------------------
+// CONECTAR O WHATSAPP DO SALAO (Embedded Signup, com Coexistencia)
+//
+// O QUE ESTA ACAO TROCA, e por que ela nao e "mais uma RPC": o navegador do
+// dono devolve um CODIGO, e codigo nao serve para nada. Aqui ele vira token do
+// WABA dele, e a partir desse instante existe uma credencial que fala pelo
+// numero do salao com as clientes do salao. Por isso ela comeca conferindo no
+// banco que quem pediu manda naquele salao.
+//
+// O SEGREDO DO APP NUNCA VAI PARA O NAVEGADOR. A troca acontece aqui, com
+// META_APP_SECRET lido do ambiente, e o token volta cifrado direto para a
+// linha da conexao -- nao passa pela tela, nao volta na resposta, nao entra em
+// log. O que a tela recebe de volta e o numero, o nome verificado e se a
+// Coexistencia esta valendo.
+//
+// COEXISTENCIA SE DETECTA, NAO SE DECLARA. `is_on_biz_app` vem da propria
+// Meta: true quer dizer que o numero continua atendendo no aplicativo
+// WhatsApp Business do dono E na Cloud API ao mesmo tempo. E dele que depende
+// o historico das conversas chegar.
+async function conectarOWhatsApp(
+  input: Record<string, unknown>,
+  common: { target_site_project_id: string; target_email: string },
+  tenantId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<Response> {
+  const code = typeof input.code === 'string' ? input.code.trim() : '';
+  if (code.length < 10) return json(400, { error: 'CODIGO_AUSENTE' });
+
+  const appId = Deno.env.get('META_APP_ID');
+  const appSecret = Deno.env.get('META_APP_SECRET');
+  if (!appId || !appSecret) return json(503, { error: 'META_APP_NAO_CONFIGURADO' });
+
+  try {
+    await rpc(supabaseUrl, serviceRoleKey, 'site_assert_owner', {
+      ...common,
+      target_tenant_id: tenantId,
+    });
+  } catch {
+    return json(403, { error: 'SEM_PERMISSAO_NESTE_SALAO' });
+  }
+
+  // 1. O codigo vira token. Sem `redirect_uri`: o Embedded Signup usa o fluxo
+  //    do Facebook Login for Business, que nao tem pagina de retorno.
+  let token = '';
+  try {
+    const troca = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token` +
+        `?client_id=${encodeURIComponent(appId)}` +
+        `&client_secret=${encodeURIComponent(appSecret)}` +
+        `&code=${encodeURIComponent(code)}`
+    );
+    const corpo = (await troca.json()) as { access_token?: string; error?: { message?: string } };
+    if (!troca.ok || !corpo.access_token) {
+      return json(502, { error: 'TROCA_DE_CODIGO_FALHOU', detail: corpo?.error?.message ?? '' });
+    }
+    token = corpo.access_token;
+  } catch (erro) {
+    return json(502, { error: 'META_INDISPONIVEL', detail: String(erro).slice(0, 200) });
+  }
+
+  // 2. Quais WABA este token alcanca. A tela ja manda quando o evento do
+  //    signup traz; quando nao traz, o proprio token responde.
+  let wabaId = typeof input.wabaId === 'string' ? input.wabaId.trim() : '';
+  if (!wabaId) {
+    try {
+      const debug = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/debug_token` +
+          `?input_token=${encodeURIComponent(token)}` +
+          `&access_token=${encodeURIComponent(appId + '|' + appSecret)}`
+      );
+      const corpo = (await debug.json()) as {
+        data?: { granular_scopes?: Array<{ scope?: string; target_ids?: string[] }> };
+      };
+      const escopo = (corpo.data?.granular_scopes ?? []).find(
+        (g) => g.scope === 'whatsapp_business_management'
+      );
+      wabaId = escopo?.target_ids?.[0] ?? '';
+    } catch {
+      wabaId = '';
+    }
+  }
+  if (!wabaId) return json(422, { error: 'WABA_NAO_IDENTIFICADA' });
+
+  // 3. Assinar o app na WABA do salao. Sem isso nenhum webhook chega -- nem a
+  //    mensagem da cliente, nem o historico da Coexistencia.
+  try {
+    const assinatura = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${wabaId}/subscribed_apps`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } }
+    );
+    if (!assinatura.ok) {
+      const corpo = await assinatura.text();
+      return json(502, { error: 'ASSINATURA_DA_WABA_FALHOU', detail: corpo.slice(0, 200) });
+    }
+  } catch (erro) {
+    return json(502, { error: 'META_INDISPONIVEL', detail: String(erro).slice(0, 200) });
+  }
+
+  // 4. Qual numero, e se ele esta em Coexistencia.
+  let phoneNumberId = typeof input.phoneNumberId === 'string' ? input.phoneNumberId.trim() : '';
+  let displayPhone: string | null = null;
+  let verifiedName: string | null = null;
+  let coexistencia = false;
+  try {
+    const url = phoneNumberId
+      ? `https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}` +
+        `?fields=display_phone_number,verified_name,is_on_biz_app,platform_type`
+      : `https://graph.facebook.com/${GRAPH_VERSION}/${wabaId}/phone_numbers` +
+        `?fields=id,display_phone_number,verified_name,is_on_biz_app,platform_type`;
+    const r = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+    const corpo = (await r.json()) as Record<string, unknown>;
+    const numero = (
+      Array.isArray((corpo as { data?: unknown[] }).data)
+        ? (corpo as { data: Record<string, unknown>[] }).data[0]
+        : corpo
+    ) as Record<string, unknown> | undefined;
+    if (numero) {
+      phoneNumberId = phoneNumberId || (typeof numero.id === 'string' ? numero.id : '');
+      displayPhone =
+        typeof numero.display_phone_number === 'string' ? numero.display_phone_number : null;
+      verifiedName = typeof numero.verified_name === 'string' ? numero.verified_name : null;
+      coexistencia = numero.is_on_biz_app === true;
+    }
+  } catch {
+    // Numero sem detalhe ainda nao impede conectar: o que nao pode faltar e o
+    // token e a WABA. O resto a tela mostra vazio ate o primeiro webhook.
+  }
+  if (!phoneNumberId) return json(422, { error: 'NUMERO_NAO_IDENTIFICADO' });
+
+  // 5. O consentimento do historico quem informa e o evento do signup. Sem
+  //    ele, NAO_PEDIDO: a Meta so manda o historico de quem aceitou na tela do
+  //    proprio WhatsApp, e supor que aceitou seria mentir para a tela do dono.
+  const historico =
+    input.historicoConsentido === true
+      ? 'CONSENTIDO'
+      : input.historicoConsentido === false
+        ? 'RECUSADO'
+        : 'NAO_PEDIDO';
+
+  let conexaoId: string;
+  try {
+    conexaoId = (await rpc(supabaseUrl, serviceRoleKey, 'wa_connection_upsert', {
+      p_tenant_id: tenantId,
+      p_waba_id: wabaId,
+      p_phone_number_id: phoneNumberId,
+      p_token: token,
+      p_purpose: input.purpose === 'DONO' ? 'DONO' : 'CLIENTE',
+      p_is_coexistence: coexistencia,
+      p_display_phone: displayPhone,
+      p_verified_name: verifiedName,
+      p_history_state: historico,
+      p_actor: common.target_email,
+    })) as string;
+  } catch (erro) {
+    return json(502, { error: 'GRAVACAO_DA_CONEXAO_FALHOU', detail: String(erro).slice(0, 200) });
+  }
+
+  return json(200, {
+    ok: true,
+    conexaoId,
+    wabaId,
+    phoneNumberId,
+    numero: displayPhone,
+    nomeVerificado: verifiedName,
+    coexistencia,
+    historico,
+  });
+}
+
 async function fotoDaConversa(
   acao: 'previewClientMedia' | 'adoptClientPhoto',
   input: Record<string, unknown>,
@@ -616,8 +786,12 @@ Deno.serve(async (request: Request) => {
   }
 
   const falaComAMeta = action === 'previewClientMedia' || action === 'adoptClientPhoto';
+  const conectaOWhatsApp = action === 'conectarWhatsApp';
   const falaComOModelo = action === 'onboardingSay';
-  if (typeof action !== 'string' || (!(action in ACTION_RPC) && !falaComAMeta && !falaComOModelo)) {
+  if (
+    typeof action !== 'string' ||
+    (!(action in ACTION_RPC) && !falaComAMeta && !falaComOModelo && !conectaOWhatsApp)
+  ) {
     return json(400, { error: 'INVALID_REQUEST' });
   }
   if (action !== 'list' && typeof tenantId !== 'string') {
@@ -634,6 +808,10 @@ Deno.serve(async (request: Request) => {
     target_site_project_id: SITE_PROJECT_ID,
     target_email: userEmail,
   };
+
+  if (conectaOWhatsApp) {
+    return await conectarOWhatsApp(input, common, tenantId as string, supabaseUrl, serviceRoleKey);
+  }
 
   if (falaComOModelo) {
     return await ouvirODono(input, common, tenantId as string, supabaseUrl, serviceRoleKey);
