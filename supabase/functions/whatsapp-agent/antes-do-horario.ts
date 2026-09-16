@@ -35,6 +35,43 @@
 //   - a CLIENTE escolheu, com as palavras dela ou com um sim a uma pergunta;
 //   - o agente não está afirmando como fechado o que ela não escolheu;
 //   - o que ela pediu não casa com mais de um serviço do catálogo.
+//
+// 16/09, e este é o buraco embaixo de todos os outros. A conversa inteira, no
+// número de verdade:
+//
+//   15:38  cliente: "Qual o valor da progressiva?"
+//   15:39  "A progressiva fica R$ 200,00."
+//   15:44  cliente: "Eu estava querendo fazer um iluminado também, qual eu faço primeiro?"
+//   15:45  "Progressiva primeiro, Eduarda, não indico as duas químicas no mesmo período."
+//   15:45  "Manda uma foto do seu cabelo hoje, como ele está?"
+//   10:05  cliente: "Qual o valor da progressiva?"          <- ela PERGUNTOU DE NOVO
+//   10:07  "Bom dia, Eduarda! A progressiva fica R$ 200,00."
+//   10:07  "Ainda estou esperando aquela foto do seu cabelo hoje, pode me mandar?"
+//   10:56  cliente: "Esse valor é com formol ou sem formol?"
+//   10:58  "Com formol, Eduarda."                            <- escolheu por ela, de novo
+//   10:58  "Ainda estou esperando aquela foto do seu cabelo hoje, pode me mandar?"
+//
+// A trava acima já estava no ar e não pegou NADA disso. O motivo, no banco:
+// `agent_scheduling_focus` para essa conversa tem ZERO linhas. O foco só nasce
+// quando o agente consulta a AGENDA -- e ele nunca consultou, porque nunca
+// chegou a oferecer horário. Sem foco, `nomeDoServico` chega null aqui, e as
+// três primeiras portas desta função exigiam `nomeDoServico` para abrir. A
+// quarta (`if (!ofereceHorario) return vazio`) fechava a conversa toda.
+//
+// Ou seja: eu tinha escrito uma trava que só acordava no instante de oferecer
+// horário. Tudo que vem ANTES do horário -- e é onde a cliente decide -- saía
+// sem nenhuma conferência: preço, "com formol", "progressiva primeiro".
+//
+// Então a ambiguidade passa a ser medida a partir DAS PALAVRAS DELA e do
+// catálogo, sem depender de foco nenhum. Se o que ela pediu cabe em mais de um
+// serviço, a resposta não pode fechar preço, horário nem atributo: tem que
+// perguntar qual. O foco continua servindo para as outras portas, mas não é
+// mais o interruptor geral.
+//
+// "Esse valor é com formol ou sem formol?" é o caso exemplar: ela escreveu as
+// DUAS polaridades na mesma frase. Isso não é preferência, é pergunta -- e era
+// justo o que `pontuacao` descartava, porque via a polaridade oposta e jogava
+// os dois irmãos fora.
 
 /** Uma fala da conversa, na ordem em que aconteceu. */
 export type Fala = { direction?: unknown; text?: unknown };
@@ -58,7 +95,20 @@ const IRRELEVANTES = new Set([
 // O que a cliente diz quando está PEDINDO, e não contando a história dela.
 // "já fiz progressiva há um mês" não é pedido; "queria fazer progressiva" é.
 const INTENCAO =
-  /\b(quero|queria|gostaria|gostava|desejo|pretendo|preciso|vou fazer|posso fazer|pode fazer|marcar|agendar|marca|agenda|fazer)\b/i;
+  /\b(quero|queria|querendo|gostaria|gostava|desejo|pretendo|preciso|vou fazer|posso fazer|pode fazer|marcar|agendar|marca|agenda|fazer)\b/i;
+
+// Perguntar quanto custa é pedir informação sobre um serviço, e é por aí que a
+// maioria das conversas começa: "Qual o valor da progressiva?". Não tem verbo
+// de intenção nenhum, e mesmo assim é aí que a ambiguidade nasce -- o salão tem
+// cinco progressivas. Sem esta linha, a conversa de 16/09 inteira ficava fora
+// da conta só porque ela foi educada e perguntou o preço em vez de mandar
+// "quero fazer progressiva".
+const PERGUNTA_DE_PRECO = /\b(valor|valores|pre[çc]o|pre[çc]os|quanto|custa|sai por|fica quanto)\b/i;
+
+// "com formol ou sem formol?", "3D ou 4D?" -- ela está PERGUNTANDO a diferença,
+// não escolhendo. Frase com "ou" dentro de uma pergunta reabre a escolha em vez
+// de fechá-la.
+const PERGUNTA_COM_OU = /[^.!?\n]*\bou\b[^.!?\n]*\?/i;
 
 // Resposta afirmativa a uma pergunta do agente. O `^` é de propósito: "sim"
 // no meio de uma frase longa é outra coisa.
@@ -86,9 +136,13 @@ function normalizar(texto: string): string {
  * ['mechas','morena','iluminada'].
  */
 export function palavrasDoServico(nome: string): string[] {
+  // O corte de tamanho era `> 3`, e ele engolia justo o que separa "Progressiva
+  // 3D" de "Progressiva 4D": as duas viravam a mesma palavra ['progressiva'] e
+  // o catálogo ficava sem como diferenciá-las. Quem tira conectivo é a lista de
+  // irrelevantes, que é explícita; tamanho não é critério de sentido.
   return normalizar(nome)
     .split(/[^a-z0-9]+/)
-    .filter((p) => p.length > 3 && !IRRELEVANTES.has(p));
+    .filter((p) => p.length > 1 && !IRRELEVANTES.has(p));
 }
 
 /**
@@ -225,7 +279,11 @@ function pedidoRecente(historico: Fala[]): string | null {
     // sem esta linha o servico que ela ACABOU de recusar voltava para a lista.
     if (NEGACAO.test(texto) && !INTENCAO.test(texto)) continue;
     dela.unshift(texto);
-    if (INTENCAO.test(texto)) achouVerbo = true;
+    // Verbo de pedido, pergunta de preco ou pergunta com "ou" dentro: as tres
+    // sao a cliente falando de um servico que ela ainda vai fazer.
+    if (INTENCAO.test(texto) || PERGUNTA_DE_PRECO.test(texto) || PERGUNTA_COM_OU.test(texto)) {
+      achouVerbo = true;
+    }
   }
 
   return achouVerbo ? dela.join(' ') : null;
@@ -243,10 +301,29 @@ function pontuacao(pedido: string, nomeDoServico: string): number | null {
 
   for (const [, preposicao, palavra] of nome.matchAll(/\b(com|sem)\s+([a-z0-9]+)/g)) {
     const oposta = preposicao === 'com' ? 'sem' : 'com';
-    if (new RegExp(`\\b${oposta}\\s+${palavra}\\b`).test(texto)) return null;
+    const temOposta = new RegExp(`\\b${oposta}\\s+${palavra}\\b`).test(texto);
+    const temEsta = new RegExp(`\\b${preposicao}\\s+${palavra}\\b`).test(texto);
+    // 16/09: "Esse valor e com formol ou sem formol?" tem as DUAS polaridades.
+    // Descartar pela oposta jogava fora os dois irmaos exatamente na frase em
+    // que ela pergunta a diferenca entre eles. Polaridade so descarta quando ela
+    // escolheu um lado: escreveu a oposta e NAO escreveu esta.
+    if (temOposta && !temEsta) return null;
   }
 
-  return palavrasDoServico(nomeDoServico).filter((p) => texto.includes(raiz(p))).length;
+  // FRAÇÃO DO NOME, E NÃO CONTAGEM BRUTA.
+  //
+  // Contagem bruta premiava nome comprido: "Quanto custa o corte?" empatava
+  // "Corte" com "Corte junto com alisamento -- cabelo curto (no fim)", porque
+  // as duas casavam uma palavra. Cinco opções para uma pergunta que tem uma
+  // resposta só, e a trava virava perguntação inútil.
+  //
+  // Fração resolve: "Corte" fica 1/1, os adicionais ficam 1/3. Já "progressiva"
+  // continua empatando as cinco progressivas em 1/2 cada, porque nenhuma delas
+  // é coberta inteira -- que é exatamente a ambiguidade de verdade.
+  const palavras = palavrasDoServico(nomeDoServico);
+  if (palavras.length === 0) return null;
+  const casadas = palavras.filter((p) => texto.includes(raiz(p))).length;
+  return casadas === 0 ? 0 : casadas / palavras.length;
 }
 
 /**
@@ -283,6 +360,11 @@ export function servicosQueCabem(historico: Fala[], catalogo: string[]): string[
 // se quer que ele faça. O que manda na mensagem é a pergunta de escolha.
 const PERGUNTA_DE_ESCOLHA = /\b(qual|quais|prefere|voc[êe] quer|pode ser|confirma)\b[^?]*\?/i;
 
+// "Qual delas?", "qual dos dois?" -- a pergunta aponta para a lista que acabou
+// de ser dita, sem repetir os nomes.
+const PERGUNTA_DE_REFERENCIA =
+  /\bqual(?:is)?\s+(?:delas|deles|dessas|desses|das duas|dos dois|voc[êe]\s+(?:quer|prefere|gostaria))\b/i;
+
 export function afirmaServico(textos: string[], nomeDoServico: string): boolean {
   return textos.some((texto) => {
     if (!mencionaServico(texto, nomeDoServico)) return false;
@@ -296,10 +378,55 @@ export function afirmaServico(textos: string[], nomeDoServico: string): boolean 
 export type Falta = 'PROCEDIMENTO' | 'PRECO' | 'AFIRMOU' | 'IRMAOS';
 
 /**
+ * A resposta PERGUNTA qual dos serviços, em vez de escolher um.
+ *
+ * Existe para não punir a resposta certa. "Qualquer progressiva fica R$ 200 --
+ * 3D, 4D, japonesa, com ou sem formol. Qual você quer?" tem dinheiro dentro e
+ * mesmo assim é exatamente o que se quer que ele escreva.
+ *
+ * A pergunta precisa ser sobre o SERVIÇO: "Qual dia você prefere?" também é uma
+ * pergunta de escolha e não resolve nada aqui.
+ */
+export function perguntaQualServico(textos: string[], opcoes: string[]): boolean {
+  if (opcoes.length === 0) return false;
+  for (const texto of textos) {
+    const nomeiaOpcao = opcoes.some((nome) => mencionaServico(texto, nome));
+    for (const frase of texto.split(/(?<=[.!?…])\s+|\n+/)) {
+      if (!frase.includes('?')) continue;
+      if (!PERGUNTA_DE_ESCOLHA.test(frase) && !PERGUNTA_COM_OU.test(frase)) continue;
+      // A pergunta nomeia o serviço: "Qual progressiva você quer?".
+      if (opcoes.some((nome) => mencionaServico(frase, nome))) return true;
+      // Ou ela aponta para a lista que veio na frase anterior: "Temos 3D, 4D,
+      // japonesa, com e sem formol. Qual delas você quer?". É assim que se
+      // escreve isso em português, e barrar essa forma seria barrar a resposta
+      // certa.
+      if (PERGUNTA_DE_REFERENCIA.test(frase) && nomeiaOpcao) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A resposta FECHA alguma coisa: diz um valor, oferece um horário, ou afirma um
+ * dos serviços como se estivesse combinado.
+ *
+ * É o gesto que a ambiguidade proíbe. Enquanto ela não disser qual, tudo isso é
+ * o agente decidindo no lugar dela.
+ */
+function fechaAlgumaCoisa(textos: string[], opcoes: string[]): boolean {
+  if (textos.some((t) => DINHEIRO.test(t) || HORARIO.test(t))) return true;
+  return opcoes.some((nome) => afirmaServico(textos, nome));
+}
+
+/**
  * O que falta antes de o agente poder seguir com este serviço.
  *
  * `historico` é a conversa inteira, as duas vozes -- sem a voz dela não dá
  * para saber se ela escolheu. `catalogo` são os nomes dos serviços do salão.
+ *
+ * `nomeDoServico` é o foco da agenda, e desde 16/09 ele é OPCIONAL de verdade:
+ * a conferência de ambiguidade roda com ele null, que é o estado em que a
+ * conversa passa a maior parte do tempo. Ver o cabeçalho deste arquivo.
  */
 export function travaDoProcedimento(
   textos: string[],
@@ -312,7 +439,6 @@ export function travaDoProcedimento(
 
   const escolha = escolhaDaCliente(historico, nomeDoServico);
   const cabem = servicosQueCabem(historico, catalogo);
-  const ambiguo = cabem.length > 1 && (!nomeDoServico || cabem.includes(nomeDoServico));
 
   // Afirmar um serviço que ela nunca pediu -- ou que ela já disse que não é --
   // é a frase que fecha a decisão no lugar dela.
@@ -320,9 +446,15 @@ export function travaDoProcedimento(
     return { falta: 'AFIRMOU', opcoes: cabem };
   }
 
-  // Ela pediu "uma progressiva" e o salão tem cinco. Escolher por ela é
-  // exatamente o erro de 15/09.
-  if (ambiguo && nomeDoServico && (afirmaServico(textos, nomeDoServico) || ofereceHorario(textos))) {
+  // IRMÃOS. Ela pediu "uma progressiva" e o salão tem cinco.
+  //
+  // Esta porta não pergunta mais pelo foco da agenda. O que ela pediu cabe em
+  // mais de um serviço; enquanto ela não disser qual, a resposta não fecha
+  // preço, horário nem atributo. A única saída é PERGUNTAR qual -- e quem
+  // pergunta passa.
+  const ambiguo =
+    cabem.length > 1 && (!nomeDoServico || cabem.includes(nomeDoServico));
+  if (ambiguo && !perguntaQualServico(textos, cabem) && fechaAlgumaCoisa(textos, cabem)) {
     return { falta: 'IRMAOS', opcoes: cabem };
   }
 

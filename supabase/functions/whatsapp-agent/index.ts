@@ -32,6 +32,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
 import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
+import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
   condicaoComercialIgnorada,
   respostaSemProximoPasso,
@@ -360,8 +361,13 @@ function recadoDaTrava(
       'NAO ENVIEI. O que ela pediu cabe em MAIS DE UM servico deste salao: ' +
       opcoes.join(', ') +
       '. Quem escolhe entre eles e ela, nunca voce -- e menos ainda pelo que voce leu na ' +
-      'ficha dela. Pergunte qual, dizendo as opcoes com o que diferencia uma da outra. ' +
-      'So depois da resposta dela e que existe preco e horario.'
+      'ficha dela. Voce escreveu preco, horario ou o nome de um deles como se estivesse ' +
+      'decidido; ela le isso como decisao tomada.\n' +
+      'Reescreva assim: diga as opcoes COM O QUE DIFERENCIA uma da outra, em uma linha ' +
+      'cada, e termine perguntando qual. Se o valor for o mesmo em todas, pode dizer o ' +
+      'valor -- desde que a pergunta de qual esteja na mesma resposta.\n' +
+      'E se voce JA tinha afirmado um deles antes nesta conversa, comece reconhecendo: ' +
+      'ela precisa saber que aquilo mudou, senao fica achando que ja estava combinado.'
     );
   }
 
@@ -388,7 +394,10 @@ function recadoDaTrava(
 // O teto de voltas existe para o caso de o modelo insistir em consultar sem
 // nunca decidir: sem ele, uma conversa confusa viraria uma sequencia infinita
 // de chamadas pagas.
-const MAX_VOLTAS = 4;
+// Sao quatro cobrancas possiveis, cada uma disparando no maximo uma vez:
+// chamada corrompida, trava do procedimento, resposta sem proximo passo e
+// frase repetida. Com o teto em 4, a quarta nunca chegava a caber.
+const MAX_VOLTAS = 5;
 
 async function decidir(
   anthropic: Anthropic,
@@ -451,6 +460,9 @@ async function decidir(
       'ANTES DE PERGUNTAR, releia o histórico. Se ela JÁ respondeu isso em alguma mensagem, mesmo ' +
       'de passagem, NÃO pergunte de novo: chame anotar_na_ficha com o que ela disse e siga para o ' +
       'assunto seguinte.\n' +
+      'E se você JÁ FEZ essa pergunta antes nesta conversa e ela não respondeu, não reenvie a ' +
+      'mesma frase. Ela leu e não respondeu: ou não era a hora, ou o que ela queria era outra ' +
+      'coisa. Responda o que ela perguntou agora; a ficha espera.\n' +
       '\n' +
       'Nos dois caminhos: NÃO ofereça horário, NÃO confirme horário e NÃO insista num horário ' +
       'que você já ofereceu antes nesta conversa.\n' +
@@ -458,12 +470,21 @@ async function decidir(
       'siga. Quem diz o que a química dela significa é a avaliação, nunca você.'
     : '';
 
+  // ELA VOLTOU NUM PONTO QUE JÁ FOI TRATADO.
+  //
+  // Vem antes da diretriz da ficha de propósito: quando a cliente corrige, a
+  // correção ganha do checklist. Foi o checklist que, em 16/09, reenviou a
+  // pergunta da foto palavra por palavra enquanto ela perguntava outra coisa.
+  // O porquê está em nao-insista.ts.
+  const avisoDaVolta = avisoDeVolta(voltasDaCliente(falasDaConversa(volatil)));
+
   const mensagens: Anthropic.MessageParam[] = [
     {
       role: 'user',
       content:
         'Esta conversa (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
         JSON.stringify(volatil) +
+        (avisoDaVolta ? '\n\n' + avisoDaVolta : '') +
         diretrizDoTurno,
     },
   ];
@@ -528,6 +549,7 @@ async function decidir(
   let jaCobreiOProximoPasso = false;
   let jaCobreiACorrupcao = false;
   let jaCobreiOHorarioPrematuro = false;
+  let jaCobreiARepeticao = false;
   // A conversa inteira, as duas vozes. Sem a voz DELA nao da para saber se o
   // procedimento foi escolhido ou se foi o agente que inventou.
   const conversa = falasDaConversa(volatil);
@@ -676,6 +698,54 @@ async function decidir(
               type: 'tool_result',
               tool_use_id: desfecho.id,
               content: recadoDaTrava(prematuro, trava.opcoes, estado.serviceName ?? null),
+            },
+          ],
+        });
+        continue;
+      }
+
+      // A MESMA FRASE DE NOVO.
+      //
+      // 16/09: "Ainda estou esperando aquela foto do seu cabelo hoje, pode me
+      // mandar?" saiu igual às 10:07 e às 10:58, com uma pergunta dela no meio.
+      // Para a cliente isso não é insistência simpática: é a prova de que o que
+      // ela escreveu não foi lido.
+      //
+      // Por que não basta a regra de prompt: a resposta de 10:58 veio de um
+      // modelo que já tinha, escrito no prompt, "não repita pergunta já feita".
+      const repetidas =
+        decisao.action === 'REPLY' && chamadas.length === 1 && !jaCobreiARepeticao && volta < MAX_VOLTAS - 1
+          ? frasesRepetidas(
+              fala,
+              conversa.filter((f) => f.direction === 'OUTBOUND').map((f) => String(f.text ?? ''))
+            )
+          : [];
+
+      if (repetidas.length > 0) {
+        jaCobreiARepeticao = true;
+        console.error(
+          JSON.stringify({
+            event: 'frase_repetida',
+            conversationId: ambiente.conversationId,
+            frases: repetidas,
+          })
+        );
+        mensagens.push({ role: 'assistant', content: resposta.content });
+        mensagens.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: desfecho.id,
+              content:
+                'NAO ENVIEI. Voce esta reenviando frase que ja mandou nesta conversa: "' +
+                repetidas.join('" / "') +
+                '". Ela leu isso e respondeu OUTRA coisa. Mandar de novo diz a ela que ' +
+                'voce nao leu o que ela escreveu. Ou essa frase some da resposta, ou ela ' +
+                'volta de um jeito que reconhece o que ela disse no meio. E antes de ' +
+                'reescrever: se ela voltou num assunto, o problema nao e ela nao ter ' +
+                'respondido -- e a sua resposta anterior nao ter servido. Conserte aquilo ' +
+                'primeiro, em voz alta.',
             },
           ],
         });
