@@ -1,0 +1,4 @@
+# SQL de migration precisa bater byte a byte com o que o banco aplicou.
+# Sem isto, o autocrlf do Windows troca LF por CRLF e o md5 deixa de conferir.
+*.sql text eol=lf
+*.md  text eol=lf
