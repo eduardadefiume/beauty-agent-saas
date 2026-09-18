@@ -47,6 +47,8 @@ type Decisao = {
 
 type Pendencia = { chave: string; modulo: string; pergunta: string; contexto: string };
 
+type Habilidade = { nome: string; quemFaz: string[] };
+
 const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'anotar',
@@ -77,6 +79,60 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         },
       },
       required: ['chave', 'modulo', 'entendido', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'criar_servico',
+    description:
+      'Cria no rascunho um serviço que ainda não existe no catálogo dele. A habilidade tem que ser uma da lista que você recebeu: você nunca inventa uma.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome do serviço, como ele chamou.' },
+        habilidade: {
+          type: 'string',
+          description:
+            'Qual habilidade da equipe faz. EXATAMENTE como veio na lista de habilidades do salão.',
+        },
+        duracaoMinutos: {
+          type: 'number',
+          description: 'Quanto tempo leva, em minutos. Ou ele disse, ou você pergunta antes.',
+        },
+        precoReais: {
+          type: 'number',
+          description: 'Quanto custa, em reais, sem símbolo. Deixe vazio se ele ainda não disse.',
+        },
+        confianca: {
+          type: 'number',
+          description:
+            'Mesma régua do `anotar`. Abaixo de 0,75 o serviço NÃO é criado: pergunte a ele antes.',
+        },
+      },
+      required: ['nome', 'habilidade', 'duracaoMinutos', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'resumo',
+    description:
+      'Mostra o que mudou no rascunho e o que ainda falta para poder publicar. Chame antes de falar em publicar: você não pode publicar sem ter lido isto nesta conversa.',
+    input_schema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'publicar',
+    description:
+      'Põe no ar o que está no rascunho. Só depois de você ter chamado `resumo`, contado a ele o que mudou, e ele ter confirmado NESTA conversa.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        confirmacaoDoDono: {
+          type: 'string',
+          description:
+            'As palavras dele autorizando, copiadas como ele escreveu. Não invente e não parafraseie.',
+        },
+      },
+      required: ['confirmacaoDoDono'],
       additionalProperties: false,
     },
   },
@@ -167,7 +223,15 @@ Deno.serve(async (req: Request) => {
   }
 
   if (!Array.isArray(fila) || fila.length === 0) {
-    return json(200, { ok: true, aguardando: 0, respondidas: 0, anotadas: 0, falhas: 0 });
+    return json(200, {
+      ok: true,
+      aguardando: 0,
+      respondidas: 0,
+      anotadas: 0,
+      criados: 0,
+      publicacoes: 0,
+      falhas: 0,
+    });
   }
 
   // O prompt do Eddy, uma vez por lote e byte a byte igual entre as chamadas,
@@ -187,6 +251,8 @@ Deno.serve(async (req: Request) => {
   const resultados: unknown[] = [];
   let respondidas = 0;
   let anotadas = 0;
+  let criados = 0;
+  let publicacoes = 0;
   let falhas = 0;
 
   for (const item of fila) {
@@ -228,6 +294,21 @@ Deno.serve(async (req: Request) => {
         .map((p) => `- [${p.chave}] (${p.modulo}) ${p.pergunta} — hoje: ${p.contexto}`)
         .join('\n');
 
+      // A lista fechada de habilidades. Sem ela na mesa, `criar_servico` vira
+      // adivinhacao: o bloco EDDY_CRIAR_SERVICO manda escolher da lista, e a
+      // lista tem que estar aqui para ele poder obedecer.
+      let habilidades: Habilidade[] = [];
+      try {
+        habilidades = (await rpc(supabaseUrl, serviceKey, 'onboarding_habilidades', {
+          p_tenant_id: tenantId,
+        })) as Habilidade[];
+      } catch {
+        habilidades = [];
+      }
+      const listaHabilidades = (Array.isArray(habilidades) ? habilidades : [])
+        .map((h) => `- ${h.nome} (faz: ${(h.quemFaz ?? []).join(', ') || 'ninguém ativo'})`)
+        .join('\n');
+
       const mensagens: Anthropic.MessageParam[] = [
         {
           role: 'user',
@@ -235,12 +316,18 @@ Deno.serve(async (req: Request) => {
             'Esta conversa com o dono (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
             JSON.stringify({ dono: contexto.dono, negocio: contexto.negocio, history: contexto.history }) +
             '\n\nO QUE AINDA FALTA NO CADASTRO DELE (a chave entre colchetes é obrigatória em `anotar`, e você nunca inventa uma):\n' +
-            (pauta || '(nada — o cadastro está completo)'),
+            (pauta || '(nada — o cadastro está completo)') +
+            '\n\nAS HABILIDADES QUE ESTE SALÃO TEM (é desta lista que você escolhe em `criar_servico`, escrita exatamente assim; você nunca inventa uma):\n' +
+            (listaHabilidades || '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)'),
         },
       ];
 
       let sessaoId: string | null = null;
       let turnoId: string | null = null;
+      // A trava do publicar, e ela e tecnica, nao so instrucao no prompt: sem
+      // ter chamado `resumo` nesta conversa, `publicar` e recusado aqui mesmo,
+      // antes de chegar ao banco. Prompt convence; codigo garante.
+      let viuOResumo = false;
       let decisao: Decisao | null = null;
       let motivoFalha: string | null = null;
       const uso = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, voltas: 0 };
@@ -344,6 +431,109 @@ Deno.serve(async (req: Request) => {
                   : `Nao gravei: ${gravado?.motivo ?? estado}. Confirme com ele antes de insistir.`;
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+            }
+          } else if (chamada.name === 'criar_servico') {
+            const args = chamada.input as {
+              nome: string;
+              habilidade: string;
+              duracaoMinutos: number;
+              precoReais?: number;
+              confianca: number;
+            };
+            // Mesma regua do `anotar`: abaixo de 0,75 nao escreve. Um servico
+            // criado por engano fica no catalogo dele e a atendente oferece.
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto =
+                'NAO criei: a sua confianca ficou abaixo de 0,75. Pergunte a ele e so crie quando ele tiver dito com todas as letras.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_criar_servico', {
+                  p_tenant_id: tenantId,
+                  p_nome: args.nome,
+                  p_habilidade: args.habilidade,
+                  p_duracao_min: Math.round(args.duracaoMinutos),
+                  p_preco_reais: typeof args.precoReais === 'number' ? args.precoReais : null,
+                })) as {
+                  ok?: boolean;
+                  reason?: string;
+                  servico?: string;
+                  habilidade?: string;
+                  habilidades?: Habilidade[];
+                } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  texto =
+                    `Criei "${r.servico}" no rascunho, com a habilidade ${r.habilidade}. ` +
+                    'Nenhuma cliente ve isso ate ele publicar. Confirme com ele antes de criar o proximo.';
+                } else if (r?.reason === 'HABILIDADE_NAO_EXISTE_NESTE_SALAO') {
+                  const nomes = (r.habilidades ?? []).map((h) => h.nome).join(', ');
+                  texto =
+                    `NAO criei: "${args.habilidade}" nao e uma habilidade deste salao. ` +
+                    `As que existem sao: ${nomes}. Pergunte a ele qual delas corresponde -- nao escolha a mais parecida.`;
+                } else if (r?.reason === 'SERVICO_JA_EXISTE') {
+                  texto = `NAO criei: ja existe um servico chamado "${args.nome}" no cadastro dele. Confirme se ele quer mudar o que ja existe.`;
+                } else {
+                  texto = `NAO criei: ${r?.reason ?? 'motivo desconhecido'}. Confirme com ele antes de insistir.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para criar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
+            }
+          } else if (chamada.name === 'resumo') {
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_resumo_pela_conversa', {
+                p_conversation_id: item.conversation_id,
+              })) as Record<string, unknown> | null;
+              viuOResumo = true;
+              texto =
+                'O que esta no rascunho agora (conte isso a ele em portugues, antes de falar em publicar):\n' +
+                JSON.stringify(r);
+            } catch (erro) {
+              texto = `Nao consegui ler o rascunho agora (${String(erro).slice(0, 120)}). Nao fale em publicar sem isso.`;
+            }
+          } else if (chamada.name === 'publicar') {
+            const args = chamada.input as { confirmacaoDoDono: string };
+            if (!viuOResumo) {
+              texto =
+                'NAO publiquei: voce ainda nao chamou `resumo` nesta conversa. ' +
+                'Chame o resumo, conte a ele o que mudou, espere ele confirmar, e so entao publique.';
+            } else if (!args.confirmacaoDoDono || args.confirmacaoDoDono.trim().length < 2) {
+              texto = 'NAO publiquei: faltou a confirmacao dele, com as palavras dele.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_publicar_pela_conversa', {
+                  p_conversation_id: item.conversation_id,
+                  p_confirmacao: args.confirmacaoDoDono,
+                })) as {
+                  ok?: boolean;
+                  reason?: string;
+                  detalhe?: string;
+                  pendencias?: { oQueFalta?: string }[];
+                  versao?: { versionNumber?: number };
+                } | null;
+
+                if (r?.ok) {
+                  publicacoes += 1;
+                  texto =
+                    `Publicado. A configuracao no ar agora e a versao ${r.versao?.versionNumber ?? '?'}. ` +
+                    'Diga isso a ele em uma linha.';
+                } else if (r?.reason === 'FALTA_COISA') {
+                  const faltas = (r.pendencias ?? []).map((p) => `- ${p.oQueFalta}`).join('\n');
+                  texto =
+                    'NAO publiquei porque falta coisa. Leia isto para ele, do jeito que esta:\n' +
+                    faltas;
+                } else if (r?.reason === 'NADA_PARA_PUBLICAR') {
+                  texto = 'NAO publiquei: nao ha nada mudado no rascunho. Diga isso a ele.';
+                } else if (r?.reason === 'NAO_E_O_DONO') {
+                  texto =
+                    'NAO publiquei: este numero nao esta cadastrado como dono deste salao. Nao insista e nao explique a trava.';
+                } else {
+                  texto = `NAO publiquei: ${r?.reason ?? 'motivo desconhecido'}${r?.detalhe ? ' — ' + r.detalhe : ''}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para publicar agora (${String(erro).slice(0, 120)}). Nao diga que publicou.`;
+              }
             }
           } else {
             texto = 'Ferramenta desconhecida.';
@@ -460,10 +650,22 @@ Deno.serve(async (req: Request) => {
       aguardando: fila.length,
       respondidas,
       anotadas,
+      criados,
+      publicacoes,
       falhas,
       dryRun,
     })
   );
 
-  return json(200, { ok: true, aguardando: fila.length, respondidas, anotadas, falhas, dryRun, resultados });
+  return json(200, {
+    ok: true,
+    aguardando: fila.length,
+    respondidas,
+    anotadas,
+    criados,
+    publicacoes,
+    falhas,
+    dryRun,
+    resultados,
+  });
 });
