@@ -1,0 +1,12 @@
+-- Habilita pg_net.
+--
+-- Uso imediato: sondar o proprio endpoint de webhook do WhatsApp a partir do
+-- banco, para distinguir "funcao sem segredos configurados" (503) de "funcao
+-- configurada rejeitando token errado" (403). O ambiente de desenvolvimento
+-- remoto nao alcanca a internet, entao esta e a unica forma de fazer a sonda.
+--
+-- Uso permanente: pg_net e pre-requisito da decisao D5 do plano estrategico --
+-- pg_cron + pg_net invocando Edge Functions para projecao de inbox, expiracao
+-- de sinal e outbox de campanha.
+
+create extension if not exists pg_net with schema extensions;
