@@ -64,6 +64,13 @@ export function ConectarWhatsApp({ tenantId }: { tenantId: string }) {
   // antes do callback do login, e um estado que re-renderiza chegaria tarde.
   const doSignup = useRef<DadosDoSignup>({});
   const consentiuHistorico = useRef<boolean | null>(null);
+  const relogio = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (relogio.current) clearTimeout(relogio.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (window.FB) {
@@ -112,6 +119,10 @@ export function ConectarWhatsApp({ tenantId }: { tenantId: string }) {
           }
         }
         if (dados.event === 'CANCEL') {
+          // Soltar o botão aqui é obrigatório: o FB.login não chama o callback
+          // quando a janela é fechada, então sem esta linha a tela fica
+          // "Conectando…" para sempre e o dono acha que está acontecendo algo.
+          setOcupado(false);
           setErro('Você fechou a janela antes de concluir. Nada foi conectado.');
         }
       } catch {
@@ -131,51 +142,83 @@ export function ConectarWhatsApp({ tenantId }: { tenantId: string }) {
     consentiuHistorico.current = null;
     setOcupado(true);
 
-    window.FB.login(
-      async (resposta) => {
-        const code = resposta?.authResponse?.code;
-        if (!code) {
-          setOcupado(false);
-          setErro('A Meta não devolveu o código. Nada foi conectado.');
-          return;
-        }
+    // O CACHORRO DE GUARDA.
+    //
+    // 21/09/2026: a tela ficou "Conectando…" sem fim. O FB.login simplesmente
+    // nao chama o callback quando a janela nao abre (popup bloqueado, dominio
+    // fora da lista do app na Meta) ou quando o dono a fecha pelo X. Sem um
+    // prazo, o botao nunca volta, e o dono fica olhando para uma tela que nao
+    // esta fazendo nada. Cinco minutos e folgado para ler o QR no celular.
+    if (relogio.current) clearTimeout(relogio.current);
+    relogio.current = setTimeout(() => {
+      setOcupado((estavaOcupado) => {
+        if (!estavaOcupado) return false;
+        setErro(
+          'A janela da Meta não respondeu. Verifique se o navegador bloqueou o pop-up e tente de novo. Nada foi conectado.'
+        );
+        return false;
+      });
+    }, 5 * 60 * 1000);
 
-        try {
-          const r = await fetch('/api/whatsapp', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              action: 'conectarWhatsApp',
-              tenantId,
-              code,
-              wabaId: doSignup.current.waba_id,
-              phoneNumberId: doSignup.current.phone_number_id,
-              historicoConsentido: consentiuHistorico.current,
-            }),
-          });
-          const corpo = (await r.json()) as Resultado & { error?: string };
-          if (!r.ok) {
-            setErro(corpo?.error ?? 'Não consegui concluir a conexão.');
+    const concluir = () => {
+      if (relogio.current) {
+        clearTimeout(relogio.current);
+        relogio.current = null;
+      }
+      setOcupado(false);
+    };
+
+    try {
+      window.FB.login(
+        async (resposta) => {
+          const code = resposta?.authResponse?.code;
+          if (!code) {
+            concluir();
+            setErro('A Meta não devolveu o código. Nada foi conectado.');
             return;
           }
-          setResultado(corpo);
-        } catch {
-          setErro('Não consegui falar com o servidor para concluir a conexão.');
-        } finally {
-          setOcupado(false);
-        }
-      },
-      {
-        config_id: CONFIG_ID,
-        response_type: 'code',
-        override_default_response_type: true,
-        extras: {
-          setup: {},
-          featureType: 'whatsapp_business_app_onboarding',
-          sessionInfoVersion: '3',
+
+          try {
+            const r = await fetch('/api/whatsapp', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                action: 'conectarWhatsApp',
+                tenantId,
+                code,
+                wabaId: doSignup.current.waba_id,
+                phoneNumberId: doSignup.current.phone_number_id,
+                historicoConsentido: consentiuHistorico.current,
+              }),
+            });
+            const corpo = (await r.json()) as Resultado & { error?: string };
+            if (!r.ok) {
+              setErro(corpo?.error ?? 'Não consegui concluir a conexão.');
+              return;
+            }
+            setResultado(corpo);
+          } catch {
+            setErro('Não consegui falar com o servidor para concluir a conexão.');
+          } finally {
+            concluir();
+          }
         },
-      }
-    );
+        {
+          config_id: CONFIG_ID,
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+            featureType: 'whatsapp_business_app_onboarding',
+            sessionInfoVersion: '3',
+          },
+        }
+      );
+    } catch {
+      // O SDK estoura quando o pop-up e bloqueado antes mesmo de abrir.
+      concluir();
+      setErro('Não consegui abrir a janela da Meta. Libere o pop-up para este site e tente de novo.');
+    }
   }, [ocupado, tenantId]);
 
   return (

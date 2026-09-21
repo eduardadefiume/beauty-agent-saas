@@ -196,7 +196,14 @@ type ModuleKey =
   | 'simulacao'
   | 'publicar';
 
-const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?: string }> = [
+const MODULES: Array<{
+  key: ModuleKey;
+  label: string;
+  ready: boolean;
+  soonNote?: string;
+  // Quando o modulo existe, mas mora na operacao e nao no configurador.
+  href?: string;
+}> = [
   { key: 'negocio', label: 'Negócio', ready: true },
   { key: 'equipe', label: 'Equipe', ready: true },
   { key: 'servicos', label: 'Serviços', ready: true },
@@ -205,6 +212,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
   { key: 'politicas', label: 'Política de cancelamento', ready: true },
   {
     key: 'conhecimento',
+    href: '/conhecimento',
     label: 'Conhecimento (fotos)',
     ready: false,
     soonNote:
@@ -219,6 +227,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
   },
   {
     key: 'whatsapp',
+    href: '/whatsapp',
     label: 'WhatsApp',
     ready: false,
     soonNote:
@@ -226,6 +235,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
   },
   {
     key: 'agente',
+    href: '/agente',
     label: 'Agente (fala com você)',
     ready: false,
     soonNote:
@@ -233,6 +243,7 @@ const MODULES: Array<{ key: ModuleKey; label: string; ready: boolean; soonNote?:
   },
   {
     key: 'clientes',
+    href: '/clientes',
     label: 'Clientes',
     ready: false,
     soonNote:
@@ -1470,7 +1481,12 @@ export default function Configurator({ user }: { user: { displayName: string; em
               onClick={() => setModule(item.key)}
             >
               <span>{item.label}</span>
-              {!item.ready && <em>em breve</em>}
+              {/* Nem todo item "nao pronto" e funcionalidade faltando. Alguns
+                  moram na operacao de proposito -- console de conversa e ficha
+                  de cliente nao podem congelar junto com a configuracao
+                  publicada. Chamar isso de "em breve" manda o dono esperar uma
+                  coisa que ja existe, e ele desiste de procurar. */}
+              {!item.ready && <em>{item.href ? 'na operação' : 'em breve'}</em>}
             </button>
           ))}
         </nav>
@@ -1482,6 +1498,13 @@ export default function Configurator({ user }: { user: { displayName: string; em
             <article className="card soon-card">
               <h2>{activeModule.label}</h2>
               <p>{activeModule.soonNote}</p>
+              {activeModule.href && (
+                <p>
+                  <a className="botao" href={activeModule.href}>
+                    Abrir {activeModule.label}
+                  </a>
+                </p>
+              )}
             </article>
           ) : (
             <>
