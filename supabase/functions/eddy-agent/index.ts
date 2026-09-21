@@ -114,6 +114,61 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'definir_preco',
+    description:
+      'Grava o preço de um serviço. É POR AQUI que preço se grava, nunca pelo `anotar`. Use ehPiso quando o dono disser "a partir de": sem isso a atendente vai cravar o valor como se fosse final.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        servicoId: {
+          type: 'string',
+          description: 'O id que veio depois de SERVICO_PRECO: na lista de pendências.',
+        },
+        precoReais: { type: 'number', description: 'Em reais, sem símbolo: 160, não "R$ 160,00".' },
+        ehPiso: {
+          type: 'boolean',
+          description:
+            'true quando ele disse "a partir de", "começa em", "varia". false quando é valor fechado. Na dúvida, pergunte a ele; não chute.',
+        },
+        confianca: { type: 'number', description: 'Mesma régua do `anotar`. Abaixo de 0,75 não grava.' },
+      },
+      required: ['servicoId', 'precoReais', 'ehPiso', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'criar_variacao',
+    description:
+      'Quando o mesmo serviço tem mais de um preço (por tamanho, por tipo, por parte do cabelo), cada preço vira uma variação. Uma chamada por preço. Sem isto só o primeiro valor sobrevive e os outros somem.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        servicoId: { type: 'string', description: 'O id do serviço, como veio na pendência.' },
+        nome: {
+          type: 'string',
+          description: 'Como o dono chamou essa variação: "raiz", "raiz com muito cabelo", "cabelo todo".',
+        },
+        precoReais: { type: 'number', description: 'O preço desta variação, em reais.' },
+        confianca: { type: 'number', description: 'Abaixo de 0,75 não grava.' },
+      },
+      required: ['servicoId', 'nome', 'precoReais', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'desativar_servico',
+    description:
+      'Tira do catálogo um serviço que o salão não faz. Só depois de ele confirmar. O serviço não é apagado, fica inativo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome do serviço, exatamente como está no catálogo.' },
+      },
+      required: ['nome'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'resumo',
     description:
       'Mostra o que mudou no rascunho e o que ainda falta para poder publicar. Chame antes de falar em publicar: você não pode publicar sem ter lido isto nesta conversa.',
@@ -398,6 +453,23 @@ Deno.serve(async (req: Request) => {
               valorNumero?: number;
               confianca: number;
             };
+            // PRECO NAO PASSA MAIS POR AQUI.
+            //
+            // `anotar` grava um numero so. Foi assim que a Coloracao, que tem
+            // tres precos, virou R$ 160 e os outros dois sumiram -- e o Eddy
+            // disse ao dono que tinha anotado os tres. Redirecionar no codigo,
+            // e nao so no prompt, porque este e o caminho que ele ja conhece.
+            if (args.chave?.startsWith('SERVICO_PRECO:')) {
+              devolucoes.push({
+                type: 'tool_result',
+                tool_use_id: chamada.id,
+                content:
+                  'NAO gravei. Preco de servico nao se grava pelo `anotar`. Use `definir_preco` ' +
+                  '(e diga ehPiso=true se ele falou "a partir de"). Se o servico tiver mais de um ' +
+                  'preco, cada um vira uma chamada de `criar_variacao`.',
+              });
+              continue;
+            }
             try {
               // A sessao e o turno sao os mesmos da tela de onboarding: o que o
               // Eddy escreve aparece no historico do dono e pode ser desfeito
@@ -479,6 +551,83 @@ Deno.serve(async (req: Request) => {
               } catch (erro) {
                 texto = `Nao deu para criar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
               }
+            }
+          } else if (chamada.name === 'definir_preco') {
+            const args = chamada.input as {
+              servicoId: string;
+              precoReais: number;
+              ehPiso: boolean;
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Pergunte o valor a ele de novo.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_definir_preco', {
+                  p_tenant_id: tenantId,
+                  p_service_id: args.servicoId,
+                  p_preco_reais: args.precoReais,
+                  p_e_piso: args.ehPiso === true,
+                })) as { ok?: boolean; reason?: string; servico?: string; ehPiso?: boolean } | null;
+                if (r?.ok) {
+                  anotadas += 1;
+                  texto = r.ehPiso
+                    ? `Gravado: ${r.servico} a partir de R$ ${args.precoReais}. Confirme com ele que e "a partir de" mesmo.`
+                    : `Gravado: ${r.servico} R$ ${args.precoReais}, valor fechado.`;
+                } else {
+                  texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar o preco agora (${String(erro).slice(0, 120)}).`;
+              }
+            }
+          } else if (chamada.name === 'criar_variacao') {
+            const args = chamada.input as {
+              servicoId: string;
+              nome: string;
+              precoReais: number;
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Confirme com ele antes.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_criar_variacao', {
+                  p_tenant_id: tenantId,
+                  p_service_id: args.servicoId,
+                  p_nome: args.nome,
+                  p_preco_reais: args.precoReais,
+                })) as { ok?: boolean; reason?: string; nome?: string } | null;
+                if (r?.ok) {
+                  anotadas += 1;
+                  texto = `Gravado: variacao "${r.nome}" R$ ${args.precoReais}. Se houver mais precos, chame de novo, um por vez.`;
+                } else if (r?.reason === 'VARIACAO_JA_EXISTE') {
+                  texto = `Ja existe uma variacao "${args.nome}" neste servico. Confirme com ele se e outra coisa ou se e a mesma.`;
+                } else {
+                  texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar a variacao agora (${String(erro).slice(0, 120)}).`;
+              }
+            }
+          } else if (chamada.name === 'desativar_servico') {
+            const args = chamada.input as { nome: string };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_desativar_servico_por_nome', {
+                p_tenant_id: tenantId,
+                p_nome: args.nome,
+              })) as { ok?: boolean; reason?: string; servico?: string; procurado?: string } | null;
+              if (r?.ok) {
+                texto = `Tirei "${r.servico}" do catalogo. Ele continua salvo, so nao aparece mais. Confirme com ele antes do proximo.`;
+              } else if (r?.reason === 'SERVICO_NAO_ENCONTRADO') {
+                texto = `Nao achei nenhum servico chamado "${r.procurado}" no catalogo dele. Confirme o nome com ele.`;
+              } else if (r?.reason === 'NOME_AMBIGUO') {
+                texto = `Tem mais de um servico com o nome "${r.procurado}". Pergunte a ele qual e.`;
+              } else {
+                texto = `NAO tirei: ${r?.reason ?? 'motivo desconhecido'}.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para tirar do catalogo agora (${String(erro).slice(0, 120)}).`;
             }
           } else if (chamada.name === 'resumo') {
             try {
@@ -578,12 +727,53 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      if (acao === 'REPLY') {
-        for (let i = 0; i < textos.length; i++) {
+      // HANDOFF NAO PODE SER MUDO.
+      //
+      // 20/09, 09:15. A dona confirmou "Confirmo" para remover quatro servicos.
+      // O Eddy decidiu HANDOFF -- corretamente, porque remover servico nao era
+      // dele -- e HANDOFF manda `messages` vazio. Ela nao recebeu nada e ficou
+      // achando que tinha sido feito.
+      //
+      // Silencio e pior que "nao consigo". Se ele nao tem o que dizer, o codigo
+      // diz por ele. E o pedido vira alerta para a Eduarda, porque um dono
+      // pedindo o que o produto nao faz e informacao de produto, nao incidente.
+      const saidas =
+        acao === 'REPLY'
+          ? textos
+          : ['Isso aqui eu não consigo fazer por aqui. Já avisei a Eduarda e ela te retorna.'];
+
+      if (acao === 'HANDOFF') {
+        const ultimaDoDono =
+          (contexto.history as { direction?: string; text?: string }[] | undefined)
+            ?.filter((h) => h.direction === 'INBOUND')
+            .slice(-1)[0]?.text ?? '';
+        try {
+          await rpc(supabaseUrl, serviceKey, 'registrar_pedido_fora_do_alcance', {
+            p_conversation_id: item.conversation_id,
+            p_pedido_do_dono: ultimaDoDono,
+            p_motivo_do_eddy: decisao.reason ?? '',
+          });
+          // Aprender e livre: fica gravado com as palavras dele, mesmo que
+          // ninguem olhe hoje. O que e revisado depois e so a promocao.
+          await rpc(supabaseUrl, serviceKey, 'registrar_conhecimento_solto', {
+            p_tenant_id: tenantId,
+            p_conversation_id: item.conversation_id,
+            p_palavras: ultimaDoDono,
+            p_modulo: null,
+            p_escopo: null,
+            p_porque: decisao.reason ?? 'HANDOFF sem motivo escrito',
+          });
+        } catch {
+          // registrar o pedido nao vale derrubar a resposta ao dono
+        }
+      }
+
+      {
+        for (let i = 0; i < saidas.length; i++) {
           await rpc(supabaseUrl, serviceKey, 'enqueue_outbound_message', {
             p_tenant_id: item.tenant_id,
             p_conversation_id: item.conversation_id,
-            p_body_text: textos[i],
+            p_body_text: saidas[i],
             p_actor: 'AGENT',
             p_idempotency_key: `eddy:${item.last_inbound_message_id}:${i}`,
           });
@@ -596,7 +786,7 @@ Deno.serve(async (req: Request) => {
               p_tenant_id: tenantId,
               p_session_id: sessaoId,
               p_quem: 'SISTEMA',
-              p_texto: textos.join('\n'),
+              p_texto: saidas.join('\n'),
             });
           } catch {
             // historico da tela nao vale derrubar a resposta
@@ -621,7 +811,7 @@ Deno.serve(async (req: Request) => {
         // limpeza de falhas nao derruba o turno
       }
 
-      resultados.push({ conversationId: item.conversation_id, action: acao, messages: textos, uso });
+      resultados.push({ conversationId: item.conversation_id, action: acao, messages: saidas, uso });
     } catch (erro) {
       falhas++;
       const detalhe = String(erro);
