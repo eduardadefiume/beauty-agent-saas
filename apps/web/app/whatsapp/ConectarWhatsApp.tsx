@@ -170,38 +170,52 @@ export function ConectarWhatsApp({ tenantId }: { tenantId: string }) {
 
     try {
       window.FB.login(
-        async (resposta) => {
-          const code = resposta?.authResponse?.code;
-          if (!code) {
-            concluir();
-            setErro('A Meta não devolveu o código. Nada foi conectado.');
-            return;
-          }
-
-          try {
-            const r = await fetch('/api/whatsapp', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({
-                action: 'conectarWhatsApp',
-                tenantId,
-                code,
-                wabaId: doSignup.current.waba_id,
-                phoneNumberId: doSignup.current.phone_number_id,
-                historicoConsentido: consentiuHistorico.current,
-              }),
-            });
-            const corpo = (await r.json()) as Resultado & { error?: string };
-            if (!r.ok) {
-              setErro(corpo?.error ?? 'Não consegui concluir a conexão.');
+        // O CALLBACK NAO PODE SER `async`. ESSA LINHA JA CUSTOU DOIS DIAS.
+        //
+        // 22/09/2026: o botao nunca abriu a janela da Meta. Nao era pop-up
+        // bloqueado -- o SDK confere o TIPO do callback e estoura, sincrono,
+        // antes de tentar abrir coisa alguma:
+        //
+        //   Error: Expression is of type asyncfunction, not function
+        //
+        // Uma arrow `async` e `asyncfunction`, nao `function`. O `catch` la
+        // embaixo engolia isso e a tela dizia "libere o pop-up", que mandou o
+        // diagnostico para o lado errado. Entao: funcao comum aqui, e o
+        // trabalho assincrono corre dentro dela.
+        (resposta) => {
+          void (async () => {
+            const code = resposta?.authResponse?.code;
+            if (!code) {
+              concluir();
+              setErro('A Meta não devolveu o código. Nada foi conectado.');
               return;
             }
-            setResultado(corpo);
-          } catch {
-            setErro('Não consegui falar com o servidor para concluir a conexão.');
-          } finally {
-            concluir();
-          }
+
+            try {
+              const r = await fetch('/api/whatsapp', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'conectarWhatsApp',
+                  tenantId,
+                  code,
+                  wabaId: doSignup.current.waba_id,
+                  phoneNumberId: doSignup.current.phone_number_id,
+                  historicoConsentido: consentiuHistorico.current,
+                }),
+              });
+              const corpo = (await r.json()) as Resultado & { error?: string };
+              if (!r.ok) {
+                setErro(corpo?.error ?? 'Não consegui concluir a conexão.');
+                return;
+              }
+              setResultado(corpo);
+            } catch {
+              setErro('Não consegui falar com o servidor para concluir a conexão.');
+            } finally {
+              concluir();
+            }
+          })();
         },
         {
           config_id: CONFIG_ID,
@@ -214,10 +228,17 @@ export function ConectarWhatsApp({ tenantId }: { tenantId: string }) {
           },
         }
       );
-    } catch {
-      // O SDK estoura quando o pop-up e bloqueado antes mesmo de abrir.
+    } catch (e) {
+      // NUNCA MAIS ESCONDER O MOTIVO.
+      //
+      // Este catch dizia, sempre, "libere o pop-up" -- um palpite escrito como
+      // se fosse diagnostico. O erro de verdade era outro (callback `async`), e
+      // a frase errada custou 21 e 22/09 inteiros procurando no lugar errado.
+      // O SDK estoura sincrono por varios motivos: tipo de callback, config_id
+      // invalido, dominio fora da lista, pop-up bloqueado. A tela agora repete
+      // o que a Meta disse, e quem le decide.
       concluir();
-      setErro('Não consegui abrir a janela da Meta. Libere o pop-up para este site e tente de novo.');
+      setErro(`A Meta recusou abrir a janela: ${e instanceof Error ? e.message : String(e)}`);
     }
   }, [ocupado, tenantId]);
 
