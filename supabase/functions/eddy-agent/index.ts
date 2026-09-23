@@ -187,7 +187,12 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         endereco: {
           type: 'string',
           description:
-            'O endereço completo: rua, número, bairro e cidade. Deixe vazio se ele ainda não disse tudo.',
+            'O endereço: rua, número, bairro e cidade. SEM o estado, que vai no campo próprio. Deixe vazio se ele ainda não disse tudo.',
+        },
+        estado: {
+          type: 'string',
+          description:
+            'A UF em duas letras: SP, MG, GO... Obrigatória quando houver endereço. Se ele disse só a cidade, PERGUNTE o estado — nunca deduza pela cidade: Jardinópolis existe em SP e em GO, e errar manda a cliente para outro lugar.',
         },
         confianca: {
           type: 'number',
@@ -818,7 +823,12 @@ Deno.serve(async (req: Request) => {
               texto = `Nao deu para tirar do catalogo agora (${String(erro).slice(0, 120)}).`;
             }
           } else if (chamada.name === 'registrar_identidade') {
-            const args = chamada.input as { nome: string; endereco?: string; confianca: number };
+            const args = chamada.input as {
+              nome: string;
+              endereco?: string;
+              estado?: string;
+              confianca: number;
+            };
             if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
               texto = 'NAO gravei: confianca abaixo de 0,75. Pergunte o nome e o endereco de novo.';
             } else {
@@ -827,16 +837,30 @@ Deno.serve(async (req: Request) => {
                   p_tenant_id: tenantId,
                   p_nome: args.nome,
                   p_endereco: typeof args.endereco === 'string' ? args.endereco : null,
-                })) as { ok?: boolean; reason?: string; salao?: string; endereco?: string } | null;
+                  p_uf: typeof args.estado === 'string' ? args.estado : null,
+                })) as {
+                  ok?: boolean;
+                  reason?: string;
+                  salao?: string;
+                  endereco?: string;
+                  uf?: string;
+                  recebi?: string;
+                } | null;
 
                 if (r?.ok) {
                   criados += 1;
                   texto = r.endereco
-                    ? `Gravei: salao "${r.salao}", endereco "${r.endereco}".`
-                    : `Gravei o nome "${r.salao}". Falta o endereco -- pergunte a rua, numero, bairro e cidade.`;
+                    ? `Gravei: salao "${r.salao}", endereco "${r.endereco}", ${r.uf}.`
+                    : `Gravei o nome "${r.salao}". Falta o endereco -- pergunte rua, numero, bairro, cidade e estado.`;
                 } else if (r?.reason === 'ENDERECO_CURTO_DEMAIS') {
                   texto =
-                    'NAO gravei o endereco: veio curto demais. Cliente sai para a rua com ele. Peca rua, numero, bairro e cidade.';
+                    'NAO gravei o endereco: veio curto demais. Cliente sai para a rua com ele. Peca rua, numero, bairro, cidade e estado.';
+                } else if (r?.reason === 'FALTA_O_ESTADO') {
+                  texto =
+                    'NAO gravei: falta o estado. Pergunte a ele a UF, e NAO deduza pela cidade -- ' +
+                    'ha cidades com o mesmo nome em estados diferentes.';
+                } else if (r?.reason === 'ESTADO_INVALIDO') {
+                  texto = `NAO gravei: "${r.recebi}" nao e uma UF. Peca as duas letras do estado (SP, MG, GO...).`;
                 } else {
                   texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
                 }
