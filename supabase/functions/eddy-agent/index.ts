@@ -227,9 +227,65 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           enum: ['PROFESSIONAL', 'ASSISTANT'],
           description: 'PROFESSIONAL para quem executa o serviço, ASSISTANT para quem auxilia.',
         },
+        disponibilidade: {
+          type: 'string',
+          enum: ['IGUAL_AO_SALAO', 'DIAS_PROPRIOS', 'SEM_DIA_FIXO'],
+          description:
+            'Como ela trabalha. IGUAL_AO_SALAO é o caso comum e o padrão. DIAS_PROPRIOS quando ela tem a semana dela, diferente da do salão — aí use `definir_disponibilidade` com os dias. SEM_DIA_FIXO para quem aparece sem data certa: ela não é oferecida até você marcar as datas com `marcar_dia_da_profissional`.',
+        },
         confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
       },
       required: ['nome', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'definir_disponibilidade',
+    description:
+      'Diz como uma pessoa JÁ cadastrada trabalha. Use quando ela mudar, ou quando o cadastro pediu os dias dela. Sem isso a pessoa existe no sistema e nunca aparece como opção de horário para a cliente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome dela, como está cadastrado.' },
+        disponibilidade: {
+          type: 'string',
+          enum: ['IGUAL_AO_SALAO', 'DIAS_PROPRIOS', 'SEM_DIA_FIXO'],
+          description: 'Igual à da ferramenta de cadastrar.',
+        },
+        dias: {
+          type: 'array',
+          description: 'Só para DIAS_PROPRIOS: a semana dela. Vazio nos outros casos.',
+          items: {
+            type: 'object',
+            properties: {
+              dia: { type: 'number', description: '0 domingo ... 6 sábado.' },
+              abre: { type: 'string', description: 'HH:MM.' },
+              fecha: { type: 'string', description: 'HH:MM.' },
+            },
+            required: ['dia', 'abre', 'fecha'],
+            additionalProperties: false,
+          },
+        },
+        confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
+      },
+      required: ['nome', 'disponibilidade', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'marcar_dia_da_profissional',
+    description:
+      'Marca UMA data em que a profissional sem dia fixo vem trabalhar. Uma chamada por data. Se ele não disser a hora, ela herda o horário do salão naquele dia.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome dela, como está cadastrado.' },
+        data: { type: 'string', description: 'A data, no formato AAAA-MM-DD.' },
+        abre: { type: 'string', description: 'HH:MM. Deixe vazio para herdar o horário do salão.' },
+        fecha: { type: 'string', description: 'HH:MM. Deixe vazio para herdar o horário do salão.' },
+        confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
+      },
+      required: ['nome', 'data', 'confianca'],
       additionalProperties: false,
     },
   },
@@ -880,7 +936,12 @@ Deno.serve(async (req: Request) => {
               }
             }
           } else if (chamada.name === 'criar_membro_equipe') {
-            const args = chamada.input as { nome: string; tipo?: string; confianca: number };
+            const args = chamada.input as {
+              nome: string;
+              tipo?: string;
+              disponibilidade?: string;
+              confianca: number;
+            };
             if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
               texto = 'NAO cadastrei: confianca abaixo de 0,75. Confirme o nome com ele.';
             } else {
@@ -889,11 +950,33 @@ Deno.serve(async (req: Request) => {
                   p_tenant_id: tenantId,
                   p_nome: args.nome,
                   p_tipo: args.tipo === 'ASSISTANT' ? 'ASSISTANT' : 'PROFESSIONAL',
-                })) as { ok?: boolean; reason?: string; pessoa?: string } | null;
+                  p_disponibilidade: args.disponibilidade ?? 'IGUAL_AO_SALAO',
+                })) as {
+                  ok?: boolean;
+                  reason?: string;
+                  pessoa?: string;
+                  disponibilidade?: { ok?: boolean; reason?: string; pergunteAntes?: string };
+                } | null;
 
                 if (r?.ok) {
                   criados += 1;
-                  texto = `Cadastrei ${r.pessoa} na equipe. Se tiver mais gente, me fale um por vez.`;
+                  const d = r.disponibilidade;
+                  if (d?.ok) {
+                    texto =
+                      args.disponibilidade === 'SEM_DIA_FIXO'
+                        ? `Cadastrei ${r.pessoa} sem dia fixo. Ela so aparece como opcao nas datas que voce marcar -- ` +
+                          'pergunte a ele quais datas ela ja tem e use `marcar_dia_da_profissional` em cada uma.'
+                        : `Cadastrei ${r.pessoa} na equipe, trabalhando no horario do salao.`;
+                  } else {
+                    // A pessoa ficou criada e a disponibilidade nao. Dizer so
+                    // "cadastrei" deixaria uma profissional que nunca aparece.
+                    texto =
+                      `Cadastrei ${r.pessoa}, MAS a disponibilidade dela nao ficou (${d?.reason ?? '?'}). ` +
+                      `Enquanto isso ninguem consegue marcar com ela. ` +
+                      (d?.pergunteAntes
+                        ? `Pergunte: "${d.pergunteAntes}"`
+                        : 'Resolva com `definir_disponibilidade`.');
+                  }
                 } else if (r?.reason === 'PESSOA_JA_EXISTE') {
                   texto = `NAO cadastrei: ${args.nome} ja esta na equipe.`;
                 } else {
@@ -901,6 +984,99 @@ Deno.serve(async (req: Request) => {
                 }
               } catch (erro) {
                 texto = `Nao deu para cadastrar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
+            }
+          } else if (chamada.name === 'definir_disponibilidade') {
+            const args = chamada.input as {
+              nome: string;
+              disponibilidade: string;
+              dias?: { dia: number; abre: string; fecha: string }[];
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Confirme com ele como ela trabalha.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_definir_disponibilidade', {
+                  p_tenant_id: tenantId,
+                  p_nome: args.nome,
+                  p_disponibilidade: args.disponibilidade,
+                  p_dias: Array.isArray(args.dias) && args.dias.length ? args.dias : null,
+                })) as {
+                  ok?: boolean;
+                  reason?: string;
+                  pessoa?: string;
+                  diasGravados?: number;
+                  precisaMarcarDatas?: boolean;
+                  pergunteAntes?: string;
+                } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  texto = r.precisaMarcarDatas
+                    ? `${r.pessoa} ficou sem dia fixo. Ela so aparece nas datas que voce marcar -- pergunte quais ela ja tem.`
+                    : `Gravei a disponibilidade de ${r.pessoa}: ${r.diasGravados} dia(s) na semana.`;
+                } else if (r?.reason === 'SALAO_SEM_HORARIO') {
+                  texto = `NAO gravei: o salao ainda nao tem horario. Pergunte antes: "${r.pergunteAntes}"`;
+                } else if (r?.reason === 'FALTAM_OS_DIAS_DELA') {
+                  texto =
+                    'NAO gravei: voce disse que ela tem dias proprios e nao mandou quais. Pergunte os dias e horarios dela.';
+                } else if (r?.reason === 'PESSOA_NAO_ESTA_NA_EQUIPE') {
+                  texto = `NAO gravei: ${args.nome} nao esta na equipe. Cadastre com \`criar_membro_equipe\` antes.`;
+                } else {
+                  texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
+            }
+          } else if (chamada.name === 'marcar_dia_da_profissional') {
+            const args = chamada.input as {
+              nome: string;
+              data: string;
+              abre?: string;
+              fecha?: string;
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO marquei: confianca abaixo de 0,75. Confirme a data com ele.';
+            } else {
+              try {
+                const r = (await rpc(
+                  supabaseUrl,
+                  serviceKey,
+                  'onboarding_marcar_dia_da_profissional',
+                  {
+                    p_tenant_id: tenantId,
+                    p_nome: args.nome,
+                    p_data: args.data,
+                    p_abre: typeof args.abre === 'string' && args.abre ? args.abre : null,
+                    p_fecha: typeof args.fecha === 'string' && args.fecha ? args.fecha : null,
+                  }
+                )) as {
+                  ok?: boolean;
+                  reason?: string;
+                  pessoa?: string;
+                  data?: string;
+                  abre?: string;
+                  fecha?: string;
+                  comoResolver?: string;
+                } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  texto = `Marquei ${r.pessoa} no dia ${r.data}, das ${String(r.abre).slice(0, 5)} as ${String(r.fecha).slice(0, 5)}.`;
+                } else if (r?.reason === 'PESSOA_TEM_HORARIO_FIXO') {
+                  texto = `NAO marquei: ${args.nome} esta cadastrada com horario fixo. ${r.comoResolver}`;
+                } else if (r?.reason === 'DATA_NO_PASSADO') {
+                  texto = 'NAO marquei: essa data ja passou. Confirme o dia com ele.';
+                } else if (r?.reason === 'SEM_HORA_E_SALAO_FECHADO_NESSE_DIA') {
+                  texto = `NAO marquei: o salao nao abre nesse dia da semana. ${r.comoResolver}`;
+                } else {
+                  texto = `NAO marquei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para marcar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
               }
             }
           } else if (chamada.name === 'criar_habilidade') {
