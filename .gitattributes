@@ -1,4 +1,27 @@
-# SQL de migration precisa bater byte a byte com o que o banco aplicou.
-# Sem isto, o autocrlf do Windows troca LF por CRLF e o md5 deixa de conferir.
+# FIM DE LINHA NAO PODE DECIDIR SE UMA MIGRACAO RODA.
+#
+# 23/09/2026. Reconstruindo o banco do zero no Windows, a migracao
+# 20260903114157 estourou: ela procura um trecho de texto dentro do corpo de
+# uma funcao, e o corpo vinha com \r\n porque os .sql no disco estavam em
+# CRLF. Na producao a mesma migracao passou, porque la os arquivos chegaram
+# com LF.
+#
+# Isso nao e detalhe de formatacao: o conteudo de uma funcao no Postgres e o
+# texto que foi enviado, byte a byte. Se o repositorio entrega bytes
+# diferentes conforme o sistema operacional, o banco resultante e diferente --
+# e a comparacao por md5 entre repo e banco, que e como a gente confere
+# paridade, passa a mentir.
+#
+# Entao SQL e sempre LF, em qualquer maquina.
 *.sql text eol=lf
-*.md  text eol=lf
+
+# Pelo mesmo motivo: o que o Deno e o Postgres leem tem que ser identico em
+# qualquer lugar.
+*.ts   text eol=lf
+*.tsx  text eol=lf
+
+# Script de PowerShell e de cmd precisam de CRLF: o cmd.exe erra em arquivo
+# com LF sozinho.
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf

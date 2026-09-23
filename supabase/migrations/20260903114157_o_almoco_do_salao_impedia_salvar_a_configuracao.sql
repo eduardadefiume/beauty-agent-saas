@@ -50,6 +50,21 @@ begin
     raise exception 'site_replace_configuration_base nao existe';
   end if;
 
+  -- FIM DE LINHA NAO PODE DECIDIR SE A MIGRACAO RODA.
+  --
+  -- 23/09/2026, reconstruindo o banco do zero no Windows: esta migracao
+  -- estourou com "achei 0". O corpo da funcao no banco vinha com 
+,
+  -- porque os .sql no disco estao em CRLF, e o trecho procurado aqui usa 
+.
+  -- Nunca casava. Na producao casou porque la os arquivos foram aplicados
+  -- com LF.
+  --
+  -- Uma migracao que depende do sistema operacional de quem a roda nao e uma
+  -- migracao, e uma coincidencia. Normalizar antes de procurar custa uma linha
+  -- e tira o acaso do caminho.
+  v_def := replace(v_def, chr(13) || chr(10), chr(10));
+
   v_velho :=
     E'      coalesce(nullif(hour_item->>\'latestEndTime\', \'\')::time, (hour_item->>\'endsAt\')::time)\n    );';
 
