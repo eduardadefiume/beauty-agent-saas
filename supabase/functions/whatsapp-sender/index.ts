@@ -11,6 +11,8 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
+import { corpoDeTemplate } from './corpo-de-template.ts';
+
 // As RPCs sao chamadas pelo nome simples, sem Content-Profile: o PostgREST
 // deste projeto expoe apenas public e graphql_public. A logica vive em app e
 // public guarda fachadas finas -- mesmo padrao de public.ingest_whatsapp_webhook.
@@ -30,6 +32,9 @@ type Reservada = {
   media_provider_id: string | null;
   credential_ref: string | null;
   connection_id: string | null;
+  template_name: string | null;
+  template_language: string | null;
+  template_params: unknown;
 };
 
 // CADA CONEXAO CARREGA O NOME DO PROPRIO SEGREDO.
@@ -239,7 +244,7 @@ Deno.serve(async (req) => {
           `token ausente para a conexao (credential_ref=${item.credential_ref ?? 'vazio'})`
         );
       }
-      if (item.kind !== 'TEXT' && item.kind !== 'MEDIA') {
+      if (item.kind !== 'TEXT' && item.kind !== 'MEDIA' && item.kind !== 'TEMPLATE') {
         throw new Error(`tipo ${item.kind} ainda nao suportado pelo worker`);
       }
 
@@ -252,6 +257,8 @@ Deno.serve(async (req) => {
           type: 'text',
           text: { preview_url: false, body: item.body_text ?? '' },
         };
+      } else if (item.kind === 'TEMPLATE') {
+        corpoDaMensagem = corpoDeTemplate(item);
       } else {
         if (!item.media_storage_path || !item.media_mime_type) {
           throw new Error('mensagem de midia sem caminho ou sem MIME');
