@@ -708,7 +708,11 @@ Deno.serve(async (request: Request) => {
       target_unit_id: unitId,
     });
     const calendarShifts = calendarShiftsResult.ok
-      ? (calendarShiftsResult.data as { startMs: number; endMs: number }[])
+      ? (calendarShiftsResult.data as {
+          startMs: number;
+          endMs: number;
+          memberName?: string | null;
+        }[])
       : [];
 
     const existingMemberOccupancies: OccupancyRange[] = [
@@ -717,9 +721,39 @@ Deno.serve(async (request: Request) => {
         startMs: entry.startMs,
         endMs: entry.endMs,
       })),
-      ...calendarShifts.flatMap((shift) =>
-        members.map((member) => ({ subjectId: member.id, startMs: shift.startMs, endMs: shift.endMs }))
-      ),
+      // O COMPROMISSO DE UMA PESSOA NAO FECHA A AGENDA DO SALAO.
+      //
+      // 23/09/2026: isto era `members.map(...)` -- cada evento da agenda
+      // externa virava ocupacao da equipe INTEIRA. Dentista da dona na terca
+      // as 14h apagava a Karen e a Duda do mesmo horario, e a cliente ouvia
+      // "nao tenho horario" sem que nada desse erro.
+      //
+      // Agora o evento so ocupa quem ele e. E quando NAO da para saber de
+      // quem e, ocupa todo mundo -- de proposito, e nos dois casos pelo mesmo
+      // motivo: errar para o lado de bloquear custa um agendamento perdido;
+      // errar para o lado de liberar coloca duas clientes no mesmo horario, e
+      // quem descobre e a segunda, no salao, com a cadeira ocupada.
+      ...calendarShifts.flatMap((shift) => {
+        const nome = (shift.memberName ?? '').trim().toLowerCase();
+        // O nome vem da conexao da agenda; o id so existe no snapshot. O
+        // motor (`EligibleMember`) nao carrega nome de proposito -- e um tipo
+        // puro, com testes proprios -- entao a ponte se faz aqui.
+        const idsDoDono = nome
+          ? new Set(
+              snapshot.teamMembers
+                .filter((m) => m.name.trim().toLowerCase() === nome)
+                .map((m) => m.id)
+            )
+          : new Set<string>();
+        // Sem nome (agenda do salao) ou nome que nao bate com ninguem da
+        // equipe (alguem saiu, ou escreveram diferente): vale para todos.
+        const alvos = idsDoDono.size > 0 ? members.filter((m) => idsDoDono.has(m.id)) : members;
+        return alvos.map((member) => ({
+          subjectId: member.id,
+          startMs: shift.startMs,
+          endMs: shift.endMs,
+        }));
+      }),
     ];
     const existingResourceOccupancies: OccupancyRange[] = occupancies.resourceOccupancies.map((entry) => ({
       subjectId: entry.resourceId,
