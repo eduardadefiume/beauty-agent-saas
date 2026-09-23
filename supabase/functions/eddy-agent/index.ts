@@ -477,6 +477,23 @@ Deno.serve(async (req: Request) => {
       // ter chamado `resumo` nesta conversa, `publicar` e recusado aqui mesmo,
       // antes de chegar ao banco. Prompt convence; codigo garante.
       let viuOResumo = false;
+      // QUANTAS GRAVACOES EXISTIAM ANTES DESTE TURNO.
+      //
+      // 23/09/2026, primeira conversa real num salao zerado. A dona mandou o
+      // nome e o endereco do salao. O Eddy respondeu "Anotei: Eduarda Defiume
+      // Beauty, na Rua Rui Barbosa, 323, Centro, Jardinopolis" -- e no banco
+      // `units.name` continuava "Unidade unica" e `address_json` continuava
+      // vazio. Ele disse que anotou duas vezes e nao chamou ferramenta nenhuma.
+      //
+      // POR QUE `tool_choice: 'any'` NAO IMPEDE ISSO: `atender` tambem e uma
+      // ferramenta. O modelo cumpre a obrigacao de chamar alguma coisa
+      // chamando so o `atender` com o texto pronto, e a gravacao nunca
+      // acontece. A obrigacao e de chamar UMA ferramenta, nao a CERTA.
+      //
+      // Entao a diferenca entre o antes e o depois e a unica prova de que
+      // alguma coisa foi escrita de verdade.
+      const criadosAoEntrar = criados;
+      let jaCobreiAMentira = false;
       let decisao: Decisao | null = null;
       let motivoFalha: string | null = null;
       const uso = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, voltas: 0 };
@@ -529,6 +546,50 @@ Deno.serve(async (req: Request) => {
             });
             continue;
           }
+
+          // A TRAVA DO "ANOTEI".
+          //
+          // Se o texto que ele quer mandar afirma que gravou, e nenhuma
+          // ferramenta de escrita subiu o contador neste turno, a mensagem NAO
+          // sai. Ele recebe de volta o proprio texto e tem que chamar a
+          // ferramenta de verdade antes de repetir a frase.
+          //
+          // Cobro uma vez so: se ele insistir, deixo passar e o desencontro
+          // fica no historico para a gente ver -- travar em laco calaria o
+          // agente, que e um problema pior que uma frase errada.
+          const prometeuTerGravado =
+            /\b(anotei|anotado|gravei|gravado|registrei|registrado|cadastrei|cadastrado|salvei|guardei|atualizei)\b/i;
+          const falaQueGravou = (escolha.messages ?? []).some((m) =>
+            prometeuTerGravado.test(String(m ?? ''))
+          );
+
+          if (
+            falaQueGravou &&
+            criados === criadosAoEntrar &&
+            !jaCobreiAMentira &&
+            volta < MAX_VOLTAS - 1
+          ) {
+            jaCobreiAMentira = true;
+            mensagens.push({ role: 'assistant', content: resposta.content });
+            mensagens.push({
+              role: 'user',
+              content: chamadas.map((c) => ({
+                type: 'tool_result' as const,
+                tool_use_id: c.id,
+                content:
+                  'NAO ENVIEI. Voce escreveu que anotou, e nao chamou nenhuma ferramenta que grava ' +
+                  'neste turno. Dizer "anotei" sem ter gravado e mentir para o dono: ele vai embora ' +
+                  'achando que esta feito, e na proxima conversa a mesma pergunta volta. ' +
+                  'Escolha: chame a ferramenta certa agora (nome e endereco do salao sao ' +
+                  '`registrar_identidade`, pessoa e `criar_membro_equipe`, dias e horarios sao ' +
+                  '`definir_horario_funcionamento`, habilidade e `criar_habilidade`, servico e ' +
+                  '`criar_servico`, preco e `definir_preco`, regra e `anotar`) -- ou, se faltar ' +
+                  'informacao, chame `atender` de novo e apenas PERGUNTE, sem dizer que anotou.',
+              })),
+            });
+            continue;
+          }
+
           decisao = escolha;
           break;
         }
@@ -985,8 +1046,21 @@ Deno.serve(async (req: Request) => {
             p_escopo: null,
             p_porque: decisao.reason ?? 'HANDOFF sem motivo escrito',
           });
-        } catch {
-          // registrar o pedido nao vale derrubar a resposta ao dono
+        } catch (erro) {
+          // Registrar o pedido nao vale derrubar a resposta ao dono -- mas
+          // engolir CALADO foi o que deixou este caminho quebrado por dois
+          // dias. As duas funcoes existiam so em `app`, sem espelho em
+          // `public`, e o PostgREST devolvia 404 a cada HANDOFF. O Eddy dizia
+          // "ja avisei a Eduarda" e `agent_alerts` seguia com zero linhas.
+          // Agora o erro aparece no log da funcao, que e onde alguem procura.
+          console.error(
+            'HANDOFF: nao consegui registrar o pedido fora do alcance',
+            JSON.stringify({
+              conversationId: item.conversation_id,
+              tenantId,
+              erro: String(erro).slice(0, 300),
+            })
+          );
         }
       }
 
