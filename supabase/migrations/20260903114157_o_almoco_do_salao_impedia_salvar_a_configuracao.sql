@@ -53,16 +53,19 @@ begin
   -- FIM DE LINHA NAO PODE DECIDIR SE A MIGRACAO RODA.
   --
   -- 23/09/2026, reconstruindo o banco do zero no Windows: esta migracao
-  -- estourou com "achei 0". O corpo da funcao no banco vinha com 
-,
-  -- porque os .sql no disco estao em CRLF, e o trecho procurado aqui usa 
-.
-  -- Nunca casava. Na producao casou porque la os arquivos foram aplicados
-  -- com LF.
+  -- estourou com 'achei 0'. O corpo da funcao no banco vinha com fim de
+  -- linha do Windows (CR seguido de LF), porque os .sql no disco estao em
+  -- CRLF, e o trecho procurado abaixo usa so LF. Nunca casava. Na producao
+  -- casou porque la os arquivos foram aplicados com LF.
   --
   -- Uma migracao que depende do sistema operacional de quem a roda nao e uma
-  -- migracao, e uma coincidencia. Normalizar antes de procurar custa uma linha
-  -- e tira o acaso do caminho.
+  -- migracao, e uma coincidencia. Normalizar antes de procurar custa uma
+  -- linha e tira o acaso do caminho.
+  --
+  -- E nao se escreve a sequencia de escape dentro deste comentario: a
+  -- primeira versao deste patch fez isso, os dois caracteres viraram uma
+  -- quebra de linha de verdade, e sobrou uma virgula solta fora do
+  -- comentario. A migracao quebrou com 'syntax error at or near ","'.
   v_def := replace(v_def, chr(13) || chr(10), chr(10));
 
   v_velho :=
