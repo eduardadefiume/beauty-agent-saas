@@ -13,7 +13,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 //   Buraco 2: `public.enqueue_outbound_message` tinha SEIS argumentos e nenhum
 //             de midia, entao descartava `p_media_storage_path` antes de chamar
 //             a interna -- que decide o `kind` justamente por ele. A foto nao
-//             falhava: virava texto. Corrigido na 20260923204500.
+//             falhava: virava texto. Corrigido na 20260923214500.
 //
 // ESTE TESTE RODA O SQL DE VERDADE, num Postgres em memoria (PGlite). Nao e
 // leitura de arquivo procurando palavra: as migrations sao executadas e a
@@ -34,7 +34,7 @@ const CRM = '20260813114500_crm_inbox_campaigns_base.sql';
 const OUTBOX = '20260820133000_b3_outbox_envio_whatsapp.sql';
 const MIDIA = '20260827184045_anexos_e_audio_na_saida.sql';
 const TRAVA_DO_KIND = '20260923194500_o_lembrete_da_vespera_nao_dependia_de_cnpj.sql';
-const FACHADA = '20260923204500_a_fachada_descartava_a_foto_antes_de_chegar_na_porta.sql';
+const FACHADA = '20260923214500_a_fachada_descartava_a_foto_antes_de_chegar_na_porta.sql';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const OUTRO_TENANT = '22222222-2222-4222-8222-222222222222';
@@ -214,6 +214,15 @@ async function bancoDeTeste({ comATravaCorrigida = true } = {}): Promise<PGlite>
   return db;
 }
 
+// `noUncheckedIndexedAccess` esta ligado neste repositorio, e com razao: uma
+// consulta que nao devolve linha tem que estourar dizendo isso, e nao falhar
+// tres linhas depois lendo propriedade de undefined.
+function primeira<T>(linhas: readonly T[]): T {
+  const [linha] = linhas;
+  if (linha === undefined) throw new Error('a consulta nao devolveu nenhuma linha');
+  return linha;
+}
+
 type Resultado = { ok: boolean; reason?: string; outboxId?: string; duplicate?: boolean };
 
 // Chama a fachada pelo NOME dos parametros, que e como o PostgREST chama: o
@@ -229,7 +238,7 @@ async function enfileirar(
     `select public.enqueue_outbound_message(${chamada}) as saida`,
     nomes.map((nome) => argumentos[nome])
   );
-  return rows[0].saida;
+  return primeira(rows).saida;
 }
 
 const FOTO = {
@@ -266,7 +275,7 @@ describe('midia atravessa a fachada e chega no outbox', () => {
       [saida.outboxId ?? null]
     );
 
-    expect(rows[0]).toEqual({
+    expect(primeira(rows)).toEqual({
       kind: 'MEDIA',
       media_storage_path: FOTO.p_media_storage_path,
       media_mime_type: 'image/jpeg',
@@ -276,15 +285,18 @@ describe('midia atravessa a fachada e chega no outbox', () => {
   });
 
   it('a conversa registra a mesma mensagem como MEDIA, com o caminho', async () => {
-    const { rows } = await db.query<{ message_type: string; metadata_minimized: Record<string, string> }>(
+    const { rows } = await db.query<{
+      message_type: string;
+      metadata_minimized: Record<string, string>;
+    }>(
       `select m.message_type, m.metadata_minimized
          from app.crm_messages m
          join app.outbox_messages o on o.message_id = m.id
         where o.media_storage_path is not null`
     );
 
-    expect(rows[0].message_type).toBe('MEDIA');
-    expect(rows[0].metadata_minimized.mediaStoragePath).toBe(FOTO.p_media_storage_path);
+    expect(primeira(rows).message_type).toBe('MEDIA');
+    expect(primeira(rows).metadata_minimized.mediaStoragePath).toBe(FOTO.p_media_storage_path);
   });
 
   // O envio de foto nao pode herdar a espera de ate um minuto que a 20260923104500
@@ -313,7 +325,7 @@ describe('midia atravessa a fachada e chega no outbox', () => {
       `select kind, body_text from app.outbox_messages where id = $1`,
       [saida.outboxId ?? null]
     );
-    expect(rows[0]).toEqual({ kind: 'MEDIA', body_text: null });
+    expect(primeira(rows)).toEqual({ kind: 'MEDIA', body_text: null });
   });
 
   it('texto continua saindo como TEXT, sem os argumentos de midia', async () => {
@@ -330,7 +342,7 @@ describe('midia atravessa a fachada e chega no outbox', () => {
       `select kind, media_storage_path from app.outbox_messages where id = $1`,
       [saida.outboxId ?? null]
     );
-    expect(rows[0]).toEqual({ kind: 'TEXT', media_storage_path: null });
+    expect(primeira(rows)).toEqual({ kind: 'TEXT', media_storage_path: null });
   });
 
   // A armadilha da correcao, e o motivo de a migration derrubar a fachada
@@ -345,9 +357,9 @@ describe('midia atravessa a fachada e chega no outbox', () => {
     );
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].args).toContain('p_media_storage_path text');
-    expect(rows[0].args).toContain('p_media_mime_type text');
-    expect(rows[0].args).toContain('p_media_filename text');
+    expect(primeira(rows).args).toContain('p_media_storage_path text');
+    expect(primeira(rows).args).toContain('p_media_mime_type text');
+    expect(primeira(rows).args).toContain('p_media_filename text');
   });
 
   // O worker baixa o arquivo com a chave de servico, para quem policy de balde
@@ -365,7 +377,7 @@ describe('midia atravessa a fachada e chega no outbox', () => {
         where media_storage_path like $1`,
       [`${OUTRO_TENANT}/%`]
     );
-    expect(rows[0].quantas).toBe(0);
+    expect(primeira(rows).quantas).toBe(0);
   });
 
   // A tela da dona nunca passou pela fachada -- ela chama `app.` direto. A
@@ -378,7 +390,7 @@ describe('midia atravessa a fachada e chega no outbox', () => {
            'owner-console-v1', 'dona@salao.com', $1::uuid, $2::uuid, $3, $4, $5, $6, $7) as saida`,
         [TENANT, CONVERSA, 'olha o antes', chave, caminho, 'image/jpeg', 'antes.jpg']
       );
-      return rows[0].saida;
+      return primeira(rows).saida;
     };
 
     const aceita = await enviar(`${TENANT}/antes.jpg`, 'tela:foto-antes:0');
@@ -387,7 +399,7 @@ describe('midia atravessa a fachada e chega no outbox', () => {
       `select kind, media_storage_path from app.outbox_messages where id = $1`,
       [aceita.outboxId ?? null]
     );
-    expect(rows[0]).toEqual({ kind: 'MEDIA', media_storage_path: `${TENANT}/antes.jpg` });
+    expect(primeira(rows)).toEqual({ kind: 'MEDIA', media_storage_path: `${TENANT}/antes.jpg` });
 
     const recusada = await enviar(`${OUTRO_TENANT}/antes.jpg`, 'tela:foto-de-fora:0');
     expect(recusada).toMatchObject({ ok: false, reason: 'MEDIA_PATH_FORBIDDEN' });
@@ -401,7 +413,7 @@ describe('midia atravessa a fachada e chega no outbox', () => {
       `select count(*)::int as quantas from app.outbox_messages where idempotency_key = $1`,
       [FOTO.p_idempotency_key]
     );
-    expect(rows[0].quantas).toBe(1);
+    expect(primeira(rows).quantas).toBe(1);
   });
 });
 
@@ -415,14 +427,12 @@ describe('a trava do kind sem o conserto da 194500', () => {
     // Sao duas travas velhas, e qualquer uma basta para matar a foto: a do
     // `kind` nao conhecia 'MEDIA', e a de payload exigia corpo de TEXT ou nome
     // de TEMPLATE. Qual das duas o Postgres denuncia primeiro e detalhe dele.
-    await expect(enfileirar(db, FOTO)).rejects.toThrow(
-      /outbox_(messages_kind|kind_payload)_check/
-    );
+    await expect(enfileirar(db, FOTO)).rejects.toThrow(/outbox_(messages_kind|kind_payload)_check/);
 
     // A transacao inteira volta atras: nao sobra nem a linha da conversa.
     const { rows } = await db.query<{ quantas: number }>(
       `select count(*)::int as quantas from app.crm_messages`
     );
-    expect(rows[0].quantas).toBe(0);
+    expect(primeira(rows).quantas).toBe(0);
   });
 });

@@ -27,10 +27,20 @@
 -- ferramenta que faz o agente mandar uma foto, ela vai encontrar a porta
 -- aberta em vez de descobrir isto na primeira cliente.
 --
--- ESTADO DOS BANCOS quando escrevi: DEV parou em 20260923164500 e PROD em
--- 20260923174500. Ou seja, a trava da 194500 nao esta aplicada em nenhum dos
--- dois: as duas correcoes do caminho de midia sobem no mesmo `db push`, e
--- antes dele o caminho continua quebrado nos dois pontos.
+-- ESTADO DOS BANCOS quando escrevi. ATENCAO AO REF, NUNCA AO NOME: os nomes
+-- dos dois projetos no Supabase estao trocados de proposito, e o AMBIENTES.md
+-- avisa disso. Uma versao anterior deste comentario leu o nome, inverteu os
+-- dois e concluiu que faltava empurrar para o DEV -- que e o oposto.
+--
+--   dboygmtrzgsfcmoquegp  (nome diz "prod")  = DEV      vazio, 0 conversas
+--   hjghwryhphgusefyivbl  (nome diz "dev")   = PRODUCAO Salao do William, 183
+--                                                       mensagens, 1 conexao
+--
+-- Conferido pelo CONTEUDO, nao pelo rotulo: o DEV esta em 20260923234500 (com
+-- esta fachada e a trava do `kind` ja aplicadas); a PRODUCAO parou na
+-- 20260923164500 e esta CINCO atras -- 174500, 184500, 194500, esta e a
+-- 234500. E na producao que os dois buracos do caminho de midia continuam
+-- abertos, e e ela que tem as mensagens de verdade.
 --
 -- DUAS DECISOES QUE NAO SAO OBVIAS:
 --
