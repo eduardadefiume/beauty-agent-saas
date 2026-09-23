@@ -1,6 +1,6 @@
-# Os dois bancos, e por que os nomes mentem
+# Os dois bancos
 
-**23/09/2026.** Até hoje existia um banco só. Ele se chamava
+**23/09/2026.** Até este dia existia um banco só. Ele se chamava
 `agente-beleza-saas-dev-sp` e rodava **a produção inteira**: o salão do
 William, o WhatsApp no ar, 69 mil registros.
 
