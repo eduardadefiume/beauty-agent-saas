@@ -96,13 +96,32 @@ select r.decided_at, r.status, r.skip_reason, a.customer_label, a.starts_at
 
 Os motivos que você vai ver, e o que cada um quer dizer:
 
-| skip_reason                 | o que fazer                                                   |
-| --------------------------- | ------------------------------------------------------------- |
-| `MODELO_NAO_REGISTRADO`     | falta o passo 2                                               |
-| `MODELO_NAO_APROVADO`       | a Meta ainda está revisando, ou pausou por qualidade          |
-| `SEM_TELEFONE`              | o agendamento foi criado sem `external_contact_ref`           |
-| `SEM_CONVERSA`              | o telefone não bate com nenhuma conversa de WhatsApp do salão |
-| `AGENT_AUTOMATION_DISABLED` | o freio de emergência está puxado                             |
+| skip_reason                 | o que fazer                                                    |
+| --------------------------- | -------------------------------------------------------------- |
+| `MODELO_NAO_REGISTRADO`     | falta o passo 2                                                |
+| `MODELO_NAO_APROVADO`       | a Meta ainda está revisando, ou pausou por qualidade           |
+| `SEM_TELEFONE`              | o agendamento foi criado sem `external_contact_ref`            |
+| `SEM_CONVERSA`              | o telefone não bate com nenhuma conversa de WhatsApp do salão  |
+| `AGENT_AUTOMATION_DISABLED` | o freio de emergência está puxado                              |
+| `AGENDADO_SEM_VESPERA`      | a cliente marcou em cima da hora. **Normal**, nada a consertar |
+| `VESPERA_PERDIDA`           | **isso é defeito**: havia véspera e o agendador não rodou nela |
+
+`VESPERA_PERDIDA` é a única da lista que pede investigação — quer dizer cron
+parado, projeto dormindo no plano free, ou worker travado. As outras são o
+sistema contando a verdade.
+
+## Por que ele nunca manda no mesmo dia
+
+O texto diz "amanhã". Então o lembrete só sai se **hoje for exatamente a
+véspera** do atendimento — não basta a hora do envio já ter passado.
+
+Sem essa regra havia um furo: quem marca no próprio dia tem o momento do envio
+no passado (era ontem às 18h), e o lembrete dispararia na hora, dizendo "seu
+horário amanhã" para um atendimento que é hoje. Mentir para a cliente é pior
+que não lembrar.
+
+Lembrete do mesmo dia, se um dia fizer sentido, precisa de outro texto aprovado
+na Meta — não dá para reaproveitar este.
 
 ## O que custa
 

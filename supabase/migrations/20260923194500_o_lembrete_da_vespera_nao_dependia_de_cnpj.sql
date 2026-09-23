@@ -400,6 +400,8 @@ declare
   v_linha      record;
   v_envio_utc  timestamptz;
   v_local      timestamp;
+  v_dia_atendimento date;
+  v_hoje_local date;
   v_fone       text;
   v_conversa   uuid;
   v_resultado  jsonb;
@@ -413,7 +415,8 @@ begin
   end if;
 
   for v_linha in
-    select a.id, a.tenant_id, a.starts_at, a.customer_label, a.external_contact_ref,
+    select a.id, a.tenant_id, a.starts_at, a.created_at, a.customer_label,
+           a.external_contact_ref,
            u.timezone, sc.lembrete_hora_local, t.display_name as salao
       from app.appointments a
       join app.units u          on u.id = a.unit_id
@@ -439,21 +442,56 @@ begin
                     + make_interval(hours => v_linha.lembrete_hora_local))
                    at time zone v_linha.timezone;
 
-    -- Ainda nao chegou a hora. Sai sem gravar nada: a linha em
-    -- appointment_reminders e definitiva, e gravar agora fecharia a porta.
-    continue when statement_timestamp() < v_envio_utc;
+    -- VESPERA E VESPERA: O DIA DE HOJE TEM QUE SER O DIA ANTERIOR AO DO
+    -- ATENDIMENTO. Comparar so `now() >= v_envio_utc` nao bastava, e quase
+    -- passou: cliente que marca NO PROPRIO DIA tem o momento do envio ja no
+    -- passado (era ontem as 18h), entao o lembrete dispararia na hora -- com o
+    -- texto dizendo "amanha" para um atendimento que e hoje. Mentir para a
+    -- cliente e pior que nao lembrar.
+    v_dia_atendimento := v_local::date;
+    v_hoje_local := (statement_timestamp() at time zone v_linha.timezone)::date;
 
-    -- Fora da faixa civilizada. Volta no proximo giro do cron.
-    continue when extract(hour from (statement_timestamp() at time zone v_linha.timezone))
-                  not between 8 and 20;
+    -- Falta mais de um dia. Sai sem gravar nada: a linha em
+    -- appointment_reminders e definitiva, e gravar agora fecharia a porta.
+    continue when v_hoje_local < v_dia_atendimento - 1;
 
     v_motivo := null;
     v_resultado := null;
     v_conversa := null;
 
+    if v_hoje_local >= v_dia_atendimento then
+      -- Nao da mais para mandar um "amanha" verdadeiro. Dois casos muito
+      -- diferentes caem aqui, e separa-los e o que distingue rotina de alarme:
+      --
+      --   AGENDADO_SEM_VESPERA -- a cliente marcou em cima da hora. Normal,
+      --     acontece todo dia, nao ha nada a consertar.
+      --   VESPERA_PERDIDA      -- havia vespera e o agendador nao rodou nela.
+      --     Isso e defeito: cron parado, banco dormindo, worker travado.
+      --
+      -- Sem essa separacao as duas apareceriam como a mesma linha, e uma falha
+      -- de infraestrutura passaria por comportamento esperado.
+      v_motivo := case
+        when (v_linha.created_at at time zone v_linha.timezone)::date
+             >= v_dia_atendimento - 1
+          then 'AGENDADO_SEM_VESPERA'
+        else 'VESPERA_PERDIDA'
+      end;
+    else
+      -- E a vespera, mas ainda nao deu a hora escolhida.
+      continue when statement_timestamp() < v_envio_utc;
+
+      -- Fora da faixa civilizada. Volta no proximo giro do cron.
+      -- Ate 21h porque quem marca as 20h30 para amanha cedo ainda merece o
+      -- aviso; depois disso, nao -- e a essa altura ja nao ajuda a remarcar.
+      continue when extract(hour from (statement_timestamp() at time zone v_linha.timezone))
+                    not between 8 and 21;
+    end if;
+
     v_fone := nullif(trim(coalesce(v_linha.external_contact_ref, '')), '');
 
-    if v_fone is null then
+    if v_motivo is not null then
+      null;  -- ja decidido acima; nao sobrescreve.
+    elsif v_fone is null then
       v_motivo := 'SEM_TELEFONE';
     else
       select c.id into v_conversa
