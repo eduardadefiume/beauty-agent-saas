@@ -26,6 +26,28 @@ create table if not exists app.agent_scheduling_focus (
 create index if not exists agent_scheduling_focus_tenant_idx
   on app.agent_scheduling_focus (tenant_id, searched_at desc);
 
+-- Le o foco com o nome do servico junto. O nome existe para o agente poder
+-- dizer a cliente de que servico ele esta falando sem ter que adivinhar.
+create or replace function app.agent_scheduling_focus(p_conversation_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = app, public
+as $$
+  select jsonb_build_object(
+    'serviceId',                f.service_id,
+    'serviceName',              s.name,
+    'configurationVersionId',   f.configuration_version_id,
+    'candidates',               f.candidates,
+    'searchedAt',               f.searched_at,
+    'ageMinutes',               floor(extract(epoch from (now() - f.searched_at)) / 60)::int
+  )
+  from app.agent_scheduling_focus f
+  join app.services s on s.id = f.service_id
+  where f.conversation_id = p_conversation_id;
+$$;
+
 -- Grava o foco a cada consulta de agenda. Uma linha por conversa: a consulta
 -- mais recente manda. Devolve o foco ja gravado -- com o nome do servico --
 -- para o agente poder dizer a cliente de que servico ele esta falando sem uma
@@ -54,28 +76,6 @@ as $$
         searched_at              = excluded.searched_at;
 
   select app.agent_scheduling_focus(p_conversation_id);
-$$;
-
--- Le o foco com o nome do servico junto. O nome existe para o agente poder
--- dizer a cliente de que servico ele esta falando sem ter que adivinhar.
-create or replace function app.agent_scheduling_focus(p_conversation_id uuid)
-returns jsonb
-language sql
-stable
-security definer
-set search_path = app, public
-as $$
-  select jsonb_build_object(
-    'serviceId',                f.service_id,
-    'serviceName',              s.name,
-    'configurationVersionId',   f.configuration_version_id,
-    'candidates',               f.candidates,
-    'searchedAt',               f.searched_at,
-    'ageMinutes',               floor(extract(epoch from (now() - f.searched_at)) / 60)::int
-  )
-  from app.agent_scheduling_focus f
-  join app.services s on s.id = f.service_id
-  where f.conversation_id = p_conversation_id;
 $$;
 
 -- Depois de marcar, o foco morre: a proxima conversa sobre agenda comeca do
