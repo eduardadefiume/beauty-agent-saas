@@ -20,6 +20,23 @@ alter table app.data_authorizations
 comment on column app.data_authorizations.owner_label is
   'Como o nome do dono aparece dentro do export do WhatsApp. Ele responde uma vez; sem isso o leitor deduz por contagem e empata em conversa equilibrada.';
 
+-- A VERSAO ANTERIOR PRECISA SAIR ANTES.
+--
+-- `create or replace` nao muda o tipo de retorno de uma funcao. Esta versao
+-- acrescenta a coluna owner_label ao `returns table`; a anterior, de cinco
+-- colunas, nasceu em 20260903130948.
+--
+-- Descoberto em 23/09/2026, reconstruindo o banco do zero:
+--   ERROR: cannot change return type of existing function
+--   Row type defined by OUT parameters is different.
+--
+-- Na producao passou porque a ordem real de aplicacao foi outra. Aqui a
+-- ordem e a do repositorio, e e ela que precisa valer em qualquer banco.
+--
+-- O drop e seguro NESTE ponto: o involucro public.wa_archive_claim so nasce
+-- em 20260903150438, depois desta migracao. Nada depende dela ainda.
+drop function if exists app.wa_archive_claim(integer);
+
 create or replace function app.wa_archive_claim(p_limit integer default 3)
 returns table (
   archive_id    uuid,
