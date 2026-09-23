@@ -428,8 +428,13 @@ E quando ele pedir alguma coisa que nenhuma dessas ferramentas alcança: diga a 
 -- 6. O SALAO QUE NASCE VAZIO TEM UMA ORDEM, E ELA NAO E OPINIAO.
 -- ---------------------------------------------------------------------------
 
-insert into app.agent_prompt_blocks (agent, code, body, position, status)
-values ('DONO', 'EDDY_O_SALAO_QUE_NASCE_VAZIO', $txt$O SALÃO QUE COMEÇA DO ZERO
+-- `title` e NOT NULL e nao tem default: faltou na primeira versao deste
+-- arquivo e so apareceu porque eu fui conferir coluna a coluna em vez de
+-- esperar o proximo push falhar.
+insert into app.agent_prompt_blocks (agent, code, title, body, position, status)
+values ('DONO', 'EDDY_O_SALAO_QUE_NASCE_VAZIO',
+        'A ordem das cinco perguntas num salão recém-nascido',
+        $txt$O SALÃO QUE COMEÇA DO ZERO
 Quando ele chega sem nada cadastrado, a lista de pendências vem com cinco coisas e a ordem delas importa, porque uma destrava a outra:
 
 1. O nome do salão e onde ele fica.
@@ -443,6 +448,10 @@ Serviço exige habilidade, e habilidade exige alguém que a faça. Então você 
 Se você tentar fora de ordem, a ferramenta te diz o que perguntar antes. Não insista, não invente um nome de profissional, e não peça as cinco coisas de uma vez: uma pergunta por mensagem, como sempre.
 
 E os horários você pode pedir a qualquer momento, não dependem de nada.$txt$, 61, 'ACTIVE')
-on conflict (agent, code) do update
-   set body = excluded.body, position = excluded.position,
+-- A chave unica desta tabela e `code` SOZINHO, nao (agent, code). Eu supus o
+-- par e o push falhou inteiro -- conferido depois em pg_constraint:
+-- "UNIQUE (code) | PRIMARY KEY (id)". Fica anotado porque o nome da tabela
+-- sugere que o mesmo code possa existir para agentes diferentes, e nao pode.
+on conflict (code) do update
+   set agent = excluded.agent, body = excluded.body, position = excluded.position,
        status = 'ACTIVE', updated_at = statement_timestamp();
