@@ -127,6 +127,26 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'definir_pausa',
+    description:
+      'Grava o tempo de espera do produto num serviço. Durante a pausa a cliente fica e a profissional sai — é o que permite encaixar outra cliente no meio. Pergunte SEMPRE as duas coisas: quantos minutos, e se a pausa está dentro do tempo total ou soma a mais.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        servico: { type: 'string', description: 'O nome do serviço, como está cadastrado.' },
+        minutos: { type: 'number', description: 'Minutos de pausa.' },
+        dentroDoTotal: {
+          type: 'boolean',
+          description:
+            'true quando a pausa já está contada no tempo total que ele falou; false quando ela soma a mais. Não adivinhe: pergunte.',
+        },
+        confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
+      },
+      required: ['servico', 'minutos', 'dentroDoTotal', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'definir_preco',
     description:
       'Grava o preço de um serviço. É POR AQUI que preço se grava, nunca pelo `anotar`. Use ehPiso quando o dono disser "a partir de": sem isso a atendente vai cravar o valor como se fosse final.',
@@ -599,6 +619,7 @@ Deno.serve(async (req: Request) => {
       // alguma coisa foi escrita de verdade.
       const criadosAoEntrar = criados;
       let jaCobreiAMentira = false;
+      let jaCobreiOErroTecnico = false;
       let decisao: Decisao | null = null;
       let motivoFalha: string | null = null;
       const uso = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, voltas: 0 };
@@ -690,6 +711,50 @@ Deno.serve(async (req: Request) => {
                   '`definir_horario_funcionamento`, habilidade e `criar_habilidade`, servico e ' +
                   '`criar_servico`, preco e `definir_preco`, regra e `anotar`) -- ou, se faltar ' +
                   'informacao, chame `atender` de novo e apenas PERGUNTE, sem dizer que anotou.',
+              })),
+            });
+            continue;
+          }
+
+          // A TRAVA DO "DEU PROBLEMA PRA GRAVAR".
+          //
+          // 23/09/2026, conversa real. Em 45 minutos ele escreveu para a dona:
+          //   "tive um problema pra gravar o botox"
+          //   "so confirmando de novo porque nao gravou direito"
+          //   "deu um probleminha, o sistema recusou o formato"
+          //
+          // O manual dele JA dizia, e a regra estava no ar: "nunca diga ao dono
+          // que houve erro, falha ou problema no sistema. Nao e assunto dele."
+          // Instrucao em portugues nao segurou -- porque, do ponto de vista do
+          // modelo, contar o problema e ser honesto. Ele nao esta desobedecendo
+          // por mal.
+          //
+          // O que o dono precisa e da PERGUNTA. Quem tem que saber do erro e a
+          // Eduarda, e para isso existe o alerta -- que disparou certo, as
+          // 14:14, com o motivo inteiro. A dona nao precisava ter lido nada
+          // disso.
+          const contouProblemaDeSistema =
+            /\b(o sistema (recusou|deu|n[aã]o)|n[aã]o gravou|problema (pra|para) gravar|probleminha|deu (um )?erro|recusou o formato|n[aã]o consegui gravar|tive um problema)\b/i;
+          const vazouErro = (escolha.messages ?? []).some((m) =>
+            contouProblemaDeSistema.test(String(m ?? ''))
+          );
+
+          if (vazouErro && !jaCobreiOErroTecnico && volta < MAX_VOLTAS - 1) {
+            jaCobreiOErroTecnico = true;
+            mensagens.push({ role: 'assistant', content: resposta.content });
+            mensagens.push({
+              role: 'user',
+              content: chamadas.map((c) => ({
+                type: 'tool_result' as const,
+                tool_use_id: c.id,
+                content:
+                  'NAO ENVIEI. Voce contou ao dono que houve problema no sistema. Isso nao e assunto ' +
+                  'dele: ele nao pode consertar, e saber disso so tira a confianca dele no produto. ' +
+                  'Quem precisa saber do erro e a equipe da EDDigital, e o alerta ja e automatico. ' +
+                  'Reescreva `atender` com a PERGUNTA limpa, como se fosse a primeira vez que voce ' +
+                  'esta perguntando -- sem "de novo", sem "confirmando outra vez", sem citar falha. ' +
+                  'Se voce ja perguntou isso duas vezes e nao conseguiu gravar, entao pare de ' +
+                  'perguntar: encerre com HANDOFF.',
               })),
             });
             continue;
@@ -810,6 +875,54 @@ Deno.serve(async (req: Request) => {
                 }
               } catch (erro) {
                 texto = `Nao deu para criar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
+            }
+          } else if (chamada.name === 'definir_pausa') {
+            const args = chamada.input as {
+              servico: string;
+              minutos: number;
+              dentroDoTotal: boolean;
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Confirme a pausa com ele.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_definir_pausa', {
+                  p_tenant_id: tenantId,
+                  p_servico: args.servico,
+                  p_minutos: Math.round(args.minutos),
+                  p_dentro_do_total: args.dentroDoTotal !== false,
+                })) as {
+                  ok?: boolean;
+                  reason?: string;
+                  servico?: string;
+                  pausaMinutos?: number;
+                  atendimentoMinutos?: number;
+                  totalMinutos?: number;
+                  comoResolver?: string;
+                  totalAtual?: number;
+                } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  texto =
+                    `Gravei a pausa de ${r.pausaMinutos} min em "${r.servico}": ` +
+                    `${r.atendimentoMinutos} min de atendimento + ${r.pausaMinutos} de pausa, ` +
+                    `total ${r.totalMinutos} min. Durante a pausa a profissional fica livre para outra cliente.`;
+                } else if (r?.reason === 'PAUSA_MAIOR_QUE_O_SERVICO') {
+                  texto = `NAO gravei: o servico tem ${r.totalAtual} min no total e a pausa pedida e maior. ${r.comoResolver}`;
+                } else if (r?.reason === 'SERVICO_JA_TEM_PAUSA') {
+                  texto = `NAO gravei: "${args.servico}" ja tem pausa cadastrada. Confirme com ele se mudou.`;
+                } else if (r?.reason === 'SERVICO_NAO_EXISTE') {
+                  texto = `NAO gravei: nao achei o servico "${args.servico}". Crie com \`criar_servico\` antes.`;
+                } else if (r?.reason === 'SERVICO_TEM_ETAPAS_DEMAIS') {
+                  texto = `NAO gravei: ${r.comoResolver}`;
+                } else {
+                  texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
               }
             }
           } else if (chamada.name === 'definir_preco') {
