@@ -190,6 +190,59 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const result = (await databaseResponse.json()) as Record<string, unknown>;
+
+  // ACORDA QUEM TRABALHA, AGORA.
+  //
+  // 23/09/2026. Ate hoje a mensagem chegava aqui na hora e depois esperava
+  // DOIS relogios de um minuto: um para `project_inbox_events` virar conversa,
+  // outro para o worker do agente acordar. Medido numa conversa real: 49
+  // segundos so de espera antes de o Eddy ver o que a dona tinha escrito.
+  //
+  // O evento que importa ja aconteceu -- e esta mensagem. Entao ela mesma
+  // acorda. O cron continua ligado como rede de seguranca, nao como caminho.
+  //
+  // Nao esperamos o resultado influenciar a resposta a Meta: a Meta quer um
+  // 200 rapido e reenvia se demorar. Se acordar falhar, o cron pega no proximo
+  // minuto -- o pior caso e voltar a ser o que era.
+  // SO MENSAGEM DE VERDADE ACORDA ALGUEM. A Meta manda um webhook para cada
+  // recibo de "enviado", "entregue" e "lido" -- na conversa de hoje foram
+  // quatro recibos para duas mensagens. Acordar o agente em cada um seria
+  // dobrar as chamadas para ele nao achar nada.
+  const temMensagemNova = (delivery.events ?? []).some((e: { eventType?: string }) =>
+    String(e.eventType ?? '').startsWith('WHATSAPP_MESSAGE_')
+  );
+
+  if (temMensagemNova && Number(result.accepted ?? 0) > 0) {
+    try {
+      const acordou = await fetch(`${supabaseUrl}/rest/v1/rpc/acordar_atendimento_agora`, {
+        method: 'POST',
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      });
+      if (!acordou.ok) {
+        console.error(
+          JSON.stringify({
+            event: 'whatsapp_webhook_wake_failed',
+            correlationId,
+            status: acordou.status,
+          })
+        );
+      }
+    } catch (erro) {
+      console.error(
+        JSON.stringify({
+          event: 'whatsapp_webhook_wake_threw',
+          correlationId,
+          erro: String(erro).slice(0, 200),
+        })
+      );
+    }
+  }
+
   console.log(
     JSON.stringify({
       event: 'whatsapp_webhook_persisted',
