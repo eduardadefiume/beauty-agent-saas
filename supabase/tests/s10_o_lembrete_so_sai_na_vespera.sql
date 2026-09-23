@@ -101,9 +101,17 @@ begin
     v_tenant, 'WHATSAPP', 's10-waba', 's10-sender', 'CLIENTE'
   ) returning id into v_conexao;
 
-  -- O freio de emergência precisa estar solto, senão tudo vira
-  -- AGENT_AUTOMATION_DISABLED e o teste não prova nada.
-  insert into app.agent_automation (tenant_id, enabled) values (v_tenant, true);
+  -- O FREIO DE EMERGÊNCIA FICA PUXADO DE PROPÓSITO.
+  --
+  -- Até 23/09 o lembrete respeitava este interruptor, e com ele em `false`
+  -- tudo virava AGENT_AUTOMATION_DISABLED. A Eduarda decidiu o contrário, e o
+  -- argumento é melhor que o meu: o freio existe para calar o AGENTE quando
+  -- ele escorrega, e lembrete de véspera não é o agente falando -- é texto
+  -- fixo, aprovado pela Meta, sobre um horário que a própria cliente marcou.
+  --
+  -- Deixar `false` aqui faz este teste provar a decisão, e não só conviver com
+  -- ela: se alguém devolver a trava, o caso de amanhã quebra na hora.
+  insert into app.agent_automation (tenant_id, enabled) values (v_tenant, false);
 
   insert into app.crm_contacts (tenant_id, unit_id, display_name, status)
   values (v_tenant, v_unidade, 'Rayana Teste', 'ACTIVE')
