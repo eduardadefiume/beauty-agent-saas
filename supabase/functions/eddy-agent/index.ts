@@ -168,6 +168,100 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       additionalProperties: false,
     },
   },
+  // AS QUATRO PERGUNTAS QUE ELE FAZIA SEM TER ONDE ESCREVER A RESPOSTA.
+  //
+  // 23/09/2026: `owner_setup_state` devolvia cinco pendências e ele só sabia
+  // gravar a última. Perguntava o nome do salão, a dona respondia, e ele dizia
+  // "anotei" — mentindo, porque não havia ferramenta. Na mensagem seguinte a
+  // pergunta voltava. Estas quatro fecham o ciclo.
+  {
+    name: 'registrar_identidade',
+    description:
+      'Grava o nome do salão e o endereço. É a primeira pendência de um salão novo. Endereço pela metade não serve: a cliente sai para a rua com ele — ou ele dita inteiro, ou você pergunta de novo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome do salão, como ele chamou.' },
+        endereco: {
+          type: 'string',
+          description:
+            'O endereço completo: rua, número, bairro e cidade. Deixe vazio se ele ainda não disse tudo.',
+        },
+        confianca: {
+          type: 'number',
+          description: 'Mesma régua do `anotar`. Abaixo de 0,75 não grave: pergunte.',
+        },
+      },
+      required: ['nome', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'criar_membro_equipe',
+    description:
+      'Cadastra uma pessoa que atende no salão. Uma chamada por pessoa. Num salão de uma pessoa só, a dona também entra aqui — ela atende.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome da pessoa, como ele falou.' },
+        tipo: {
+          type: 'string',
+          enum: ['PROFESSIONAL', 'ASSISTANT'],
+          description: 'PROFESSIONAL para quem executa o serviço, ASSISTANT para quem auxilia.',
+        },
+        confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
+      },
+      required: ['nome', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'criar_habilidade',
+    description:
+      'Cria uma habilidade da equipe (corte, coloração, mechas...) e liga a quem a faz. Use quando o serviço que ele citou exige uma habilidade que ainda não existe. A equipe tem que existir antes: sem ninguém cadastrado, esta ferramenta recusa e te devolve a pergunta certa.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome da habilidade, como ele falou.' },
+        quemFaz: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Os nomes de quem faz, como já estão cadastrados. Deixe vazio para valer para a equipe inteira — que é o certo no salão de uma pessoa só.',
+        },
+        confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
+      },
+      required: ['nome', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'definir_horario_funcionamento',
+    description:
+      'Define os dias e horários do salão. Manda a SEMANA INTEIRA de uma vez: esta ferramenta substitui o que havia, não acrescenta. Dia: 0 é domingo, 6 é sábado. Só os dias em que abre.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        dias: {
+          type: 'array',
+          description: 'Um item por dia em que o salão abre.',
+          items: {
+            type: 'object',
+            properties: {
+              dia: { type: 'number', description: '0 domingo, 1 segunda ... 6 sábado.' },
+              abre: { type: 'string', description: 'Hora de abrir, formato HH:MM.' },
+              fecha: { type: 'string', description: 'Hora de fechar, formato HH:MM.' },
+            },
+            required: ['dia', 'abre', 'fecha'],
+            additionalProperties: false,
+          },
+        },
+        confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
+      },
+      required: ['dias', 'confianca'],
+      additionalProperties: false,
+    },
+  },
   {
     name: 'resumo',
     description:
@@ -628,6 +722,134 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para tirar do catalogo agora (${String(erro).slice(0, 120)}).`;
+            }
+          } else if (chamada.name === 'registrar_identidade') {
+            const args = chamada.input as { nome: string; endereco?: string; confianca: number };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Pergunte o nome e o endereco de novo.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_registrar_identidade', {
+                  p_tenant_id: tenantId,
+                  p_nome: args.nome,
+                  p_endereco: typeof args.endereco === 'string' ? args.endereco : null,
+                })) as { ok?: boolean; reason?: string; salao?: string; endereco?: string } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  texto = r.endereco
+                    ? `Gravei: salao "${r.salao}", endereco "${r.endereco}".`
+                    : `Gravei o nome "${r.salao}". Falta o endereco -- pergunte a rua, numero, bairro e cidade.`;
+                } else if (r?.reason === 'ENDERECO_CURTO_DEMAIS') {
+                  texto =
+                    'NAO gravei o endereco: veio curto demais. Cliente sai para a rua com ele. Peca rua, numero, bairro e cidade.';
+                } else {
+                  texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
+            }
+          } else if (chamada.name === 'criar_membro_equipe') {
+            const args = chamada.input as { nome: string; tipo?: string; confianca: number };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO cadastrei: confianca abaixo de 0,75. Confirme o nome com ele.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_criar_membro_equipe', {
+                  p_tenant_id: tenantId,
+                  p_nome: args.nome,
+                  p_tipo: args.tipo === 'ASSISTANT' ? 'ASSISTANT' : 'PROFESSIONAL',
+                })) as { ok?: boolean; reason?: string; pessoa?: string } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  texto = `Cadastrei ${r.pessoa} na equipe. Se tiver mais gente, me fale um por vez.`;
+                } else if (r?.reason === 'PESSOA_JA_EXISTE') {
+                  texto = `NAO cadastrei: ${args.nome} ja esta na equipe.`;
+                } else {
+                  texto = `NAO cadastrei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para cadastrar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
+            }
+          } else if (chamada.name === 'criar_habilidade') {
+            const args = chamada.input as { nome: string; quemFaz?: string[]; confianca: number };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO criei: confianca abaixo de 0,75. Confirme com ele.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_criar_habilidade', {
+                  p_tenant_id: tenantId,
+                  p_nome: args.nome,
+                  p_quem_faz: Array.isArray(args.quemFaz) && args.quemFaz.length ? args.quemFaz : null,
+                })) as {
+                  ok?: boolean;
+                  reason?: string;
+                  habilidade?: string;
+                  quemFaz?: string[];
+                  pergunteAntes?: string;
+                  naoEncontrados?: string[];
+                } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  texto =
+                    `Criei a habilidade "${r.habilidade}", feita por ${(r.quemFaz ?? []).join(', ')}. ` +
+                    'Agora da para criar servico que use ela.';
+                } else if (r?.reason === 'SALAO_SEM_EQUIPE') {
+                  // A recusa que ensina a ordem: equipe -> habilidade -> servico.
+                  texto =
+                    'NAO criei: nao ha ninguem cadastrado no salao ainda, e habilidade sem quem a faca ' +
+                    `nao serve para nada. Pergunte antes: "${r.pergunteAntes}"`;
+                } else if (r?.reason === 'NINGUEM_RECONHECIDO') {
+                  texto =
+                    `NAO criei: nao achei ${(r.naoEncontrados ?? []).join(', ')} na equipe. ` +
+                    'Cadastre a pessoa primeiro com `criar_membro_equipe`.';
+                } else {
+                  texto = `NAO criei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para criar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
+            }
+          } else if (chamada.name === 'definir_horario_funcionamento') {
+            const args = chamada.input as {
+              dias: { dia: number; abre: string; fecha: string }[];
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Confirme os dias e horarios com ele.';
+            } else {
+              try {
+                const r = (await rpc(
+                  supabaseUrl,
+                  serviceKey,
+                  'onboarding_definir_horario_funcionamento',
+                  { p_tenant_id: tenantId, p_dias: args.dias ?? [] }
+                )) as {
+                  ok?: boolean;
+                  reason?: string;
+                  horarios?: { dia: string; abre: string; fecha: string }[];
+                } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  const lista = (r.horarios ?? [])
+                    .map((h) => `${h.dia} ${h.abre.slice(0, 5)}-${h.fecha.slice(0, 5)}`)
+                    .join(', ');
+                  texto = `Gravei o horario: ${lista}. Nos dias que nao estao aqui o salao fica fechado -- confirme com ele.`;
+                } else if (r?.reason === 'HORARIO_INVERTIDO') {
+                  texto = 'NAO gravei: tem dia com a hora de fechar antes da de abrir. Confirme com ele.';
+                } else if (r?.reason === 'DIAS_NAO_INFORMADOS') {
+                  texto = 'NAO gravei: voce nao mandou dia nenhum. Pergunte que dias o salao abre.';
+                } else {
+                  texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
             }
           } else if (chamada.name === 'resumo') {
             try {
