@@ -43,6 +43,8 @@ type Decisao = {
   action: 'REPLY' | 'HANDOFF';
   messages: string[];
   reason: string;
+  palpiteModulo?: string;
+  palpiteEscopo?: string;
 };
 
 type Pendencia = { chave: string; modulo: string; pergunta: string; contexto: string };
@@ -304,8 +306,39 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description: 'As mensagens para o dono, uma por balão. Vazio quando for HANDOFF.',
         },
         reason: { type: 'string', description: 'Uma frase para o painel. Nunca é enviada.' },
+        // O PALPITE DE CLASSIFICAÇÃO, E POR QUE ELE É SEU E NÃO DE UM HUMANO.
+        //
+        // Quando você faz HANDOFF, o que o dono disse é guardado com as
+        // palavras dele. Guardar sem dizer DE QUE ASSUNTO É empurra o trabalho
+        // de ler tudo de novo para uma pessoa, e foi assim que estes campos
+        // ficaram nulos desde que nasceram. Você acabou de ler a frase: o
+        // palpite custa nada agora e economiza a leitura depois.
+        //
+        // Palpite errado não quebra nada: isto é fila de revisão, não cadastro.
+        palpiteModulo: {
+          type: 'string',
+          enum: [
+            'IDENTIDADE',
+            'HORARIOS',
+            'EQUIPE',
+            'AGENDA',
+            'SERVICOS',
+            'PRECO',
+            'COR',
+            'REGRAS',
+            'OUTRO',
+          ],
+          description:
+            'De que assunto era o pedido dele. Use OUTRO só quando nenhum couber. Em REPLY, mande OUTRO.',
+        },
+        palpiteEscopo: {
+          type: 'string',
+          enum: ['OFICIO', 'NEGOCIO', 'VOZ', 'INDEFINIDO'],
+          description:
+            'OFICIO: vale para qualquer salão de beleza. NEGOCIO: é uma escolha deste salão. VOZ: é o jeito desta dona falar. Em REPLY, mande INDEFINIDO.',
+        },
       },
-      required: ['action', 'messages', 'reason'],
+      required: ['action', 'messages', 'reason', 'palpiteModulo', 'palpiteEscopo'],
       additionalProperties: false,
     },
   },
@@ -1042,8 +1075,19 @@ Deno.serve(async (req: Request) => {
             p_tenant_id: tenantId,
             p_conversation_id: item.conversation_id,
             p_palavras: ultimaDoDono,
-            p_modulo: null,
-            p_escopo: null,
+            // 23/09/2026: estes dois iam `null` fixo desde que a tabela
+            // nasceu. Guardar a frase do dono sem dizer de que assunto e
+            // empurra para uma pessoa a leitura que o modelo ja fez.
+            // 'OUTRO'/'INDEFINIDO' viram null: palpite vazio e ausencia de
+            // palpite, nao um palpite chamado "outro".
+            p_modulo:
+              decisao.palpiteModulo && decisao.palpiteModulo !== 'OUTRO'
+                ? decisao.palpiteModulo
+                : null,
+            p_escopo:
+              decisao.palpiteEscopo && decisao.palpiteEscopo !== 'INDEFINIDO'
+                ? decisao.palpiteEscopo
+                : null,
             p_porque: decisao.reason ?? 'HANDOFF sem motivo escrito',
           });
         } catch (erro) {
