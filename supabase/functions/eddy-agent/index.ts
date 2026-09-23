@@ -1,7 +1,18 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
-import { camposCorrompidos } from '../whatsapp-agent/resposta-limpa.ts';
+// `semEscapes` chega aqui com dois dias de atraso, e isso tem historia.
+//
+// Em 16/09 uma cliente leu "Luzes é uma família" no WhatsApp: o
+// modelo escapou o proprio JSON e o escape foi para a tela. O conserto foi
+// feito, testado, e aplicado SO na atendente das clientes -- a importacao
+// daqui ficou com uma funcao das tres. Em 23/09, 11:07, a dona leu
+// "que você passar" e "a duração pra fechar". O mesmo bug, sete
+// dias depois, no agente ao lado.
+//
+// LICAO: conserto que mora num modulo compartilhado so vale para quem importa.
+// Corrigir um agente e declarar o bug morto e contar metade.
+import { camposCorrompidos, semEscapes } from '../whatsapp-agent/resposta-limpa.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -1053,7 +1064,7 @@ Deno.serve(async (req: Request) => {
       if (!decisao) throw new Error(motivoFalha ?? 'SEM_DECISAO');
 
       const textos = (decisao.messages ?? [])
-        .map((t) => (typeof t === 'string' ? t.trim() : ''))
+        .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
         .filter((t) => t.length > 0)
         .slice(0, 3)
         .map((t) => t.replace(/\s*—\s*/g, ' - ').replace(/\s*–\s*/g, ' - '));

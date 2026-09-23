@@ -4,6 +4,7 @@ import {
   camposCorrompidos,
   semEscapes,
   temEscapeLiteral,
+  temJsonVazado,
   semMarcacao,
   temMarcacao,
 } from '../../../supabase/functions/whatsapp-agent/resposta-limpa';
@@ -121,5 +122,40 @@ describe('o escape do JSON escrito como letra', () => {
 
   it('quebra de linha escrita como letra vira quebra de linha', () => {
     expect(semEscapes('primeira\\nsegunda')).toBe('primeira\nsegunda');
+  });
+});
+
+// O JSON VAZOU PARA DENTRO DA FRASE (23/09/2026, 11:06).
+//
+// Caso real: o Eddy mandou isto para a dona do salao, e ela percebeu antes da
+// gente. Nao ha tag nenhuma aqui -- por isso `temMarcacao` deixava passar e a
+// frase quebrada chegava ao WhatsApp dela.
+const FRASE_COM_JSON_VAZADO =
+  'Fechou, vou usar sempre "a partir de" quando voc" pra n","](Pergunta pura para não travar)';
+
+describe('estrutura do JSON vazando no texto', () => {
+  it('pega o caso real das 11:06, que a marcação de ferramenta não pegava', () => {
+    expect(temMarcacao(FRASE_COM_JSON_VAZADO)).toBe(false);
+    expect(temJsonVazado(FRASE_COM_JSON_VAZADO)).toBe(true);
+    expect(camposCorrompidos({ messages: [FRASE_COM_JSON_VAZADO] })).toContain('messages');
+  });
+
+  it('aspas de gente não são JSON: a dona escreve "a partir de" o tempo todo', () => {
+    const daDona = 'Quando for preço, escreve sempre "a partir de", pode ser?';
+    expect(temJsonVazado(daDona)).toBe(false);
+    expect(camposCorrompidos({ messages: [daDona] })).toEqual([]);
+  });
+
+  it('aspas colada em vírgula, colchete ou chave é esqueleto de JSON', () => {
+    expect(temJsonVazado('primeira","segunda')).toBe(true);
+    expect(temJsonVazado('fim da frase"]')).toBe(true);
+    expect(temJsonVazado('fim da frase"}')).toBe(true);
+    expect(temJsonVazado('{"messages')).toBe(true);
+  });
+
+  it('texto normal com pontuação passa limpo', () => {
+    const normal =
+      'Progressiva com formol a partir de R$ 200 (2h30), Violet a partir de R$ 270 (2h50).';
+    expect(temJsonVazado(normal)).toBe(false);
   });
 });

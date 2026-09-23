@@ -39,6 +39,40 @@ export function temMarcacao(texto: unknown): boolean {
   return typeof texto === 'string' && MARCACAO.test(texto);
 }
 
+// O JSON DA CHAMADA VAZOU PARA DENTRO DA FRASE.
+//
+// 23/09, 11:06, conversa do Eddy com a dona. Ela leu isto:
+//
+//   Fechou, vou usar sempre "a partir de" quando voc" pra n","](Pergunta
+//   pura para nao travar)
+//
+// Parece a mesma quebra la de cima e NAO e: nao ha tag nenhuma, entao
+// `temMarcacao` passou batido e a frase saiu. O que vazou foi a estrutura do
+// proprio JSON -- `","` e `"]` sao o separador e o fechamento do array de
+// mensagens -- junto com uma anotacao interna do modelo que nunca deveria ter
+// virado texto.
+//
+// POR QUE DETECTAR E NAO REMENDAR: aqui falta pedaco da frase ("quando voc",
+// "pra n"). Costurar o que sobrou entregaria uma mensagem incompleta com cara
+// de inteira, que e pior que nao mandar. Esta funcao so acusa; quem decide o
+// que fazer e `camposCorrompidos`, e para `messages` a decisao e sempre
+// refazer o turno.
+
+/**
+ * Delimitadores de JSON no meio do texto.
+ *
+ * So estes, e o corte e deliberado. Aspas sozinha nao entra: portugues usa
+ * aspas o tempo todo, e a propria dona escreve `a partir de` entre elas. O que
+ * nao acontece numa frase e aspas COLADA em virgula, colchete ou chave -- isso
+ * e o esqueleto do JSON, nao pontuacao.
+ */
+const JSON_VAZADO = /","|",\s*"|"\]|"\}|\{"|\["/;
+
+/** O texto carrega pedaco da estrutura do JSON onde deveria haver frase. */
+export function temJsonVazado(texto: unknown): boolean {
+  return typeof texto === 'string' && JSON_VAZADO.test(texto);
+}
+
 type CamposDaDecisao = {
   messages?: unknown;
   ownerQuestion?: unknown;
@@ -56,10 +90,10 @@ export function camposCorrompidos(decisao: CamposDaDecisao | null | undefined): 
   const sujos: string[] = [];
 
   const mensagens = Array.isArray(decisao.messages) ? decisao.messages : [];
-  if (mensagens.some((m) => temMarcacao(m))) sujos.push('messages');
+  if (mensagens.some((m) => temMarcacao(m) || temJsonVazado(m))) sujos.push('messages');
 
   for (const campo of ['ownerQuestion', 'contextSummary', 'reason'] as const) {
-    if (temMarcacao(decisao[campo])) sujos.push(campo);
+    if (temMarcacao(decisao[campo]) || temJsonVazado(decisao[campo])) sujos.push(campo);
   }
   return sujos;
 }
