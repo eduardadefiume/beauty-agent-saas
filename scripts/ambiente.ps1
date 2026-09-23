@@ -5,6 +5,10 @@
 # sobre o que a coisa e ja e um acidente esperando acontecer; dois bancos
 # parecidos, sem nada na tela dizendo em qual voce esta, seria pior.
 #
+# O nome foi corrigido na mesma noite (beleza-DEV / beleza-PRODUCAO), mas este
+# script continua existindo: nome certo nao impede `db push` distraido, porque
+# o CLI nao mostra nome nenhum antes de aplicar.
+#
 # O `supabase db push` nao pergunta para onde vai: ele usa o projeto que esta
 # em supabase/.temp/project-ref, escrito pelo ultimo `link` que voce rodou --
 # que pode ter sido ontem. Este script existe para essa pergunta ter resposta
@@ -23,9 +27,13 @@ param([string]$Alvo = '')
 $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $PSScriptRoot
 
+# 23/09/2026, a noite: os projetos foram renomeados no painel do Supabase para
+# `beleza-DEV` e `beleza-PRODUCAO`. Antes disso os nomes estavam invertidos, e
+# nesse mesmo dia isso fez uma sessao inteira concluir que o push pendente era
+# do dev quando era da producao. Agora o nome concorda com o ref.
 $AMBIENTES = @{
-  'dev'      = @{ ref = 'dboygmtrzgsfcmoquegp'; nome = 'DEV       (agente-beleza-saas-prod-sp)'; cor = 'Green' }
-  'producao' = @{ ref = 'hjghwryhphgusefyivbl'; nome = 'PRODUCAO  (agente-beleza-saas-dev-sp)';  cor = 'Red'   }
+  'dev'      = @{ ref = 'dboygmtrzgsfcmoquegp'; nome = 'DEV       (beleza-DEV)';       cor = 'Green' }
+  'producao' = @{ ref = 'hjghwryhphgusefyivbl'; nome = 'PRODUCAO  (beleza-PRODUCAO)';  cor = 'Red'   }
 }
 
 function Mostrar-Atual {

@@ -4,42 +4,78 @@
 `agente-beleza-saas-dev-sp` e rodava **a produção inteira**: o salão do
 William, o WhatsApp no ar, 69 mil registros.
 
-| o que é | nome no Supabase | ref | região |
-|---|---|---|---|
-| **PRODUÇÃO** | `agente-beleza-saas-dev-sp` | `hjghwryhphgusefyivbl` | sa-east-1 |
-| **DEV** | `agente-beleza-saas-prod-sp` | `dboygmtrzgsfcmoquegp` | sa-east-1 |
+| o que é      | nome no Supabase  | ref                    | região    |
+| ------------ | ----------------- | ---------------------- | --------- |
+| **PRODUÇÃO** | `beleza-PRODUCAO` | `hjghwryhphgusefyivbl` | sa-east-1 |
+| **DEV**      | `beleza-DEV`      | `dboygmtrzgsfcmoquegp` | sa-east-1 |
 
-Sim, os nomes estão trocados. Foi decisão consciente em 23/09: renomear é um
-clique na tela do Supabase, mas **mover a produção** de projeto significa
-migrar 69 mil linhas, repontar o webhook da Meta, recriar cinco segredos de
-vault e redeployar sete Edge Functions — na semana da entrega ao William.
+## Os nomes já mentiram, e custou caro
 
-Renomeie na tela quando sobrar uma hora calma. Até lá, **olhe o `ref`, nunca o
-nome.**
+Até a noite de **23/09/2026** os nomes estavam **invertidos**: a produção se
+chamava `agente-beleza-saas-dev-sp` e o dev, `agente-beleza-saas-prod-sp`.
+Adiamos o rename porque parecia cosmético.
+
+Não era. No mesmo dia isso fez uma sessão inteira ler o nome em vez do `ref`,
+concluir que o `db push` pendente era do dev quando era da **produção**, e
+escrever essa inversão dentro de uma migration. A Duda também parou no meio de
+uma promoção para perguntar _"está dev ou produção?"_ — com razão.
+
+Renomear foi um clique e **não moveu dado nenhum**. O que seria caro é mover a
+produção de projeto: 183 mensagens, repontar o webhook da Meta, recriar cinco
+segredos de vault e redeployar sete Edge Functions. Isso continua sem valer a
+pena, e por isso os `ref` são os mesmos de sempre.
+
+**Mesmo com os nomes certos: confira o `ref`.** É ele que o CLI usa, e é o
+único que não depende de ninguém ter lembrado de atualizar um rótulo.
+
+## Sobram dois projetos pausados, e não são estes
+
+A conta tem **quatro** projetos, não dois. Os outros dois nasceram em 04/08 e
+estão `INACTIVE`:
+
+| nome                      | ref                    | região       |
+| ------------------------- | ---------------------- | ------------ |
+| `agente-beleza-saas-dev`  | `mhlnhtvvleprnamxrsoi` | ca-central-1 |
+| `agente-beleza-saas-prod` | `vwtqgukockqaiptdqwtt` | us-west-2    |
+
+Estão vazios e fora do Brasil. Não apague por impulso — confira antes se algo
+ainda aponta para eles (a política de privacidade já apontou para um deles, e
+ficou fora do ar sem ninguém ver).
 
 ## Como trocar de alvo
 
-```powershell
-.\scripts\ambiente.ps1            # onde estou?
-.\scripts\ambiente.ps1 dev        # aponta pro DEV
-.\scripts\ambiente.ps1 producao   # aponta pra PRODUÇÃO (pede confirmação)
 ```
+E:\BeautyAgentSaaS\beauty-agent-saas-oficial\scripts\ambiente.cmd            onde estou?
+E:\BeautyAgentSaaS\beauty-agent-saas-oficial\scripts\ambiente.cmd dev        aponta pro DEV
+E:\BeautyAgentSaaS\beauty-agent-saas-oficial\scripts\ambiente.cmd producao   pede confirmação
+```
+
+**Caminho absoluto, e `.cmd` em vez de `.ps1`.** O terminal daqui abre em
+`C:\Windows\System32`: caminho relativo falha com _"O sistema não pode
+encontrar o caminho especificado"_, e `.ps1` colado no `cmd` também. Os dois
+aconteceram em 23/09 — o segundo bem depois de o `.cmd` existir justamente
+para resolver isso.
+
+O caso perigoso não é o comando que falha. É o `db push` logo em seguida, que
+roda assim mesmo — **no alvo que estava apontado antes**. Se o push para
+produção disser _"Remote database is up to date"_, o alvo não trocou.
 
 O `supabase db push` **não pergunta para onde vai**. Ele usa o que está em
 `supabase/.temp/project-ref`, escrito pelo último `link` — que pode ter sido
-ontem. Por isso o script existe.
+ontem. Por isso o script existe, e continua existindo mesmo com os nomes já
+corrigidos: nome certo no painel não aparece no terminal na hora do push.
 
-**O repouso é o dev.** Depois de mexer na produção, volte:
-`.\scripts\ambiente.ps1 dev`. Assim um push distraído cai no lugar barato.
+**O repouso é o dev.** Depois de mexer na produção, volte com
+`ambiente.cmd dev`. Assim um push distraído cai no lugar barato.
 
 ## O fluxo
 
 ```
 1. escrevo a migration
-2. .\scripts\ambiente.ps1 dev      →  npx supabase db push
+2. ambiente.cmd dev       →  npx supabase db push
 3. testo no dev
-4. .\scripts\ambiente.ps1 producao →  npx supabase db push
-5. .\scripts\ambiente.ps1 dev      (volta pro repouso)
+4. ambiente.cmd producao  →  npx supabase db push
+5. ambiente.cmd dev       (volta pro repouso)
 ```
 
 ## O que o DEV ainda NÃO tem, e é de propósito
