@@ -130,6 +130,8 @@ begin
   -- ---------------------------------------------------------------------
   -- Três atendimentos, um por caso.
   -- ---------------------------------------------------------------------
+  -- `correlation_id` exige no mínimo 8 caracteres: nomes curtos demais são
+  -- recusados pela restrição da tabela, não pelo agendador.
   insert into app.appointments (
     tenant_id, unit_id, configuration_version_id, service_id,
     starts_at, ends_at, status, plan, correlation_id,
@@ -138,7 +140,7 @@ begin
     v_tenant, v_unidade, v_versao, v_servico,
     ((v_hoje + 1) + time '14:00') at time zone v_tz,
     ((v_hoje + 1) + time '15:00') at time zone v_tz,
-    'CONFIRMED', '{"steps":[]}'::jsonb, 's10-amanha',
+    'CONFIRMED', '{"steps":[]}'::jsonb, 's10-caso-amanha',
     'Rayana Teste', '5500000001000'
   ) returning id into v_ap_amanha;
 
@@ -150,7 +152,7 @@ begin
     v_tenant, v_unidade, v_versao, v_servico,
     (v_hoje + time '23:00') at time zone v_tz,
     (v_hoje + time '23:30') at time zone v_tz,
-    'CONFIRMED', '{"steps":[]}'::jsonb, 's10-hoje',
+    'CONFIRMED', '{"steps":[]}'::jsonb, 's10-caso-hoje-mesmo',
     'Rayana Teste', '5500000001000'
   ) returning id into v_ap_hoje;
 
@@ -162,7 +164,7 @@ begin
     v_tenant, v_unidade, v_versao, v_servico,
     ((v_hoje + 3) + time '14:00') at time zone v_tz,
     ((v_hoje + 3) + time '15:00') at time zone v_tz,
-    'CONFIRMED', '{"steps":[]}'::jsonb, 's10-longe',
+    'CONFIRMED', '{"steps":[]}'::jsonb, 's10-caso-tres-dias',
     'Rayana Teste', '5500000001000'
   ) returning id into v_ap_longe;
 
