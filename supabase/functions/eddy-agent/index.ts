@@ -208,6 +208,36 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   // "anotei" — mentindo, porque não havia ferramenta. Na mensagem seguinte a
   // pergunta voltava. Estas quatro fecham o ciclo.
   {
+    name: 'definir_o_que_o_agente_faz',
+    description:
+      'A PRIMEIRA coisa da conversa: grava o que o dono quer que o agente faça pelas clientes dele. Responder é sempre sim. Marcar horário é a escolha dele — e sinal e política de cancelamento só existem para quem marca.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        marcaHorario: {
+          type: 'boolean',
+          description: 'true se ele quer que o agente marque o horário na agenda; false se é só para responder.',
+        },
+        pedeSinal: {
+          type: 'boolean',
+          description: 'true se ele quer pedir um sinal para confirmar o horário. Só com marcaHorario.',
+        },
+        politicaDeCancelamento: {
+          type: 'boolean',
+          description: 'true se ele quer regra de cancelamento. Só com marcaHorario.',
+        },
+        lembraDaVespera: {
+          type: 'boolean',
+          description:
+            'true se ele PEDIU lembrete de véspera. Ainda não está disponível — grave o pedido e diga a ele que você avisa quando liberar, sem prometer data.',
+        },
+        confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
+      },
+      required: ['marcaHorario', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'registrar_identidade',
     description:
       'Grava o nome do salão e o endereço. É a primeira pendência de um salão novo. Endereço pela metade não serve: a cliente sai para a rua com ele — ou ele dita inteiro, ou você pergunta de novo.',
@@ -1001,6 +1031,62 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para tirar do catalogo agora (${String(erro).slice(0, 120)}).`;
+            }
+          } else if (chamada.name === 'definir_o_que_o_agente_faz') {
+            const args = chamada.input as {
+              marcaHorario: boolean;
+              pedeSinal?: boolean;
+              politicaDeCancelamento?: boolean;
+              lembraDaVespera?: boolean;
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Pergunte a ele de novo, com as duas opcoes.';
+            } else {
+              try {
+                const r = (await rpc(
+                  supabaseUrl,
+                  serviceKey,
+                  'onboarding_definir_o_que_o_agente_faz',
+                  {
+                    p_tenant_id: tenantId,
+                    p_marca_horario: args.marcaHorario === true,
+                    p_pede_sinal: args.pedeSinal === true,
+                    p_cancelamento: args.politicaDeCancelamento === true,
+                    p_lembra_vespera: args.lembraDaVespera === true,
+                  }
+                )) as {
+                  ok?: boolean;
+                  reason?: string;
+                  marcaHorario?: boolean;
+                  pedeSinal?: boolean;
+                  politicaDeCancelamento?: boolean;
+                  lembreteAindaNaoDisponivel?: boolean;
+                  comoResolver?: string;
+                } | null;
+
+                if (r?.ok) {
+                  criados += 1;
+                  const partes = ['responder duvida de preco, horario e o que o salao faz'];
+                  if (r.marcaHorario) partes.push('marcar horario na agenda');
+                  if (r.pedeSinal) partes.push('pedir sinal para confirmar');
+                  if (r.politicaDeCancelamento) partes.push('aplicar a regra de cancelamento');
+                  texto =
+                    `Gravei: o agente vai ${partes.join(', ')}. ` +
+                    (r.marcaHorario
+                      ? 'Como ele vai marcar, voce VAI precisar saber como cada profissional trabalha e quanto tempo cada servico leva, incluindo pausa.'
+                      : 'Como ele NAO vai marcar, nao pergunte disponibilidade por profissional nem tempo de pausa: nao serve para nada neste salao.') +
+                    (r.lembreteAindaNaoDisponivel
+                      ? ' Ele pediu lembrete de vespera: diga que ainda nao esta liberado, que voce avisa quando estiver, e NAO prometa data.'
+                      : '');
+                } else if (r?.reason === 'SINAL_E_CANCELAMENTO_PRECISAM_DE_AGENDA') {
+                  texto = `NAO gravei: ${r.comoResolver}`;
+                } else {
+                  texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
+              }
             }
           } else if (chamada.name === 'registrar_identidade') {
             const args = chamada.input as {
