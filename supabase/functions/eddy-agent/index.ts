@@ -515,6 +515,24 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'responder_cor',
+    description:
+      'Grava a resposta dele a UMA das perguntasDeCor da pendência CORES (até quantos tons a tinta clareia, teste de mecha, tempo e preço de matização...). É o que a atendente usa para orçar cor. Chame uma vez por resposta, depois que ele confirmar o que você entendeu.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        chave: { type: 'string', description: 'A chave da pergunta, exatamente como na lista.' },
+        valor: {
+          type: 'number',
+          description:
+            'NIVEIS: número de tons. MINUTOS: minutos. REAIS: reais, 0 se já está incluso. SIM_NAO: 1 sim, 0 não.',
+        },
+      },
+      required: ['chave', 'valor'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'guardar_conhecimento',
     description:
       'Guarda, com as palavras dele, o que o dono ensinou e que NENHUMA outra ferramenta grava: uma regra solta ("não corto cabelo curto"), uma preferência, um jeito de falar com as clientes, o que uma foto mostra ("essa é um loiro iluminado"). Aprender é livre: não tem régua de confiança, e depois alguém transforma isto em serviço, preço ou regra. Use sempre que ele ensinar algo que não coube em outra ferramenta, em vez de só dizer que anotou. Só diga "anotei" depois de receber "Guardado".',
@@ -1674,6 +1692,24 @@ Deno.serve(async (req: Request) => {
               } catch (erro) {
                 texto = `Nao deu para gravar a regra agora (${String(erro).slice(0, 120)}).`;
               }
+            }
+          } else if (chamada.name === 'responder_cor') {
+            const args = chamada.input as { chave: string; valor: number };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_responder_cor', {
+                p_tenant_id: tenantId,
+                p_chave: args.chave,
+                p_valor: args.valor,
+                p_conversation_id: item.conversation_id,
+              })) as { ok?: boolean; reason?: string; restantes?: number } | null;
+              if (r?.ok) {
+                anotadas += 1;
+                texto = `Gravado: ${args.chave} = ${args.valor}. Faltam ${r.restantes ?? '?'} perguntas de cor.`;
+              } else {
+                texto = `NAO gravei ${args.chave}: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
             }
           } else if (chamada.name === 'guardar_conhecimento') {
             // APRENDER E LIVRE, E ATE 24/09 SO ACONTECIA QUANDO ELE DESISTIA.
