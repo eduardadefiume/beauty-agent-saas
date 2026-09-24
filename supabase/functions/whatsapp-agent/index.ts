@@ -94,8 +94,13 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description:
             'Quantos dias procurar a partir dali. Use 1 para um dia específico, 7 para "essa semana".',
         },
+        aPartirDaHora: {
+          type: 'string',
+          description:
+            'Hora a partir da qual procurar, HH:MM, quando a cliente pediu uma hora ("às 10h" -> "10:00", "à tarde" -> "13:00"). Vazio ("") quando ela não pediu hora.',
+        },
       },
-      required: ['servicoId', 'aPartirDe', 'dias'],
+      required: ['servicoId', 'aPartirDe', 'dias', 'aPartirDaHora'],
       additionalProperties: false,
     },
   },
@@ -842,7 +847,18 @@ async function decidir(
       let texto: string;
 
       if (chamada.name === 'consultar_horarios') {
-        const args = chamada.input as { servicoId: string; aPartirDe: string; dias: number };
+        const args = chamada.input as {
+          servicoId: string;
+          aPartirDe: string;
+          dias: number;
+          aPartirDaHora?: string;
+        };
+        // A busca devolve os primeiros horarios livres a partir do inicio. 24/09:
+        // comecando a meia-noite, "sabado as 10h" vinha 08:00..09:45 e a
+        // atendente disse a cliente que 10h nao tinha -- com o sabado vazio.
+        const hora = /^([01]\d|2[0-3]):[0-5]\d$/.test(args.aPartirDaHora ?? '')
+          ? (args.aPartirDaHora as string)
+          : '00:00';
         // A troca silenciosa de servico e o erro que esta consulta existe para
         // pegar: mesmo horario, servico com outra duracao, agenda responde
         // outra coisa. Nao bloqueio -- a cliente pode ter mudado de ideia --
@@ -859,7 +875,7 @@ async function decidir(
             tenantId: ambiente.tenantId,
             unitId: ambiente.unitId,
             serviceId: args.servicoId,
-            searchFrom: `${args.aPartirDe}T00:00:00-03:00`,
+            searchFrom: `${args.aPartirDe}T${hora}:00-03:00`,
             searchDays: Math.min(Math.max(args.dias ?? 7, 1), 30),
             clientPhoneDigits: ambiente.clientePhone,
             clientName: ambiente.clienteNome,
@@ -922,6 +938,8 @@ async function decidir(
                       `${i + 1}. ${horarioLocal(c.startMs)} (termina ${horarioLocal(c.endMs)})`
                   )
                   .join('\n') +
+                '\n\nEsta lista são só os PRIMEIROS horários livres a partir do início da busca, não a agenda inteira. ' +
+                'Horário que não aparece aqui NÃO quer dizer ocupado: se a cliente pediu outro, consulte de novo com aPartirDaHora nele antes de dizer que não tem.' +
                 '\n\nISTO AINDA NÃO É UM AGENDAMENTO. Só existe agendamento depois de reservar_horario.');
         }
       } else if (chamada.name === 'reservar_horario') {
