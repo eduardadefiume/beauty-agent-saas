@@ -577,6 +577,11 @@ async function decidir(
   let jaCobreiOProximoPasso = false;
   let jaCobreiACorrupcao = false;
   let jaCobreiOHorarioPrematuro = false;
+  // "Nao tem" so depois de consultar. 24/09/2026: a cliente pediu 10h duas
+  // vezes e ouviu "ja olhei de novo, 10h nao tem mesmo" -- sem consulta
+  // nenhuma naquele turno, com o sabado vazio.
+  let consultouNesteTurno = false;
+  let jaCobreiONaoTem = false;
   let jaCobreiARepeticao = false;
   // A conversa inteira, as duas vozes. Sem a voz DELA nao da para saber se o
   // procedimento foi escolhido ou se foi o agente que inventou.
@@ -687,6 +692,33 @@ async function decidir(
                   '. Cada campo tem que conter SO o texto em portugues, sem nenhuma tag. ' +
                   'Chame atender de novo, com os mesmos campos escritos limpos.'
                 : 'Ignorado: refaca junto com a chamada de atender.',
+          })),
+        });
+        continue;
+      }
+
+      const NEGA_HORARIO =
+        /\bn[ãa]o\s+(tenho|tem|temos|consigo|h[áa])\b[^.!?\n]{0,40}\b\d{1,2}\s*(h\b|h\d{2}|:\d{2})|\b\d{1,2}\s*(h\b|h\d{2}|:\d{2})[^.!?\n]{0,30}\bn[ãa]o\s+(tenho|tem|temos|d[áa])\b/i;
+      if (
+        decisao.action === 'REPLY' &&
+        !consultouNesteTurno &&
+        !jaCobreiONaoTem &&
+        volta < MAX_VOLTAS - 1 &&
+        (Array.isArray(decisao.messages) ? decisao.messages : []).some((m) =>
+          NEGA_HORARIO.test(String(m ?? ''))
+        )
+      ) {
+        jaCobreiONaoTem = true;
+        mensagens.push({ role: 'assistant', content: resposta.content });
+        mensagens.push({
+          role: 'user',
+          content: chamadas.map((c) => ({
+            type: 'tool_result' as const,
+            tool_use_id: c.id,
+            content:
+              'NAO ENVIEI. Voce disse que um horario nao tem sem consultar a agenda neste turno. ' +
+              'A lista que voce tinha e so dos primeiros livres. Chame consultar_horarios com ' +
+              'aPartirDaHora no horario que ela pediu e responda com o que a agenda disser.',
           })),
         });
         continue;
@@ -852,6 +884,7 @@ async function decidir(
       let texto: string;
 
       if (chamada.name === 'consultar_horarios') {
+        consultouNesteTurno = true;
         const args = chamada.input as {
           servicoId: string;
           aPartirDe: string;
