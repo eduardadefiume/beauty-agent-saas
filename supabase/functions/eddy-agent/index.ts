@@ -1965,6 +1965,11 @@ Deno.serve(async (req: Request) => {
                     faltas;
                 } else if (r?.reason === 'NADA_PARA_PUBLICAR') {
                   texto = 'NAO publiquei: nao ha nada mudado no rascunho. Diga isso a ele.';
+                } else if (r?.reason === 'DONO_SEM_EMAIL') {
+                  texto =
+                    'NAO publiquei: o cadastro esta pronto, mas o numero dele ainda nao esta ligado ao ' +
+                    'e-mail de acesso ao painel, e publicar exige isso. Diga em uma linha que a equipe da ' +
+                    'EDDigital libera o acesso e publica. NAO diga que o numero nao e reconhecido: ele e.';
                 } else if (r?.reason === 'NAO_E_O_DONO') {
                   texto =
                     'NAO publiquei: este numero nao esta cadastrado como dono deste salao. Nao insista e nao explique a trava.';
