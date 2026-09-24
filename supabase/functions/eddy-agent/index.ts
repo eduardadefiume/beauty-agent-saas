@@ -41,7 +41,11 @@ import { camposCorrompidos, semEscapes } from '../whatsapp-agent/resposta-limpa.
 const MODELO = 'claude-sonnet-5';
 const ESFORCO = 'low' as const;
 const CACHE_TTL = '1h' as const;
-const MAX_VOLTAS = 4;
+// 8, e a ultima volta so tem `atender`. 24/09/2026, teste com dono-robo: ele
+// mandou onze servicos num audio, o Eddy gastou as quatro voltas criando e o
+// turno morreu em SEM_DECISAO -- servicos gravados e o dono sem resposta.
+// Lote grande e o normal de quem configura por audio.
+const MAX_VOLTAS = 8;
 
 type Aguardando = {
   conversation_id: string;
@@ -960,7 +964,12 @@ Deno.serve(async (req: Request) => {
           system: [
             { type: 'text', text: regras, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } },
           ],
-          tools: FERRAMENTAS,
+          // Na ultima volta so sobra responder: o que faltou gravar ele diz
+          // que faltou, em vez de o dono ficar sem resposta.
+          tools:
+            volta === MAX_VOLTAS - 1
+              ? FERRAMENTAS.filter((f) => f.name === 'atender')
+              : FERRAMENTAS,
           tool_choice: { type: 'any' },
           messages: mensagens,
         });
