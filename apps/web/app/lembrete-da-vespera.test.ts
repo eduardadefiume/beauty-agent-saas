@@ -46,7 +46,7 @@ describe('corpoDeTemplate', () => {
     const template = corpo.template as {
       components: Array<{ parameters: Array<{ text: string }> }>;
     };
-    expect(template.components[0].parameters[0].text).toBe('Ana Paula da Silva');
+    expect(template.components[0]?.parameters[0]?.text).toBe('Ana Paula da Silva');
   });
 
   // Parametro vazio nao estraga so aquele campo: derruba a mensagem inteira.

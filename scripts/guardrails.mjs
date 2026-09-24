@@ -108,6 +108,37 @@ const CHAMAVEIS_POR_USUARIO = new Set([
   'api.publish_configuration',
 ]);
 
+// Migrações JÁ APLICADAS que a regra acusa, mas que o banco mostra fechadas.
+//
+// A regra olha um arquivo por vez, e o arquivo aplicado não pode mudar: ele é
+// o espelho byte a byte de schema_migrations. Cada linha aqui foi conferida em
+// produção em 24/09/2026 com has_function_privilege('anon'|'authenticated').
+//
+// Onze são `create or replace` de função que já existia fechada: o Postgres
+// mantém o ACL em replace, então a porta nunca abriu. As três últimas nasceram
+// abertas de verdade e foram fechadas por 20260924114619.
+//
+// Esta lista não cresce com migração nova: quem escreve SECURITY DEFINER daqui
+// em diante põe o revoke no mesmo arquivo, que é o que a regra cobra.
+const JA_CONFERIDAS_NO_BANCO = new Set([
+  '20260916120835_a_clonagem_de_rascunho_deixa_de_ser_exclusiva_da_tela.sql:public.site_start_new_draft',
+  '20260917144958_o_agente_nao_falha_calado.sql:app.record_agent_failure',
+  '20260917144958_o_agente_nao_falha_calado.sql:app.clear_agent_failures',
+  '20260918144449_o_eddy_aprende_a_criar_e_a_publicar.sql:app.onboarding_criar_servico',
+  '20260918154546_a_pausa_da_atendente_nao_pode_calar_o_eddy.sql:app.enqueue_outbound_message',
+  '20260922201500_um_dono_pode_ter_mais_de_um_salao.sql:app.build_owner_context',
+  '20260923104500_a_resposta_sai_na_hora_e_nao_no_proximo_minuto.sql:app.enqueue_outbound_message',
+  '20260923134500_cidade_sem_estado_nao_e_endereco.sql:app.owner_setup_state',
+  '20260923154500_profissional_sem_disponibilidade_nao_atende_ninguem.sql:app.owner_setup_state',
+  '20260923164500_o_compromisso_de_uma_pessoa_nao_fecha_a_agenda_do_salao.sql:public.schedule_list_calendar_shifts',
+  '20260923184500_a_primeira_pergunta_e_o_que_voce_quer_que_eu_faca.sql:app.owner_setup_state',
+  '20260924113425_o_que_o_dono_ensina_vira_regra_da_atendente.sql:app.onboarding_publicar',
+  '20260924113425_o_que_o_dono_ensina_vira_regra_da_atendente.sql:app.onboarding_resumo_do_rascunho',
+  '20260916203123_queda_de_infra_nao_queima_a_tentativa_de_ler_a_foto.sql:app.record_media_understanding',
+  '20260917144958_o_agente_nao_falha_calado.sql:app.raise_agent_alert',
+  '20260917144958_o_agente_nao_falha_calado.sql:app.aviso_de_espera',
+]);
+
 const migracoes = trackedFiles.filter(
   (path) => path.startsWith('supabase/migrations/') && path.endsWith('.sql')
 );
@@ -165,6 +196,7 @@ for (const path of migracoes) {
 
     const alvoCompleto = `${esquema}.${nome}`;
     if (CHAMAVEIS_POR_USUARIO.has(alvoCompleto)) continue;
+    if (JA_CONFERIDAS_NO_BANCO.has(`${nomeDoArquivo}:${alvoCompleto}`)) continue;
 
     const revoga = new RegExp(
       `revoke[\\s\\S]{0,200}?on\\s+function\\s+${esquema}\\.${nome}\\b[\\s\\S]{0,300}?\\bfrom\\b[^;]*\\bpublic\\b`,
