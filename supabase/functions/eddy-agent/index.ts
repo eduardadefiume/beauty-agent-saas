@@ -58,6 +58,19 @@ type Decisao = {
   palpiteEscopo?: string;
 };
 
+// O ESCOPO QUE O MODELO FALA NAO E O ESCOPO QUE A TABELA GUARDA.
+//
+// O `atender` pede OFICIO/NEGOCIO/VOZ; `conhecimento_nao_classificado` so
+// aceita DO_OFICIO/DESTE_NEGOCIO/UNIVERSAL, e `registrar_conhecimento_solto`
+// transforma o que nao reconhece em null -- calado. Desde 23/09 todo palpite
+// de escopo chegava ao banco como nulo. VOZ e o jeito de UMA dona falar: e
+// deste negocio, nao do oficio.
+function escopoDoBanco(escopo: string | undefined): string | null {
+  if (escopo === 'OFICIO') return 'DO_OFICIO';
+  if (escopo === 'NEGOCIO' || escopo === 'VOZ') return 'DESTE_NEGOCIO';
+  return null;
+}
+
 type Pendencia = { chave: string; modulo: string; pergunta: string; contexto: string };
 
 type Habilidade = { nome: string; quemFaz: string[] };
@@ -410,6 +423,48 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'guardar_conhecimento',
+    description:
+      'Guarda, com as palavras dele, o que o dono ensinou e que NENHUMA outra ferramenta grava: uma regra solta ("não corto cabelo curto"), uma preferência, um jeito de falar com as clientes, o que uma foto mostra ("essa é um loiro iluminado"). Aprender é livre: não tem régua de confiança, e depois alguém transforma isto em serviço, preço ou regra. Use sempre que ele ensinar algo que não coube em outra ferramenta, em vez de só dizer que anotou. Só diga "anotei" depois de receber "Guardado".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        palavras: {
+          type: 'string',
+          description:
+            'O que ele disse, com as palavras dele. Se veio de foto ou áudio, escreva o que ele disse sobre a foto junto com o que a leitura da foto mostrou.',
+        },
+        assunto: {
+          type: 'string',
+          enum: [
+            'IDENTIDADE',
+            'HORARIOS',
+            'EQUIPE',
+            'AGENDA',
+            'SERVICOS',
+            'PRECO',
+            'COR',
+            'REGRAS',
+            'OUTRO',
+          ],
+          description: 'De que assunto é. OUTRO só quando nenhum couber.',
+        },
+        escopo: {
+          type: 'string',
+          enum: ['OFICIO', 'NEGOCIO', 'VOZ', 'INDEFINIDO'],
+          description:
+            'OFICIO: vale para qualquer salão. NEGOCIO: é escolha deste salão. VOZ: é o jeito desta dona falar.',
+        },
+        porqueNaoCoube: {
+          type: 'string',
+          description: 'Uma frase: por que nenhuma outra ferramenta gravava isto.',
+        },
+      },
+      required: ['palavras', 'assunto', 'escopo', 'porqueNaoCoube'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'atender',
     description: 'Registra o que fazer nesta conversa. Sempre a última chamada.',
     strict: true,
@@ -556,6 +611,7 @@ Deno.serve(async (req: Request) => {
   let respondidas = 0;
   let anotadas = 0;
   let criados = 0;
+  let aprendidas = 0;
   let publicacoes = 0;
   let falhas = 0;
 
@@ -822,6 +878,25 @@ Deno.serve(async (req: Request) => {
                   'NAO gravei. Preco de servico nao se grava pelo `anotar`. Use `definir_preco` ' +
                   '(e diga ehPiso=true se ele falou "a partir de"). Se o servico tiver mais de um ' +
                   'preco, cada um vira uma chamada de `criar_variacao`.',
+              });
+              continue;
+            }
+            // PAUSA TAMBEM NAO.
+            //
+            // 23/09, 16:13 a 17:14: dezessete recusas PAUSA_FORA_DE_FAIXA
+            // seguidas. A lista de pendencias oferece a chave SERVICO_PAUSA, o
+            // modelo seguia a chave pelo `anotar` e mandava a pausa como frase
+            // ("30 min, da pra atender outra"), sem numero -- e a porta do banco
+            // so aceita minutos. `definir_pausa` e a porta certa desde 23/09, mas
+            // enquanto a pendencia apontar para ca, a trava tem que ser aqui.
+            if (args.chave?.startsWith('SERVICO_PAUSA:')) {
+              devolucoes.push({
+                type: 'tool_result',
+                tool_use_id: chamada.id,
+                content:
+                  'NAO gravei. Pausa de servico nao se grava pelo `anotar`. Use `definir_pausa` ' +
+                  'com o nome do servico, os minutos em numero, e dentroDoTotal (pergunte a ele ' +
+                  'se a pausa ja esta no tempo total ou soma a mais). "Sem pausa" nao precisa gravar.',
               });
               continue;
             }
@@ -1355,6 +1430,41 @@ Deno.serve(async (req: Request) => {
                 texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
               }
             }
+          } else if (chamada.name === 'guardar_conhecimento') {
+            // APRENDER E LIVRE, E ATE 24/09 SO ACONTECIA QUANDO ELE DESISTIA.
+            //
+            // O unico caminho para `conhecimento_nao_classificado` era o
+            // HANDOFF. Tudo o que o dono ensinou e nao cabia numa ferramenta
+            // fechada -- "nao corto curto", "essa foto e um iluminado" -- virou
+            // "anotei" sem linha nenhuma no banco. Sem regua de confianca: isto
+            // e fila de revisao, nao cadastro, e errar aqui nao chega a cliente.
+            const args = chamada.input as {
+              palavras: string;
+              assunto?: string;
+              escopo?: string;
+              porqueNaoCoube?: string;
+            };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'registrar_conhecimento_solto', {
+                p_tenant_id: tenantId,
+                p_conversation_id: item.conversation_id,
+                p_palavras: args.palavras ?? '',
+                p_modulo: args.assunto && args.assunto !== 'OUTRO' ? args.assunto : null,
+                p_escopo: escopoDoBanco(args.escopo),
+                p_porque: args.porqueNaoCoube ?? '',
+              })) as { ok?: boolean; reason?: string } | null;
+              if (r?.ok) {
+                aprendidas += 1;
+                texto =
+                  'Guardado com as palavras dele. Nenhuma cliente ve isto ainda: vira regra, servico ou preco quando for revisado.';
+              } else if (r?.reason === 'PALAVRAS_VAZIAS') {
+                texto = 'NAO guardei: veio vazio. Mande o que ele disse, com as palavras dele.';
+              } else {
+                texto = `NAO guardei: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para guardar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
+            }
           } else if (chamada.name === 'resumo') {
             try {
               const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_resumo_pela_conversa', {
@@ -1494,10 +1604,7 @@ Deno.serve(async (req: Request) => {
               decisao.palpiteModulo && decisao.palpiteModulo !== 'OUTRO'
                 ? decisao.palpiteModulo
                 : null,
-            p_escopo:
-              decisao.palpiteEscopo && decisao.palpiteEscopo !== 'INDEFINIDO'
-                ? decisao.palpiteEscopo
-                : null,
+            p_escopo: escopoDoBanco(decisao.palpiteEscopo),
             p_porque: decisao.reason ?? 'HANDOFF sem motivo escrito',
           });
         } catch (erro) {
@@ -1590,6 +1697,7 @@ Deno.serve(async (req: Request) => {
       aguardando: fila.length,
       respondidas,
       anotadas,
+      aprendidas,
       criados,
       publicacoes,
       falhas,
@@ -1602,6 +1710,7 @@ Deno.serve(async (req: Request) => {
     aguardando: fila.length,
     respondidas,
     anotadas,
+    aprendidas,
     criados,
     publicacoes,
     falhas,
