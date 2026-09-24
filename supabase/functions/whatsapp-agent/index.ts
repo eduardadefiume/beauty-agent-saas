@@ -555,7 +555,12 @@ async function decidir(
         ? '\nOs horários que você já tem na mão para esse serviço:\n' +
           estado.candidatos.map((c, i) => `${i + 1}. ${horarioLocal(c.startMs)}`).join('\n') +
           '\nSe ela aceitou um desses, chame reservar_horario com o número dele. ' +
-          'Não precisa consultar de novo.'
+          'Não precisa consultar de novo.\n' +
+          // 24/09/2026: a cliente pediu 10h, a lista guardada ia de 08:00 a
+          // 09:45 (so os primeiros livres) e a atendente disse duas vezes que
+          // 10h nao tinha -- com o sabado vazio.
+          'Esta lista são só os PRIMEIROS livres da última consulta, não a agenda inteira. ' +
+          'Se ela pedir um horário que não está aqui, consulte de novo com aPartirDaHora nele antes de dizer que não tem.'
         : '');
   }
 
@@ -1402,8 +1407,11 @@ Deno.serve(async (req) => {
         // cartao?". As duas cairam no mesmo turno. Com uma decisao so por
         // turno, a duvida sobre pagamento virou ASK_OWNER, e ASK_OWNER e
         // silencio total: o aceite do horario morreu junto.
+        // So pergunta de verdade vai para o dono. 24/09: o campo vinha com
+        // resumo ("Ana quer escova sexta 15h, oferecido sabado") e cada um
+        // virava um aviso no WhatsApp do dono sem nada para ele responder.
         const perguntaJunto = (decisao.ownerQuestion ?? '').trim();
-        if (perguntaJunto.length >= 3) {
+        if (perguntaJunto.length >= 3 && perguntaJunto.includes('?')) {
           try {
             await rpc(supabaseUrl, serviceKey, 'record_owner_question', {
               p_tenant_id: item.tenant_id,
