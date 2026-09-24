@@ -811,9 +811,40 @@ Deno.serve(async (req: Request) => {
         p_tenant_id: tenantId,
       })) as Pendencia[];
 
-      const pauta = (Array.isArray(pendencias) ? pendencias : [])
+      // O ROTEIRO MANDA; A PAUTA ENTRA POR ETAPA.
+      //
+      // 24/09/2026, teste com dono-robo: a pauta tinha ~40 itens em toda
+      // mensagem (20 definicoes da regua, 9 perguntas de cor, fotos de familia,
+      // regras) e o Eddy seguia o que via em destaque, pulando o roteiro --
+      // perguntou equipe antes de redes sociais duas vezes. Agora a proxima
+      // pergunta vem do roteiro (owner_setup_state.falta, ja ordenado), e da
+      // pauta so entra o que e da etapa em curso. O refinamento da regua
+      // ("o que e Curto para voce?") so aparece com o cadastro basico pronto.
+      const roteiro =
+        (contexto.negocio as { falta?: Array<{ campo: string; perguntaSugerida: string }> } | null)
+          ?.falta ?? [];
+      const etapa = roteiro[0]?.campo ?? null;
+      const basicoPronto = roteiro.every((f) => f.campo === 'PUBLICAR' || f.campo === 'WHATSAPP');
+      const pautaDaEtapa = (Array.isArray(pendencias) ? pendencias : []).filter((p) => {
+        if (basicoPronto) return true;
+        if (p.modulo === 'CONHECIMENTO') return false;
+        if (p.modulo === 'COR') return etapa === 'CORES';
+        if (p.modulo === 'REGRAS') return etapa === 'REGRAS';
+        return true;
+      });
+      const pauta = pautaDaEtapa
+        .slice(0, basicoPronto ? 10 : 20)
         .map((p) => `- [${p.chave}] (${p.modulo}) ${p.pergunta} — hoje: ${p.contexto}`)
         .join('\n');
+      const textoDoRoteiro = roteiro.length
+        ? `PRÓXIMA PERGUNTA: [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n` +
+          (roteiro.length > 1
+            ? `Depois, nesta ordem: ${roteiro
+                .slice(1)
+                .map((f) => f.campo)
+                .join(', ')}`
+            : 'Depois dela o cadastro básico está completo.')
+        : '(cadastro básico completo)';
 
       // A lista fechada de habilidades. Sem ela na mesa, `criar_servico` vira
       // adivinhacao: o bloco EDDY_CRIAR_SERVICO manda escolher da lista, e a
@@ -880,8 +911,10 @@ Deno.serve(async (req: Request) => {
               negocio: contexto.negocio,
               history: contexto.history,
             }) +
-            '\n\nO QUE AINDA FALTA NO CADASTRO DELE (a chave entre colchetes é obrigatória em `anotar`, e você nunca inventa uma):\n' +
-            (pauta || '(nada — o cadastro está completo)') +
+            '\n\nO ROTEIRO DO CADASTRO (a primeira é a sua próxima pergunta; se ele já respondeu outra coisa, grave e volte a ela):\n' +
+            textoDoRoteiro +
+            '\n\nDETALHES QUE `anotar` ACEITA NESTA ETAPA (a chave entre colchetes é obrigatória em `anotar`, e você nunca inventa uma):\n' +
+            (pauta || '(nenhum nesta etapa)') +
             '\n\nAS HABILIDADES QUE ESTE SALÃO TEM (é desta lista que você escolhe em `criar_servico`, escrita exatamente assim; você nunca inventa uma):\n' +
             (listaHabilidades ||
               '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)') +
