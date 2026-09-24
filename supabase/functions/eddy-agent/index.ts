@@ -435,6 +435,86 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'arquivar_fotos',
+    description:
+      'Grava fotos que ele mandou no lugar certo da régua do salão, para a atendente reconhecer isso na foto da cliente. Use depois que ele disser o que as fotos são ("essas são ruivo", "isso é um pixie"). Várias fotos seguidas antes da legenda são um lote: mande todos os ids juntos. Se a leitura da foto deixou dúvida entre tom e corte, pergunte a ele antes. Só diga que guardou depois de receber "Arquivei".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fotos: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Os ids das fotos, como vieram na lista de fotos sem lugar.',
+        },
+        destino: {
+          type: 'string',
+          enum: ['FAMILIA_DE_TOM', 'OPCAO_DA_REGUA', 'DESCARTADA'],
+          description:
+            'FAMILIA_DE_TOM: a foto mostra um tom (Ruivo, Loiro...). OPCAO_DA_REGUA: mostra um corte, comprimento, curvatura. DESCARTADA: ele disse que a foto não serve.',
+        },
+        alvo: {
+          type: 'string',
+          description:
+            'O nome da família ou da opção, EXATAMENTE como está na lista (ex.: "Ruivo", "Pixie (joãozinho)"). Vazio em DESCARTADA.',
+        },
+        dimensao: {
+          type: 'string',
+          description:
+            'Só em OPCAO_DA_REGUA: a dimensão da opção ("Corte"). Obrigatória para criar opção nova.',
+        },
+        criarOpcao: {
+          type: 'boolean',
+          description:
+            'true só quando ele usou um nome que não está na régua ("corte borboleta") e confirmou que é um tipo novo.',
+        },
+      },
+      required: ['fotos', 'destino'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'criar_regra',
+    description:
+      'Grava uma regra que muda como a atendente fala com as clientes: o que o salão NÃO faz ("não faço pixie"), uma condição ("luzes só com teste de mecha"), um jeito de falar. Escreva a regra como instrução clara para a atendente e mande as palavras dele junto. Entra em rascunho: só vale para cliente depois que ele publicar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        assunto: {
+          type: 'string',
+          enum: [
+            'PROCEDIMENTO',
+            'PRECO',
+            'AGENDAMENTO',
+            'ATENDIMENTO',
+            'VOZ',
+            'AVALIACAO',
+            'FOTOS',
+            'PROMOCAO',
+            'PAGAMENTO',
+            'CANCELAMENTO',
+            'ATRASO',
+            'SINAL',
+            'OUTRO',
+          ],
+          description: 'PROCEDIMENTO para o que o salão faz ou não faz.',
+        },
+        titulo: { type: 'string', description: 'Título curto: "Não fazemos pixie".' },
+        regra: {
+          type: 'string',
+          description:
+            'A instrução para a atendente: "O salão não faz corte pixie. Se a cliente pedir, diga com gentileza e ofereça o long bob."',
+        },
+        palavrasDoDono: { type: 'string', description: 'O que ele disse, como ele disse.' },
+        confianca: {
+          type: 'number',
+          description: 'Mesma régua do `anotar`. Abaixo de 0,75 não grava.',
+        },
+      },
+      required: ['assunto', 'titulo', 'regra', 'palavrasDoDono', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'guardar_conhecimento',
     description:
       'Guarda, com as palavras dele, o que o dono ensinou e que NENHUMA outra ferramenta grava: uma regra solta ("não corto cabelo curto"), uma preferência, um jeito de falar com as clientes, o que uma foto mostra ("essa é um loiro iluminado"). Aprender é livre: não tem régua de confiança, e depois alguém transforma isto em serviço, preço ou regra. Use sempre que ele ensinar algo que não coube em outra ferramenta, em vez de só dizer que anotou. Só diga "anotei" depois de receber "Guardado".',
@@ -686,6 +766,46 @@ Deno.serve(async (req: Request) => {
         .map((h) => `- ${h.nome} (faz: ${(h.quemFaz ?? []).join(', ') || 'ninguém ativo'})`)
         .join('\n');
 
+      // AS FOTOS QUE ELE MANDOU E A REGUA ONDE ELAS CABEM.
+      //
+      // 24/09: a dona mandou uma colagem de ruivos e escreveu depois "isso aqui
+      // sao tons de ruivo". O Eddy leu a leitura da foto no historico e disse
+      // "anotado" -- mas nao tinha na mesa nem o id da foto nem o nome exato da
+      // familia, entao nao havia como arquivar. Aqui entram os dois: as fotos
+      // ainda sem destino (com id) e os nomes da regua, escritos como estao no
+      // banco. So vai a lista quando ha foto pendente: regua sem foto para
+      // arquivar e token pago a toa.
+      let fotosERegua = '';
+      try {
+        const ctxFotos = (await rpc(supabaseUrl, serviceKey, 'eddy_regua_e_fotos', {
+          p_tenant_id: tenantId,
+          p_conversation_id: item.conversation_id,
+        })) as {
+          fotosSemDestino?: unknown[];
+          familiasDeTom?: { nome: string; fotos: number }[];
+          regua?: { dimensao: string; opcoes: string[] }[];
+        };
+        if ((ctxFotos.fotosSemDestino ?? []).length > 0) {
+          const familias = (ctxFotos.familiasDeTom ?? [])
+            .map((f) => `${f.nome} (${f.fotos} foto${f.fotos === 1 ? '' : 's'})`)
+            .join(', ');
+          const regua = (ctxFotos.regua ?? [])
+            .map((d) => `- ${d.dimensao}: ${d.opcoes.join(', ')}`)
+            .join('\n');
+          fotosERegua =
+            '\n\nFOTOS QUE ELE MANDOU E AINDA NÃO TÊM LUGAR (use o id em `arquivar_fotos`; várias seguidas antes de uma legenda costumam ser um lote só):\n' +
+            JSON.stringify(ctxFotos.fotosSemDestino) +
+            '\n\nFAMÍLIAS DE TOM DESTE SALÃO (escreva o nome exatamente assim):\n' +
+            (familias || '(nenhuma)') +
+            '\n\nRÉGUA DESTE SALÃO (dimensão: opções, escritas exatamente assim):\n' +
+            (regua || '(vazia)');
+        }
+      } catch (erro) {
+        console.error(
+          JSON.stringify({ event: 'eddy_fotos_indisponiveis', erro: String(erro).slice(0, 200) })
+        );
+      }
+
       const mensagens: Anthropic.MessageParam[] = [
         {
           role: 'user',
@@ -700,7 +820,8 @@ Deno.serve(async (req: Request) => {
             (pauta || '(nada — o cadastro está completo)') +
             '\n\nAS HABILIDADES QUE ESTE SALÃO TEM (é desta lista que você escolhe em `criar_servico`, escrita exatamente assim; você nunca inventa uma):\n' +
             (listaHabilidades ||
-              '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)'),
+              '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)') +
+            fotosERegua,
         },
       ];
 
@@ -1467,6 +1588,93 @@ Deno.serve(async (req: Request) => {
                 texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Siga a conversa.`;
               }
             }
+          } else if (chamada.name === 'arquivar_fotos') {
+            // A FOTO VAI PARA ONDE A ATENDENTE PROCURA.
+            //
+            // Sem regua de confianca aqui: quem disse o que a foto e foi o dono,
+            // com as palavras dele. A duvida (tom ou corte?) se resolve ANTES,
+            // perguntando -- o prompt manda, e o banco recusa foto que nao e
+            // desta conversa ou que ja foi arquivada.
+            const args = chamada.input as {
+              fotos?: string[];
+              destino?: string;
+              alvo?: string;
+              dimensao?: string;
+              criarOpcao?: boolean;
+            };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_arquivar_fotos', {
+                p_tenant_id: tenantId,
+                p_conversation_id: item.conversation_id,
+                p_fotos: Array.isArray(args.fotos) ? args.fotos : [],
+                p_destino: args.destino ?? '',
+                p_alvo: args.alvo ?? null,
+                p_dimensao: args.dimensao ?? null,
+                p_criar_opcao: args.criarOpcao === true,
+              })) as {
+                ok?: boolean;
+                reason?: string;
+                arquivadas?: number;
+                semArquivo?: number;
+                opcaoCriada?: boolean;
+                familias?: string[];
+              } | null;
+              if (r?.ok) {
+                criados += r.arquivadas ?? 0;
+                texto =
+                  args.destino === 'DESCARTADA'
+                    ? `Descartei ${r.arquivadas} foto(s).`
+                    : `Arquivei ${r.arquivadas} foto(s) em "${args.alvo}"` +
+                      (r.opcaoCriada ? ' (opcao nova criada na regua)' : '') +
+                      '. A atendente passa a usar como referencia.' +
+                      (r.semArquivo
+                        ? ` Atencao: ${r.semArquivo} delas nao tinha arquivo guardado; so a leitura ficou.`
+                        : '');
+              } else if (r?.reason === 'FAMILIA_NAO_EXISTE') {
+                texto = `NAO arquivei: "${args.alvo}" nao e uma familia deste salao. As que existem: ${(r.familias ?? []).join(', ')}. Pergunte a ele qual e.`;
+              } else if (r?.reason === 'OPCAO_NAO_EXISTE') {
+                texto = `NAO arquivei: "${args.alvo}" nao esta na regua. Confirme o nome com ele; se for um tipo novo, chame de novo com a dimensao e criarOpcao=true.`;
+              } else if (r?.reason === 'FOTO_NAO_ENCONTRADA_OU_JA_ARQUIVADA') {
+                texto =
+                  'NAO arquivei: alguma dessas fotos nao esta na lista de fotos sem lugar (ou ja foi arquivada). Use so os ids da lista.';
+              } else {
+                texto = `NAO arquivei: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que guardou.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para arquivar agora (${String(erro).slice(0, 120)}). Nao diga que guardou.`;
+            }
+          } else if (chamada.name === 'criar_regra') {
+            const args = chamada.input as {
+              assunto: string;
+              titulo: string;
+              regra: string;
+              palavrasDoDono?: string;
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Confirme a regra com ele antes.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'eddy_criar_regra', {
+                  p_tenant_id: tenantId,
+                  p_assunto: args.assunto,
+                  p_titulo: args.titulo,
+                  p_regra: args.regra,
+                  p_palavras: args.palavrasDoDono ?? null,
+                  p_conversation_id: item.conversation_id,
+                })) as { ok?: boolean; reason?: string; textoAtual?: string } | null;
+                if (r?.ok) {
+                  anotadas += 1;
+                  texto = `Regra "${args.titulo}" guardada em rascunho. Vale para as clientes quando ele publicar.`;
+                } else if (r?.reason === 'REGRA_JA_ESTA_NO_AR') {
+                  texto = `NAO gravei: ja existe uma regra "${args.titulo}" valendo, que diz: "${r.textoAtual}". Pergunte se ele quer mudar; a mudanca de regra no ar e feita na tela Agente.`;
+                } else {
+                  texto = `NAO gravei a regra: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar a regra agora (${String(erro).slice(0, 120)}).`;
+              }
+            }
           } else if (chamada.name === 'guardar_conhecimento') {
             // APRENDER E LIVRE, E ATE 24/09 SO ACONTECIA QUANDO ELE DESISTIA.
             //
@@ -1533,9 +1741,16 @@ Deno.serve(async (req: Request) => {
                   detalhe?: string;
                   pendencias?: { oQueFalta?: string }[];
                   versao?: { versionNumber?: number };
+                  somenteRegras?: boolean;
+                  regrasPublicadas?: number;
                 } | null;
 
-                if (r?.ok) {
+                if (r?.ok && r.somenteRegras) {
+                  publicacoes += 1;
+                  texto =
+                    `Publicado: ${r.regrasPublicadas ?? 0} regra(s) nova(s) da atendente ja valem para as clientes. ` +
+                    'Diga isso a ele em uma linha.';
+                } else if (r?.ok) {
                   publicacoes += 1;
                   texto =
                     `Publicado. A configuracao no ar agora e a versao ${r.versao?.versionNumber ?? '?'}. ` +
