@@ -133,6 +133,11 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           type: 'number',
           description: 'Quanto custa, em reais, sem símbolo. Deixe vazio se ele ainda não disse.',
         },
+        aPartirDe: {
+          type: 'boolean',
+          description:
+            'true quando ele disse "a partir de", "começa em", "depende do cabelo". Sem isso a atendente crava o valor como final.',
+        },
         confianca: {
           type: 'number',
           description:
@@ -520,6 +525,20 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         },
       },
       required: ['assunto', 'titulo', 'regra', 'palavrasDoDono', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'marcar_a_partir_de',
+    description:
+      'Marca ou desmarca o preço de um serviço já cadastrado como "a partir de". Use quando ele disser isso de um serviço que já existe, ou quando o cadastro mostrar diferente do que ele disse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        servico: { type: 'string', description: 'O nome do serviço, como está no cadastro.' },
+        aPartirDe: { type: 'boolean' },
+      },
+      required: ['servico', 'aPartirDe'],
       additionalProperties: false,
     },
   },
@@ -1216,6 +1235,7 @@ Deno.serve(async (req: Request) => {
               habilidade: string;
               duracaoMinutos: number;
               precoReais?: number;
+              aPartirDe?: boolean;
               confianca: number;
             };
             // Mesma regua do `anotar`: abaixo de 0,75 nao escreve. Um servico
@@ -1241,8 +1261,19 @@ Deno.serve(async (req: Request) => {
 
                 if (r?.ok) {
                   criados += 1;
+                  let piso = '';
+                  if (args.aPartirDe === true) {
+                    const p = (await rpc(supabaseUrl, serviceKey, 'eddy_marcar_piso', {
+                      p_tenant_id: tenantId,
+                      p_servico: r.servico ?? args.nome,
+                      p_piso: true,
+                    })) as { ok?: boolean } | null;
+                    piso = p?.ok
+                      ? ' Preco marcado como "a partir de".'
+                      : ' ATENCAO: NAO consegui marcar "a partir de"; nao diga que marcou.';
+                  }
                   texto =
-                    `Criei "${r.servico}" no rascunho, com a habilidade ${r.habilidade}. ` +
+                    `Criei "${r.servico}" no rascunho, com a habilidade ${r.habilidade}.${piso} ` +
                     'Nenhuma cliente ve isso ate ele publicar. Confirme com ele antes de criar o proximo.';
                 } else if (r?.reason === 'HABILIDADE_NAO_EXISTE_NESTE_SALAO') {
                   const nomes = (r.habilidades ?? []).map((h) => h.nome).join(', ');
@@ -1811,6 +1842,23 @@ Deno.serve(async (req: Request) => {
               } catch (erro) {
                 texto = `Nao deu para gravar a regra agora (${String(erro).slice(0, 120)}).`;
               }
+            }
+          } else if (chamada.name === 'marcar_a_partir_de') {
+            const a = chamada.input as { servico: string; aPartirDe: boolean };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_marcar_piso', {
+                p_tenant_id: tenantId,
+                p_servico: a.servico,
+                p_piso: a.aPartirDe === true,
+              })) as { ok?: boolean; reason?: string } | null;
+              if (r?.ok) {
+                anotadas += 1;
+                texto = `Gravado: "${a.servico}" ${a.aPartirDe ? 'e "a partir de"' : 'tem valor fechado'}.`;
+              } else {
+                texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que marcou.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que marcou.`;
             }
           } else if (
             chamada.name === 'definir_redes' ||
