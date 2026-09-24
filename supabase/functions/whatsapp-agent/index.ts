@@ -335,6 +335,12 @@ type Foco = {
 // pegado. O servico continua valendo -- ele nao vence.
 const FOCO_CANDIDATOS_VALIDOS_MINUTOS = 12 * 60;
 
+// Servico em que a ficha do cabelo (foto, quimica, coloracao, tom) e condicao
+// para marcar. Pelo nome, porque o cadastro nao tem categoria: e o nome que o
+// dono escreve, e e nele que a quimica aparece.
+const SERVICO_QUIMICO =
+  /(color|tint|mecha|luzes|reflexo|balaiag|balayage|ombr|morena|descolor|platin|tonaliz|matiz|violet|progressiv|selante|botox|alisa|relaxa|permanente|decapag|quimic|química)/i;
+
 /** Os nomes dos servicos do salao, sem repetir (rascunho e publicado). */
 function nomesDoCatalogo(estavel: unknown): string[] {
   const catalogo = (estavel as { catalog?: unknown } | null)?.catalog;
@@ -458,12 +464,38 @@ async function decidir(
   const faltas =
     (volatil as { client?: { missing?: Array<{ campo: string; perguntaSugerida: string }> } })
       ?.client?.missing ?? [];
-  const investigando = faltas.length > 0;
+  // A FICHA SO TRAVA A AGENDA DE QUIMICA.
+  //
+  // 24/09/2026, Studio Rogerio: a Marina aceitou escova sabado 10h e a ficha
+  // exigia nove respostas antes de marcar -- foto, quimica, coloracao, "o tom
+  // que voce quer alcancar". Para uma escova. Sem a ferramenta de reservar, o
+  // modelo escreveu "Marcado, Marina!" e nada entrou na agenda. A ficha nasceu
+  // num salao de cor, onde marcar quimica sem saber o historico queima
+  // cliente; num corte, numa escova, numa unha, ela so derruba a venda.
+  // Servico desconhecido conta como quimica: na duvida, o lado seguro.
+  const faltasQueTravam = (nomeDoServico: string | null | undefined) =>
+    nomeDoServico && !SERVICO_QUIMICO.test(nomeDoServico)
+      ? faltas.filter((f) => f.campo === 'NOME')
+      : faltas;
+  // O foco e lido antes da primeira volta: e ele que impede o servico de
+  // trocar sozinho entre uma leva de mensagens e a seguinte -- e e o servico
+  // dele que diz se a ficha trava a agenda.
+  let foco: Foco | null = null;
+  try {
+    foco = (await rpc(ambiente.supabaseUrl, ambiente.serviceKey, 'agent_scheduling_focus', {
+      p_conversation_id: ambiente.conversationId,
+    })) as Foco | null;
+  } catch (erro) {
+    console.error('FOCO_LEITURA_FALHOU', ambiente.conversationId, String(erro));
+  }
+
+  const faltasDoTurno = faltasQueTravam(foco?.serviceName ?? null);
+  const investigando = faltasDoTurno.length > 0;
 
   const diretrizDoTurno = investigando
     ? '\n\nATENÇÃO, ISTO VALE PARA ESTA RESPOSTA E GANHA DE TUDO:\n' +
       'A ficha desta cliente está incompleta. Faltam ' +
-      faltas.length +
+      faltasDoTurno.length +
       ' informações.\n' +
       'Antes de escrever, decida em que ponto a conversa está.\n' +
       '\n' +
@@ -477,7 +509,7 @@ async function decidir(
       '  1) o cumprimento, se você ainda não cumprimentou nesta leva de mensagens;\n' +
       '  2) esta pergunta:\n' +
       '     "' +
-      faltas[0].perguntaSugerida +
+      faltasDoTurno[0].perguntaSugerida +
       '"\n' +
       'Pode reescrever com as suas palavras.\n' +
       'ANTES DE PERGUNTAR, releia o histórico. Se ela JÁ respondeu isso em alguma mensagem, mesmo ' +
@@ -511,17 +543,6 @@ async function decidir(
         diretrizDoTurno,
     },
   ];
-
-  // O foco e lido antes da primeira volta: e ele que impede o servico de
-  // trocar sozinho entre uma leva de mensagens e a seguinte.
-  let foco: Foco | null = null;
-  try {
-    foco = (await rpc(ambiente.supabaseUrl, ambiente.serviceKey, 'agent_scheduling_focus', {
-      p_conversation_id: ambiente.conversationId,
-    })) as Foco | null;
-  } catch (erro) {
-    console.error('FOCO_LEITURA_FALHOU', ambiente.conversationId, String(erro));
-  }
 
   // O servico com que a conversa ENTROU neste turno. E ele que manda na hora
   // de reservar: consultar outro servico e so informacao, mas marcar outro
@@ -622,9 +643,11 @@ async function decidir(
           cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
         },
       ],
-      // Sem ficha, sem reserva. Nao e castigo: marcar quimica sem saber o que
-      // ja foi feito naquele cabelo e o erro que queima cliente.
-      tools: investigando ? FERRAMENTAS.filter((f) => f.name !== 'reservar_horario') : FERRAMENTAS,
+      // A ferramenta de reservar fica SEMPRE na mesa. Tirada, o modelo nao
+      // desiste de marcar: escreve a chamada no texto e diz "Marcado!" (24/09).
+      // Quem recusa, quando a ficha trava, e a propria ferramenta -- e recusa
+      // dizendo o que falta, que e uma resposta com que ele sabe trabalhar.
+      tools: FERRAMENTAS,
       tool_choice: { type: 'any' },
       messages: mensagens,
     });
@@ -1027,6 +1050,14 @@ async function decidir(
             'Marcar o serviço errado é pior que não marcar. Consulte de novo o serviço de ' +
             'antes e ofereça o horário dele. Se a cliente realmente quer outro serviço, ' +
             'fale isso com ela primeiro e marque na próxima mensagem.';
+        } else if (faltasQueTravam(estado.serviceName).length > 0) {
+          const travas = faltasQueTravam(estado.serviceName);
+          texto =
+            'NÃO reservei: para marcar ' +
+            (estado.serviceName ?? 'esse serviço') +
+            ' ainda falta saber da cliente: ' +
+            travas.map((f) => f.perguntaSugerida).join(' / ') +
+            '. Pergunte a primeira delas agora. NÃO diga que está marcado.';
         } else if (!escolhido || !estado.configurationVersionId || !estado.serviceId) {
           texto = 'Essa opção não existe. Consulte os horários antes de reservar.';
         } else {
@@ -1312,8 +1343,10 @@ Deno.serve(async (req) => {
       // mesa e a ficha estava completa; ele simplesmente afirmou. Nenhuma regra
       // de prompt pode ser a unica defesa: uma cliente que aparece no salao num
       // horario que ninguem sabe que existe e o pior desfecho do produto.
+      // 24/09/2026: "Marcado, Marina! Sábado às 10h de escova." passou -- a
+      // lista so conhecia a forma com verbo ("está marcado", "foi marcado").
       const AFIRMA_AGENDAMENTO =
-        /(est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad)/i;
+        /(est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad|^\s*(marcad|agendad|confirmad|reservad)[oa]s?\b|\b(marquei|agendei|reservei)\b|\bt[áa]\s+(marcad|agendad|confirmad|reservad)|\bfic(a|ou)\s+(marcad|agendad|confirmad|reservad))/i;
       const mentiuAgendamento = agendou == null && textos.some((t) => AFIRMA_AGENDAMENTO.test(t));
 
       // PRECO SEM LASTRO NAO SAI DAQUI.
