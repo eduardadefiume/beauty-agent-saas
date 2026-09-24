@@ -146,7 +146,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'definir_pausa',
     description:
-      'Grava o tempo de espera do produto num serviço. Durante a pausa a cliente fica e a profissional sai — é o que permite encaixar outra cliente no meio. Pergunte SEMPRE as duas coisas: quantos minutos, e se a pausa está dentro do tempo total ou soma a mais.',
+      'Grava o tempo de espera do produto num serviço. Pergunte SEMPRE três coisas: quantos minutos, se a pausa está dentro do tempo total ou soma a mais, e se nesse tempo a profissional fica livre para outra cliente. Chamar de novo com os mesmos minutos corrige só o "fica livre".',
     input_schema: {
       type: 'object',
       properties: {
@@ -157,9 +157,14 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description:
             'true quando a pausa já está contada no tempo total que ele falou; false quando ela soma a mais. Não adivinhe: pergunte.',
         },
+        profissionalLivre: {
+          type: 'boolean',
+          description:
+            'true se nessa pausa a profissional pode atender outra cliente; false se ela fica acompanhando ("fico de olho", "não dá pra pegar outra"). Não adivinhe: pergunte.',
+        },
         confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
       },
-      required: ['servico', 'minutos', 'dentroDoTotal', 'confianca'],
+      required: ['servico', 'minutos', 'dentroDoTotal', 'profissionalLivre', 'confianca'],
       additionalProperties: false,
     },
   },
@@ -1238,6 +1243,7 @@ Deno.serve(async (req: Request) => {
               servico: string;
               minutos: number;
               dentroDoTotal: boolean;
+              profissionalLivre?: boolean;
               confianca: number;
             };
             if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
@@ -1249,6 +1255,7 @@ Deno.serve(async (req: Request) => {
                   p_servico: args.servico,
                   p_minutos: Math.round(args.minutos),
                   p_dentro_do_total: args.dentroDoTotal !== false,
+                  p_libera: args.profissionalLivre !== false,
                 })) as {
                   ok?: boolean;
                   reason?: string;
@@ -1258,14 +1265,18 @@ Deno.serve(async (req: Request) => {
                   totalMinutos?: number;
                   comoResolver?: string;
                   totalAtual?: number;
+                  liberaProfissional?: boolean;
+                  corrigida?: boolean;
                 } | null;
 
                 if (r?.ok) {
                   criados += 1;
-                  texto =
-                    `Gravei a pausa de ${r.pausaMinutos} min em "${r.servico}": ` +
-                    `${r.atendimentoMinutos} min de atendimento + ${r.pausaMinutos} de pausa, ` +
-                    `total ${r.totalMinutos} min. Durante a pausa a profissional fica livre para outra cliente.`;
+                  const livre = r.liberaProfissional !== false;
+                  texto = r.corrigida
+                    ? `Corrigi a pausa de ${r.pausaMinutos} min em "${r.servico}": agora a profissional ${livre ? 'FICA livre' : 'NAO fica livre'} para outra cliente.`
+                    : `Gravei a pausa de ${r.pausaMinutos} min em "${r.servico}": ` +
+                      `${r.atendimentoMinutos} min de atendimento + ${r.pausaMinutos} de pausa, ` +
+                      `total ${r.totalMinutos} min. Durante a pausa a profissional ${livre ? 'fica livre para outra cliente' : 'NAO fica livre: a agenda nao encaixa ninguem nesse tempo'}.`;
                 } else if (r?.reason === 'PAUSA_MAIOR_QUE_O_SERVICO') {
                   texto = `NAO gravei: o servico tem ${r.totalAtual} min no total e a pausa pedida e maior. ${r.comoResolver}`;
                 } else if (r?.reason === 'SERVICO_JA_TEM_PAUSA') {
