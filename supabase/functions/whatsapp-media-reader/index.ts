@@ -95,6 +95,25 @@ async function baixarDaMeta(
   return { bytes: buffer, mime: info.mime_type ?? 'application/octet-stream' };
 }
 
+// CANAL SIMULADO. A foto de teste mora no balde (`balde/caminho`), e nao na
+// Meta: a leitura que vem depois e a mesma de uma foto de verdade. So chega
+// aqui caminho de mensagem de canal marcado `simulado` -- media_id_for_message
+// nao devolve a chave para canal real.
+async function baixarDoBalde(
+  supabaseUrl: string,
+  serviceKey: string,
+  caminhoComBalde: string
+): Promise<{ bytes: Uint8Array; mime: string }> {
+  const r = await fetch(
+    `${supabaseUrl}/storage/v1/object/${caminhoComBalde.split('/').map(encodeURIComponent).join('/')}`,
+    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+  );
+  if (!r.ok) throw new Error(`balde ${r.status} ao baixar ${caminhoComBalde}`);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  if (bytes.byteLength > TETO_BYTES) throw new Error('arquivo acima do teto');
+  return { bytes, mime: r.headers.get('content-type') ?? 'image/jpeg' };
+}
+
 function paraBase64(bytes: Uint8Array): string {
   // Em pedaços: String.fromCharCode com centenas de milhares de argumentos
   // estoura a pilha.
@@ -524,7 +543,9 @@ Deno.serve(async (req) => {
 
       if (imagemId && doDono) {
         if (!chaveClaude) throw new Error('ANTHROPIC_API_KEY ausente');
-        const { bytes, mime } = await baixarDaMeta(imagemId, accessToken);
+        const { bytes, mime } = ids.caminhoSimulado
+          ? await baixarDoBalde(supabaseUrl, serviceKey, ids.caminhoSimulado)
+          : await baixarDaMeta(imagemId, accessToken);
 
         // Guardar vem antes de ler: se a leitura falhar, a proxima tentativa
         // ainda tem o arquivo, e a Meta so entrega a midia por pouco tempo.
@@ -570,7 +591,9 @@ Deno.serve(async (req) => {
         }
       } else if (imagemId) {
         if (!chaveClaude) throw new Error('ANTHROPIC_API_KEY ausente');
-        const { bytes, mime } = await baixarDaMeta(imagemId, accessToken);
+        const { bytes, mime } = ids.caminhoSimulado
+          ? await baixarDoBalde(supabaseUrl, serviceKey, ids.caminhoSimulado)
+          : await baixarDaMeta(imagemId, accessToken);
         const lido = separarTipo(await lerImagem(bytes, mime, chaveClaude));
         entendimento = lido.texto;
         tipo = lido.tipo;
@@ -595,9 +618,13 @@ Deno.serve(async (req) => {
           }
         }
       } else if (audioId) {
-        if (!chaveOpenAI) throw new Error('OPENAI_API_KEY ausente — sem transcricao de audio');
-        const { bytes, mime } = await baixarDaMeta(audioId, accessToken);
-        entendimento = `${quem} mandou um áudio. Transcrição: "${await transcrever(bytes, mime, chaveOpenAI)}"`;
+        if (ids.transcricaoSimulada) {
+          entendimento = `${quem} mandou um áudio. Transcrição: "${ids.transcricaoSimulada}"`;
+        } else {
+          if (!chaveOpenAI) throw new Error('OPENAI_API_KEY ausente — sem transcricao de audio');
+          const { bytes, mime } = await baixarDaMeta(audioId, accessToken);
+          entendimento = `${quem} mandou um áudio. Transcrição: "${await transcrever(bytes, mime, chaveOpenAI)}"`;
+        }
       } else if (ids.videoId) {
         // Video ainda nao e lido. Registrar o que e ja e melhor que silencio:
         // o agente sabe que veio um video e pode pedir foto ou texto.
