@@ -966,7 +966,11 @@ Deno.serve(async (req: Request) => {
       //
       // Entao a diferenca entre o antes e o depois e a unica prova de que
       // alguma coisa foi escrita de verdade.
-      const criadosAoEntrar = criados;
+      // Toda escrita conta: criar, anotar, aprender. 24/09/2026: a trava so
+      // olhava `criados`, e "cor gravada certinho" (que teria de passar por
+      // `responder_cor`, contada em `anotadas`) nao tinha como ser pega.
+      const gravacoes = () => criados + anotadas + aprendidas;
+      const gravacoesAoEntrar = gravacoes();
       let jaCobreiAMentira = false;
       let jaCobreiOErroTecnico = false;
       let decisao: Decisao | null = null;
@@ -1039,15 +1043,17 @@ Deno.serve(async (req: Request) => {
           // Cobro uma vez so: se ele insistir, deixo passar e o desencontro
           // fica no historico para a gente ver -- travar em laco calaria o
           // agente, que e um problema pior que uma frase errada.
+          // Com as flexoes: "cor gravada certinho" passou em 24/09 porque a
+          // lista tinha "gravado" e nao "gravada".
           const prometeuTerGravado =
-            /\b(anotei|anotado|gravei|gravado|registrei|registrado|cadastrei|cadastrado|salvei|guardei|atualizei)\b/i;
+            /\b((anot|grav|registr|cadastr|salv|guard|atualiz|arquiv)(ei|ado|ada|ados|adas|ou|amos)|corrig(i|ido|ida|idos|idas|imos))\b/i;
           const falaQueGravou = (escolha.messages ?? []).some((m) =>
             prometeuTerGravado.test(String(m ?? ''))
           );
 
           if (
             falaQueGravou &&
-            criados === criadosAoEntrar &&
+            gravacoes() === gravacoesAoEntrar &&
             !jaCobreiAMentira &&
             volta < MAX_VOLTAS - 1
           ) {
@@ -1062,11 +1068,11 @@ Deno.serve(async (req: Request) => {
                   'NAO ENVIEI. Voce escreveu que anotou, e nao chamou nenhuma ferramenta que grava ' +
                   'neste turno. Dizer "anotei" sem ter gravado e mentir para o dono: ele vai embora ' +
                   'achando que esta feito, e na proxima conversa a mesma pergunta volta. ' +
-                  'Escolha: chame a ferramenta certa agora (nome e endereco do salao sao ' +
-                  '`registrar_identidade`, pessoa e `criar_membro_equipe`, dias e horarios sao ' +
-                  '`definir_horario_funcionamento`, habilidade e `criar_habilidade`, servico e ' +
-                  '`criar_servico`, preco e `definir_preco`, regra e `anotar`) -- ou, se faltar ' +
-                  'informacao, chame `atender` de novo e apenas PERGUNTE, sem dizer que anotou.',
+                  'Escolha: chame a ferramenta que grava isso agora (cor e `responder_cor`, uma ' +
+                  'vez por resposta; regra e `criar_regra`; redes, confirmacao e lembrete tem ' +
+                  'ferramenta propria; nome e endereco `registrar_identidade`; servico ' +
+                  '`criar_servico`; preco `definir_preco`) -- ou, se faltar informacao, chame ' +
+                  '`atender` de novo e apenas PERGUNTE, sem dizer que anotou.',
               })),
             });
             continue;
