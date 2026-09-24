@@ -176,7 +176,10 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description:
             'true quando ele disse "a partir de", "começa em", "varia". false quando é valor fechado. Na dúvida, pergunte a ele; não chute.',
         },
-        confianca: { type: 'number', description: 'Mesma régua do `anotar`. Abaixo de 0,75 não grava.' },
+        confianca: {
+          type: 'number',
+          description: 'Mesma régua do `anotar`. Abaixo de 0,75 não grava.',
+        },
       },
       required: ['servicoId', 'precoReais', 'ehPiso', 'confianca'],
       additionalProperties: false,
@@ -192,7 +195,8 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         servicoId: { type: 'string', description: 'O id do serviço, como veio na pendência.' },
         nome: {
           type: 'string',
-          description: 'Como o dono chamou essa variação: "raiz", "raiz com muito cabelo", "cabelo todo".',
+          description:
+            'Como o dono chamou essa variação: "raiz", "raiz com muito cabelo", "cabelo todo".',
         },
         precoReais: { type: 'number', description: 'O preço desta variação, em reais.' },
         confianca: { type: 'number', description: 'Abaixo de 0,75 não grava.' },
@@ -208,7 +212,10 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        nome: { type: 'string', description: 'O nome do serviço, exatamente como está no catálogo.' },
+        nome: {
+          type: 'string',
+          description: 'O nome do serviço, exatamente como está no catálogo.',
+        },
       },
       required: ['nome'],
       additionalProperties: false,
@@ -229,11 +236,13 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       properties: {
         marcaHorario: {
           type: 'boolean',
-          description: 'true se ele quer que o agente marque o horário na agenda; false se é só para responder.',
+          description:
+            'true se ele quer que o agente marque o horário na agenda; false se é só para responder.',
         },
         pedeSinal: {
           type: 'boolean',
-          description: 'true se ele quer pedir um sinal para confirmar o horário. Só com marcaHorario.',
+          description:
+            'true se ele quer pedir um sinal para confirmar o horário. Só com marcaHorario.',
         },
         politicaDeCancelamento: {
           type: 'boolean',
@@ -345,7 +354,10 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         nome: { type: 'string', description: 'O nome dela, como está cadastrado.' },
         data: { type: 'string', description: 'A data, no formato AAAA-MM-DD.' },
         abre: { type: 'string', description: 'HH:MM. Deixe vazio para herdar o horário do salão.' },
-        fecha: { type: 'string', description: 'HH:MM. Deixe vazio para herdar o horário do salão.' },
+        fecha: {
+          type: 'string',
+          description: 'HH:MM. Deixe vazio para herdar o horário do salão.',
+        },
         confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
       },
       required: ['nome', 'data', 'confianca'],
@@ -598,7 +610,8 @@ Deno.serve(async (req: Request) => {
   // agente das clientes -- ele nao herda uma linha das regras de atendimento.
   let regras: string;
   try {
-    regras = ((await rpc(supabaseUrl, serviceKey, 'agent_prompt', { p_agent: 'DONO' })) as string) ?? '';
+    regras =
+      ((await rpc(supabaseUrl, serviceKey, 'agent_prompt', { p_agent: 'DONO' })) as string) ?? '';
   } catch (erro) {
     return json(500, { ok: false, reason: 'PROMPT_READ_FAILED', detail: String(erro) });
   }
@@ -641,7 +654,11 @@ Deno.serve(async (req: Request) => {
           p_decision: 'HANDOFF',
           p_reason: 'Numero nao cadastrado como dono de nenhum salao.',
         });
-        resultados.push({ conversationId: item.conversation_id, action: 'HANDOFF', motivo: 'DONO_DESCONHECIDO' });
+        resultados.push({
+          conversationId: item.conversation_id,
+          action: 'HANDOFF',
+          motivo: 'DONO_DESCONHECIDO',
+        });
         continue;
       }
 
@@ -674,11 +691,16 @@ Deno.serve(async (req: Request) => {
           role: 'user',
           content:
             'Esta conversa com o dono (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
-            JSON.stringify({ dono: contexto.dono, negocio: contexto.negocio, history: contexto.history }) +
+            JSON.stringify({
+              dono: contexto.dono,
+              negocio: contexto.negocio,
+              history: contexto.history,
+            }) +
             '\n\nO QUE AINDA FALTA NO CADASTRO DELE (a chave entre colchetes é obrigatória em `anotar`, e você nunca inventa uma):\n' +
             (pauta || '(nada — o cadastro está completo)') +
             '\n\nAS HABILIDADES QUE ESTE SALÃO TEM (é desta lista que você escolhe em `criar_servico`, escrita exatamente assim; você nunca inventa uma):\n' +
-            (listaHabilidades || '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)'),
+            (listaHabilidades ||
+              '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)'),
         },
       ];
 
@@ -717,7 +739,9 @@ Deno.serve(async (req: Request) => {
           max_tokens: 2000,
           thinking: { type: 'adaptive' },
           output_config: { effort: ESFORCO },
-          system: [{ type: 'text', text: regras, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } }],
+          system: [
+            { type: 'text', text: regras, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } },
+          ],
           tools: FERRAMENTAS,
           tool_choice: { type: 'any' },
           messages: mensagens,
@@ -1091,10 +1115,15 @@ Deno.serve(async (req: Request) => {
           } else if (chamada.name === 'desativar_servico') {
             const args = chamada.input as { nome: string };
             try {
-              const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_desativar_servico_por_nome', {
-                p_tenant_id: tenantId,
-                p_nome: args.nome,
-              })) as { ok?: boolean; reason?: string; servico?: string; procurado?: string } | null;
+              const r = (await rpc(
+                supabaseUrl,
+                serviceKey,
+                'onboarding_desativar_servico_por_nome',
+                {
+                  p_tenant_id: tenantId,
+                  p_nome: args.nome,
+                }
+              )) as { ok?: boolean; reason?: string; servico?: string; procurado?: string } | null;
               if (r?.ok) {
                 texto = `Tirei "${r.servico}" do catalogo. Ele continua salvo, so nao aparece mais. Confirme com ele antes do proximo.`;
               } else if (r?.reason === 'SERVICO_NAO_ENCONTRADO') {
@@ -1116,7 +1145,8 @@ Deno.serve(async (req: Request) => {
               confianca: number;
             };
             if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
-              texto = 'NAO gravei: confianca abaixo de 0,75. Pergunte a ele de novo, com as duas opcoes.';
+              texto =
+                'NAO gravei: confianca abaixo de 0,75. Pergunte a ele de novo, com as duas opcoes.';
             } else {
               try {
                 const r = (await rpc(
@@ -1271,12 +1301,17 @@ Deno.serve(async (req: Request) => {
               texto = 'NAO gravei: confianca abaixo de 0,75. Confirme com ele como ela trabalha.';
             } else {
               try {
-                const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_definir_disponibilidade', {
-                  p_tenant_id: tenantId,
-                  p_nome: args.nome,
-                  p_disponibilidade: args.disponibilidade,
-                  p_dias: Array.isArray(args.dias) && args.dias.length ? args.dias : null,
-                })) as {
+                const r = (await rpc(
+                  supabaseUrl,
+                  serviceKey,
+                  'onboarding_definir_disponibilidade',
+                  {
+                    p_tenant_id: tenantId,
+                    p_nome: args.nome,
+                    p_disponibilidade: args.disponibilidade,
+                    p_dias: Array.isArray(args.dias) && args.dias.length ? args.dias : null,
+                  }
+                )) as {
                   ok?: boolean;
                   reason?: string;
                   pessoa?: string;
@@ -1362,7 +1397,8 @@ Deno.serve(async (req: Request) => {
                 const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_criar_habilidade', {
                   p_tenant_id: tenantId,
                   p_nome: args.nome,
-                  p_quem_faz: Array.isArray(args.quemFaz) && args.quemFaz.length ? args.quemFaz : null,
+                  p_quem_faz:
+                    Array.isArray(args.quemFaz) && args.quemFaz.length ? args.quemFaz : null,
                 })) as {
                   ok?: boolean;
                   reason?: string;
@@ -1420,7 +1456,8 @@ Deno.serve(async (req: Request) => {
                     .join(', ');
                   texto = `Gravei o horario: ${lista}. Nos dias que nao estao aqui o salao fica fechado -- confirme com ele.`;
                 } else if (r?.reason === 'HORARIO_INVERTIDO') {
-                  texto = 'NAO gravei: tem dia com a hora de fechar antes da de abrir. Confirme com ele.';
+                  texto =
+                    'NAO gravei: tem dia com a hora de fechar antes da de abrir. Confirme com ele.';
                 } else if (r?.reason === 'DIAS_NAO_INFORMADOS') {
                   texto = 'NAO gravei: voce nao mandou dia nenhum. Pergunte que dias o salao abre.';
                 } else {
@@ -1559,7 +1596,13 @@ Deno.serve(async (req: Request) => {
       if (acao === 'REPLY' && textos.length === 0) acao = 'HANDOFF';
 
       if (dryRun) {
-        resultados.push({ conversationId: item.conversation_id, action: acao, messages: textos, uso, dryRun: true });
+        resultados.push({
+          conversationId: item.conversation_id,
+          action: acao,
+          messages: textos,
+          uso,
+          dryRun: true,
+        });
         continue;
       }
 
@@ -1668,12 +1711,21 @@ Deno.serve(async (req: Request) => {
         // limpeza de falhas nao derruba o turno
       }
 
-      resultados.push({ conversationId: item.conversation_id, action: acao, messages: saidas, uso });
+      resultados.push({
+        conversationId: item.conversation_id,
+        action: acao,
+        messages: saidas,
+        uso,
+      });
     } catch (erro) {
       falhas++;
       const detalhe = String(erro);
       console.error(
-        JSON.stringify({ event: 'eddy_turn_failed', conversationId: item.conversation_id, erro: detalhe })
+        JSON.stringify({
+          event: 'eddy_turn_failed',
+          conversationId: item.conversation_id,
+          erro: detalhe,
+        })
       );
       try {
         await rpc(supabaseUrl, serviceKey, 'record_agent_failure', {
@@ -1685,7 +1737,11 @@ Deno.serve(async (req: Request) => {
       } catch {
         // registrar a falha nao pode gerar outra
       }
-      resultados.push({ conversationId: item.conversation_id, action: 'ERROR', detail: detalhe.slice(0, 300) });
+      resultados.push({
+        conversationId: item.conversation_id,
+        action: 'ERROR',
+        detail: detalhe.slice(0, 300),
+      });
     }
   }
 
