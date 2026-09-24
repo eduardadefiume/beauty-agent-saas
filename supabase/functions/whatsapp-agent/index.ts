@@ -738,7 +738,10 @@ async function decidir(
       // Por que não basta a regra de prompt: a resposta de 10:58 veio de um
       // modelo que já tinha, escrito no prompt, "não repita pergunta já feita".
       const repetidas =
-        decisao.action === 'REPLY' && chamadas.length === 1 && !jaCobreiARepeticao && volta < MAX_VOLTAS - 1
+        decisao.action === 'REPLY' &&
+        chamadas.length === 1 &&
+        !jaCobreiARepeticao &&
+        volta < MAX_VOLTAS - 1
           ? frasesRepetidas(
               fala,
               conversa.filter((f) => f.direction === 'OUTBOUND').map((f) => String(f.text ?? ''))
@@ -1272,7 +1275,12 @@ Deno.serve(async (req) => {
             // Sem o texto cru nao da para saber COMO ele quebra, e o pedido de
             // refazer ja provou que sozinho nao resolve.
             amostra: corrompidos
-              .map((campo) => campo + '=' + String((decisao as Record<string, unknown>)[campo] ?? '').slice(0, 200))
+              .map(
+                (campo) =>
+                  campo +
+                  '=' +
+                  String((decisao as Record<string, unknown>)[campo] ?? '').slice(0, 200)
+              )
               .join(' | '),
           })
         );
@@ -1351,6 +1359,19 @@ Deno.serve(async (req) => {
               p_idempotency_key: `agent:${item.last_inbound_message_id}:${item.trigger}:${i}`,
             })
           );
+        }
+        // A FINALIZACAO DO SALAO SAI DEPOIS DO "MARCADO" DELA. Texto e arte
+        // sao do dono, preenchidos no banco, e nao passam pelo modelo. Falhar
+        // aqui nao desfaz o agendamento: a cliente ja ouviu que esta marcado.
+        if (agendou?.appointmentId) {
+          try {
+            await rpc(supabaseUrl, serviceKey, 'enviar_finalizacao_do_agendamento', {
+              p_conversation_id: item.conversation_id,
+              p_appointment_id: agendou.appointmentId,
+            });
+          } catch (erro) {
+            console.error('FINALIZACAO_FALHOU', agendou.appointmentId, String(erro));
+          }
         }
         await rpc(supabaseUrl, serviceKey, 'consume_owner_answers', {
           p_tenant_id: item.tenant_id,

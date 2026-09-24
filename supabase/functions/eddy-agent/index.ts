@@ -251,7 +251,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         lembraDaVespera: {
           type: 'boolean',
           description:
-            'true se ele PEDIU lembrete de véspera. Ainda não está disponível — grave o pedido e diga a ele que você avisa quando liberar, sem prometer data.',
+            'true se ele já disse que quer lembrete de véspera. Os detalhes (hora, texto) vêm depois, com `definir_lembrete`.',
         },
         confianca: { type: 'number', description: 'Mesma régua do `anotar`.' },
       },
@@ -511,6 +511,52 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         },
       },
       required: ['assunto', 'titulo', 'regra', 'palavrasDoDono', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'definir_redes',
+    description:
+      'Grava as redes sociais do salão, que a atendente passa para a cliente. Se ele disser que não tem, chame sem nenhum campo: "não tem" também é resposta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        instagram: { type: 'string', description: 'O @ ou o link do Instagram.' },
+        facebook: { type: 'string' },
+        tiktok: { type: 'string' },
+        site: { type: 'string' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'definir_confirmacao',
+    description:
+      'Grava o que a cliente recebe logo depois de marcar: um texto dele (com as lacunas {nome}, {data}, {hora}, {servico}, {salao}, {endereco}) e/ou uma imagem que ele mandou (o id da foto sem lugar). Só depois de ele aprovar como ficou. O texto entra no rascunho e vale depois de publicar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string', description: 'O texto final, já com as lacunas.' },
+        foto: {
+          type: 'string',
+          description: 'O id da foto sem lugar que é a arte de confirmação.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'definir_lembrete',
+    description:
+      'Liga ou desliga o lembrete de véspera e a hora em que ele sai (8 a 21). Se ele quiser um texto diferente do padrão, mande em textoDesejado: fica pedido para a Eduarda aprovar no WhatsApp, e até lá sai o padrão.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        quer: { type: 'boolean' },
+        hora: { type: 'integer', description: 'Hora cheia, de 8 a 21. Ex.: 18.' },
+        textoDesejado: { type: 'string' },
+      },
+      required: ['quer'],
       additionalProperties: false,
     },
   },
@@ -1692,6 +1738,54 @@ Deno.serve(async (req: Request) => {
               } catch (erro) {
                 texto = `Nao deu para gravar a regra agora (${String(erro).slice(0, 120)}).`;
               }
+            }
+          } else if (
+            chamada.name === 'definir_redes' ||
+            chamada.name === 'definir_confirmacao' ||
+            chamada.name === 'definir_lembrete'
+          ) {
+            const a = chamada.input as Record<string, unknown>;
+            const [funcao, params] =
+              chamada.name === 'definir_redes'
+                ? [
+                    'eddy_definir_redes',
+                    {
+                      p_instagram: a.instagram ?? null,
+                      p_facebook: a.facebook ?? null,
+                      p_tiktok: a.tiktok ?? null,
+                      p_site: a.site ?? null,
+                    },
+                  ]
+                : chamada.name === 'definir_confirmacao'
+                  ? [
+                      'eddy_definir_confirmacao',
+                      {
+                        p_texto: a.texto ?? null,
+                        p_foto: a.foto ?? null,
+                        p_conversation_id: item.conversation_id,
+                      },
+                    ]
+                  : [
+                      'eddy_definir_lembrete',
+                      {
+                        p_quer: a.quer,
+                        p_hora: a.hora ?? null,
+                        p_texto_desejado: a.textoDesejado ?? null,
+                      },
+                    ];
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, funcao, {
+                p_tenant_id: tenantId,
+                ...params,
+              })) as { ok?: boolean; reason?: string } | null;
+              if (r?.ok) {
+                anotadas += 1;
+                texto = `Gravado: ${JSON.stringify(r)}`;
+              } else {
+                texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
             }
           } else if (chamada.name === 'responder_cor') {
             const args = chamada.input as { chave: string; valor: number };

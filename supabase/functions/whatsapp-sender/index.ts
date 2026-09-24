@@ -118,10 +118,16 @@ async function subirMidiaParaMeta(
   mime: string,
   nomeArquivo: string
 ): Promise<string> {
-  const arquivo = await fetch(
-    `${supabaseUrl}/storage/v1/object/anexos/${caminho.split('/').map(encodeURIComponent).join('/')}`,
-    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
-  );
+  // `anexos` e onde a tela e a atendente guardam o que mandam. A arte de
+  // confirmacao do dono mora em `conhecimento`, na mesma pasta do salao -- o
+  // enqueue ja conferiu que o caminho comeca pelo tenant.
+  const baixar = (balde: string) =>
+    fetch(
+      `${supabaseUrl}/storage/v1/object/${balde}/${caminho.split('/').map(encodeURIComponent).join('/')}`,
+      { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    );
+  let arquivo = await baixar('anexos');
+  if (!arquivo.ok) arquivo = await baixar('conhecimento');
   if (!arquivo.ok) {
     throw new Error(`balde ${arquivo.status} ao baixar ${caminho}`);
   }
