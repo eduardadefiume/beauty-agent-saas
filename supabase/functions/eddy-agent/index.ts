@@ -529,6 +529,20 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'responder_pergunta_da_atendente',
+    description:
+      'Grava a resposta do dono a uma pergunta que a atendente fez sobre uma cliente (o código #XXXX vem na mensagem e na lista de perguntas abertas). A atendente volta para a cliente sozinha.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        codigo: { type: 'string', description: 'O código da pergunta, ex.: AB12.' },
+        resposta: { type: 'string', description: 'A resposta dele, nas palavras dele.' },
+      },
+      required: ['codigo', 'resposta'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'marcar_a_partir_de',
     description:
       'Marca ou desmarca o preço de um serviço já cadastrado como "a partir de". Use quando ele disser isso de um serviço que já existe, ou quando o cadastro mostrar diferente do que ele disse.',
@@ -886,6 +900,22 @@ Deno.serve(async (req: Request) => {
         cadastroAgora = '(indisponível neste turno: não confirme nada do cadastro)';
       }
 
+      // AS PERGUNTAS DA ATENDENTE QUE ESPERAM O DONO. So entram quando ha
+      // alguma: nao custam token no dia a dia.
+      let perguntasAbertas = '';
+      try {
+        const ps = (await rpc(supabaseUrl, serviceKey, 'eddy_perguntas_pendentes', {
+          p_tenant_id: tenantId,
+        })) as unknown[];
+        if (Array.isArray(ps) && ps.length > 0) {
+          perguntasAbertas =
+            '\n\nPERGUNTAS DA ATENDENTE ESPERANDO O DONO (tem cliente aguardando; use `responder_pergunta_da_atendente`):\n' +
+            JSON.stringify(ps);
+        }
+      } catch {
+        perguntasAbertas = '';
+      }
+
       // A lista fechada de habilidades. Sem ela na mesa, `criar_servico` vira
       // adivinhacao: o bloco EDDY_CRIAR_SERVICO manda escolher da lista, e a
       // lista tem que estar aqui para ele poder obedecer.
@@ -960,7 +990,8 @@ Deno.serve(async (req: Request) => {
             '\n\nAS HABILIDADES QUE ESTE SALÃO TEM (é desta lista que você escolhe em `criar_servico`, escrita exatamente assim; você nunca inventa uma):\n' +
             (listaHabilidades ||
               '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)') +
-            fotosERegua,
+            fotosERegua +
+            perguntasAbertas,
         },
       ];
 
@@ -1843,6 +1874,23 @@ Deno.serve(async (req: Request) => {
                 texto = `Nao deu para gravar a regra agora (${String(erro).slice(0, 120)}).`;
               }
             }
+          } else if (chamada.name === 'responder_pergunta_da_atendente') {
+            const a = chamada.input as { codigo: string; resposta: string };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_responder_pergunta', {
+                p_tenant_id: tenantId,
+                p_codigo: a.codigo,
+                p_resposta: a.resposta,
+              })) as { ok?: boolean; reason?: string } | null;
+              if (r?.ok) {
+                anotadas += 1;
+                texto = `Resposta gravada para #${a.codigo}. A atendente responde a cliente em instantes.`;
+              } else {
+                texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}. Confira o codigo com ele.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que passou.`;
+            }
           } else if (chamada.name === 'marcar_a_partir_de') {
             const a = chamada.input as { servico: string; aPartirDe: boolean };
             try {
@@ -2003,9 +2051,22 @@ Deno.serve(async (req: Request) => {
                     'Diga isso a ele em uma linha.';
                 } else if (r?.ok) {
                   publicacoes += 1;
+                  // 24/09/2026: disse "a atendente ja responde" com ela
+                  // desligada. Quem diz se ela esta no ar e o banco.
+                  let ligada = false;
+                  try {
+                    ligada =
+                      (await rpc(supabaseUrl, serviceKey, 'eddy_atendente_ligada', {
+                        p_tenant_id: tenantId,
+                      })) === true;
+                  } catch {
+                    ligada = false;
+                  }
                   texto =
                     `Publicado. A configuracao no ar agora e a versao ${r.versao?.versionNumber ?? '?'}. ` +
-                    'Diga isso a ele em uma linha.';
+                    (ligada
+                      ? 'A atendente do salao esta LIGADA: ja responde as clientes com isso. Diga isso a ele em uma linha.'
+                      : 'A atendente do salao esta DESLIGADA: NAO diga que ela ja responde. Diga que esta publicado e que ela comeca a atender quando for ligada na tela Agente do app (ou pela equipe da EDDigital).');
                 } else if (r?.reason === 'FALTA_COISA') {
                   const faltas = (r.pendencias ?? []).map((p) => `- ${p.oQueFalta}`).join('\n');
                   texto =

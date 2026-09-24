@@ -189,7 +189,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           type: 'string',
           enum: ['REPLY', 'ASK_OWNER', 'HANDOFF'],
           description:
-            'REPLY: você sabe a resposta e vai falar com a cliente agora. ASK_OWNER: falta uma informação que só a dona tem e você NÃO consegue responder nada de útil agora, a cliente NÃO recebe nada. HANDOFF: assunto delicado que uma pessoa precisa conduzir.',
+            'REPLY: você sabe a resposta e vai falar com a cliente agora. ASK_OWNER: falta uma informação que só a dona tem e você NÃO consegue responder nada de útil agora; a cliente recebe sozinha um aviso de que vai ser confirmado, e você não escreve nada. HANDOFF: assunto delicado que uma pessoa precisa conduzir.',
         },
         messages: {
           type: 'array',
@@ -200,7 +200,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         ownerQuestion: {
           type: 'string',
           description:
-            'A pergunta para a dona, direta e específica. Obrigatória quando action for ASK_OWNER. TAMBÉM pode vir junto de um REPLY: aí você responde à cliente o que sabe e pergunta à dona só o pedaço que falta. Vazio quando não há nada a perguntar.',
+            'Uma PERGUNTA para a dona, direta e específica, que ela responde com uma frase. Obrigatória quando action for ASK_OWNER. TAMBÉM pode vir junto de um REPLY: aí você responde à cliente o que sabe e pergunta à dona só o pedaço que falta. Resumo do atendimento não é pergunta: sem pergunta de verdade, vazio.',
         },
         contextSummary: {
           type: 'string',
@@ -1411,6 +1411,21 @@ Deno.serve(async (req) => {
           p_question: decisao.ownerQuestion,
           p_context_summary: decisao.contextSummary,
         });
+        // SILENCIO NAO E RESPOSTA. 24/09/2026, teste com cliente-robo: a
+        // cliente gravida perguntou se podia hidratacao, a atendente foi
+        // perguntar ao dono e ela nao recebeu nada. Uma linha fixa, sem
+        // modelo, uma vez por mensagem dela.
+        try {
+          await rpc(supabaseUrl, serviceKey, 'enqueue_outbound_message', {
+            p_tenant_id: item.tenant_id,
+            p_conversation_id: item.conversation_id,
+            p_body_text: 'Vou confirmar isso aqui no salão e já te respondo, tá?',
+            p_actor: 'AGENT',
+            p_idempotency_key: `aguarde:${item.last_inbound_message_id}`,
+          });
+        } catch (erroAviso) {
+          console.error('AVISO_DE_ESPERA_FALHOU', item.conversation_id, String(erroAviso));
+        }
       }
 
       // So marca depois de agir. Se o enfileiramento estourar, a mensagem fica
