@@ -699,14 +699,33 @@ async function decidir(
 
       const NEGA_HORARIO =
         /\bn[ãa]o\s+(tenho|tem|temos|consigo|h[áa])\b[^.!?\n]{0,40}\b\d{1,2}\s*(h\b|h\d{2}|:\d{2})|\b\d{1,2}\s*(h\b|h\d{2}|:\d{2})[^.!?\n]{0,30}\bn[ãa]o\s+(tenho|tem|temos|d[áa])\b/i;
+      // O que ELA pediu, e nao o que o modelo escreveu: 24/09 ele fugiu do
+      // "nao tem" com "as 10h esta ocupado mesmo". Se a ultima leva dela cita
+      // um horario que nao esta na lista em maos, a agenda e consultada antes.
+      const ultimaLevaDela: string[] = [];
+      for (let k = conversa.length - 1; k >= 0 && conversa[k].direction === 'INBOUND'; k--) {
+        ultimaLevaDela.push(String(conversa[k].text ?? ''));
+      }
+      const pedidos = ultimaLevaDela.join(' ').match(/\b([01]?\d|2[0-3])\s*(?:h|:)\s*([0-5]\d)?/gi);
+      const naLista = new Set(
+        estado.candidatos.map((c) => {
+          const h = horarioLocal(c.startMs).match(/(\d{1,2}):(\d{2})/);
+          return h ? `${Number(h[1])}:${h[2]}` : '';
+        })
+      );
+      const pediuForaDaLista = (pedidos ?? []).some((p) => {
+        const m = p.match(/(\d{1,2})\s*(?:h|:)\s*(\d{2})?/i);
+        return m ? !naLista.has(`${Number(m[1])}:${m[2] ?? '00'}`) : false;
+      });
       if (
         decisao.action === 'REPLY' &&
         !consultouNesteTurno &&
         !jaCobreiONaoTem &&
         volta < MAX_VOLTAS - 1 &&
-        (Array.isArray(decisao.messages) ? decisao.messages : []).some((m) =>
-          NEGA_HORARIO.test(String(m ?? ''))
-        )
+        (pediuForaDaLista ||
+          (Array.isArray(decisao.messages) ? decisao.messages : []).some((m) =>
+            NEGA_HORARIO.test(String(m ?? ''))
+          ))
       ) {
         jaCobreiONaoTem = true;
         mensagens.push({ role: 'assistant', content: resposta.content });
