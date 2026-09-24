@@ -855,6 +855,18 @@ Deno.serve(async (req: Request) => {
             : 'Depois dela o cadastro básico está completo.')
         : '(cadastro básico completo)';
 
+      // O CADASTRO COMO ESTA AGORA. 24/09/2026: o dono pediu para conferir a
+      // pausa das mechas e o Eddy confirmou de memoria o contrario do que
+      // estava gravado. Sem o cadastro na mesa, "confirmado" e chute.
+      let cadastroAgora = '';
+      try {
+        cadastroAgora = JSON.stringify(
+          await rpc(supabaseUrl, serviceKey, 'eddy_cadastro_resumido', { p_tenant_id: tenantId })
+        );
+      } catch {
+        cadastroAgora = '(indisponível neste turno: não confirme nada do cadastro)';
+      }
+
       // A lista fechada de habilidades. Sem ela na mesa, `criar_servico` vira
       // adivinhacao: o bloco EDDY_CRIAR_SERVICO manda escolher da lista, e a
       // lista tem que estar aqui para ele poder obedecer.
@@ -922,6 +934,8 @@ Deno.serve(async (req: Request) => {
             }) +
             '\n\nO ROTEIRO DO CADASTRO (a primeira é a sua próxima pergunta; se ele já respondeu outra coisa, grave e volte a ela):\n' +
             textoDoRoteiro +
+            '\n\nO CADASTRO COMO ESTÁ AGORA (lido do banco neste turno; é daqui que você confirma qualquer coisa; dias: 0=domingo … 6=sábado):\n' +
+            cadastroAgora +
             '\n\nDETALHES QUE `anotar` ACEITA NESTA ETAPA (a chave entre colchetes é obrigatória em `anotar`, e você nunca inventa uma):\n' +
             (pauta || '(nenhum nesta etapa)') +
             '\n\nAS HABILIDADES QUE ESTE SALÃO TEM (é desta lista que você escolhe em `criar_servico`, escrita exatamente assim; você nunca inventa uma):\n' +
