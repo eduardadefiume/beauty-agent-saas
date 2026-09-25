@@ -166,6 +166,15 @@ O WhatsApp só deixa a empresa escrever primeiro com **modelo aprovado pela Meta
 - Só isso trava a agenda.
 - O resto da régua (comprimento, espessura, "há quanto tempo") não segura mais o agendamento.
 
+## Teste real da Duda (25/09, tarde) — o que falhou e o que mudou
+
+| O que aconteceu                                                                                                                                         | Causa                                                                                                               | Correção                                                                                                                                                                                                                                 | Reteste no robô                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Ela mandou um áudio ("a Duda marca os dias no Google Agenda, consegue entrar lá?") e logo depois um texto com os serviços. O Eddy respondeu só o texto. | A transcrição **estava** no contexto. A primeira linha dizia ao modelo "a última mensagem é a que espera resposta". | Todas as mensagens desde a última resposta dele vão numeradas no fim do contexto, áudios marcados, com a ordem de responder cada uma. O Eddy também passou a saber que **não lê Google Agenda** e oferece marcar as datas pela conversa. | ✔ Áudio + texto: respondeu os dois. ✔ Rajada de 3 (texto, áudio, texto): respondeu as 3 e criou o serviço. |
+| No reteste: "3 e 17 de outubro já passaram".                                                                                                            | O Eddy **não sabia a data de hoje**, chutou 2025 e o banco recusou a data.                                          | A data de hoje vai no contexto. Data com ano vencido vira a próxima ocorrência.                                                                                                                                                          | ✔ "Marquei a Bia dia 3/10 e 17/10" → no banco: 2026-10-03 e 2026-10-17, 08:00–17:00                        |
+
+A integração com o Google Agenda existe no site, mas a única conexão real (Piloto Eduarda, agosto) terminou em ERRO. Hoje ela não está em uso.
+
 ## Pendências abertas (não corrigidas)
 
 Em ordem de risco:
