@@ -497,6 +497,15 @@ async function decidir(
       'A ficha desta cliente está incompleta. Faltam ' +
       faltasDoTurno.length +
       ' informações.\n' +
+      // Sem servico em foco, a lista vem inteira por seguranca. 25/09: a
+      // Renata perguntou de hidratacao e recebeu "manda uma foto do seu
+      // cabelo". A trava de verdade esta em reservar_horario; aqui basta
+      // nao atrapalhar quem nao vai fazer quimica.
+      (foco?.serviceName
+        ? ''
+        : 'EXCEÇÃO: esta ficha (foto, química, coloração, tom) só vale para química e cor. Se o que ela ' +
+          'quer é corte, escova, hidratação, unha, maquiagem ou outro serviço sem química, IGNORE esta ' +
+          'lista: pergunte só o nome, se faltar, e siga o atendimento normal, com horário.\n') +
       'Antes de escrever, decida em que ponto a conversa está.\n' +
       '\n' +
       'CAMINHO A: ela ainda NÃO disse o que quer fazer (só cumprimentou, só falou oi). Então\n' +
