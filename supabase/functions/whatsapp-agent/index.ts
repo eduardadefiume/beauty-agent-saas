@@ -338,6 +338,15 @@ const FOCO_CANDIDATOS_VALIDOS_MINUTOS = 12 * 60;
 // Servico em que a ficha do cabelo (foto, quimica, coloracao, tom) e condicao
 // para marcar. Pelo nome, porque o cadastro nao tem categoria: e o nome que o
 // dono escreve, e e nele que a quimica aparece.
+// O que a cliente de quimica/cor precisa responder antes de marcar.
+const MINIMO_DA_QUIMICA = new Set([
+  'NOME',
+  'FOTO_ATUAL',
+  'TEM_QUIMICA',
+  'TEM_COLORACAO',
+  'TOM_QUE_QUER',
+]);
+
 const SERVICO_QUIMICO =
   /(color|tint|mecha|luzes|reflexo|balaiag|balayage|ombr|morena|descolor|platin|tonaliz|matiz|violet|progressiv|selante|botox|alisa|relaxa|permanente|decapag|quimic|química)/i;
 
@@ -473,10 +482,18 @@ async function decidir(
   // num salao de cor, onde marcar quimica sem saber o historico queima
   // cliente; num corte, numa escova, numa unha, ela so derruba a venda.
   // Servico desconhecido conta como quimica: na duvida, o lado seguro.
+  //
+  // E mesmo na quimica, o MINIMO e o que a Duda definiu em 25/09: foto do
+  // cabelo, foto do tom desejado, se tem quimica e se tem coloracao (e o
+  // nome). Comprimento, espessura, "ha quanto tempo" e o resto da regua sao
+  // bem-vindos, mas nao seguram a agenda: na Julia foram tres perguntas
+  // seguidas sem falar de horario.
   const faltasQueTravam = (nomeDoServico: string | null | undefined) =>
-    nomeDoServico && !SERVICO_QUIMICO.test(nomeDoServico)
-      ? faltas.filter((f) => f.campo === 'NOME')
-      : faltas;
+    faltas.filter((f) =>
+      nomeDoServico && !SERVICO_QUIMICO.test(nomeDoServico)
+        ? f.campo === 'NOME'
+        : MINIMO_DA_QUIMICA.has(f.campo)
+    );
   // O foco e lido antes da primeira volta: e ele que impede o servico de
   // trocar sozinho entre uma leva de mensagens e a seguinte -- e e o servico
   // dele que diz se a ficha trava a agenda.

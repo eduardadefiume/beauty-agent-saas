@@ -91,3 +91,6 @@ verify_jwt = true
 
 [functions.wa-archive-miner]
 verify_jwt = true
+
+[functions.whatsapp-templates]
+verify_jwt = true
