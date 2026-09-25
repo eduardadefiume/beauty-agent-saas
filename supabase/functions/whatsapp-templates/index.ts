@@ -43,9 +43,11 @@ export const MODELOS: Modelo[] = [
   {
     codigo: 'AVISO_AO_DONO',
     nome: 'aviso_ao_dono',
+    // 25/09: "...Codigo {{4}}." foi recusado -- a Meta considera o ponto
+    // final como "termina em lacuna". O texto fixo tem que fechar a frase.
     texto:
-      'Olá! A atendente do {{1}} precisa de uma resposta sua sobre a cliente {{2}}: {{3}} ' +
-      'Responda esta mensagem que eu passo a resposta para ela. Código {{4}}.',
+      'Olá! A atendente do {{1}} precisa de uma resposta sua sobre a cliente {{2}}. ' +
+      'Pergunta: {{3}} (código {{4}}). Responda esta mensagem que eu passo a resposta para ela.',
     exemplo: ['Studio Rogério Hair', 'Paula', 'Gestante pode fazer hidratação?', '#4448'],
   },
 ];
