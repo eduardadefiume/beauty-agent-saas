@@ -45,6 +45,13 @@ const CACHE_TTL = '1h' as const;
 // mandou onze servicos num audio, o Eddy gastou as quatro voltas criando e o
 // turno morreu em SEM_DECISAO -- servicos gravados e o dono sem resposta.
 // Lote grande e o normal de quem configura por audio.
+// O que o dono costuma pedir e o Eddy ainda nao faz. Dito com clareza e com
+// a alternativa, para ele nao prometer nem se calar.
+const O_QUE_AINDA_NAO_FACO =
+  'O QUE VOCÊ AINDA NÃO FAZ: você NÃO consegue entrar nem ler o Google Agenda dele (nem de ninguém da equipe). ' +
+  'Se ele pedir, diga isso claramente e ofereça o caminho que funciona hoje: ele (ou a profissional) te manda por aqui as datas em que ela vem, ' +
+  'e você marca cada uma com `marcar_dia_da_profissional`.';
+
 const MAX_VOLTAS = 8;
 
 type Aguardando = {
@@ -971,11 +978,50 @@ Deno.serve(async (req: Request) => {
         );
       }
 
+      // TODAS AS MENSAGENS DELE DESDE A SUA ULTIMA RESPOSTA, NO FIM.
+      //
+      // 25/09/2026, teste real da Duda. Ela mandou um audio ("a Duda marca os
+      // dias dela no Google Agenda, consegue entrar la?") e, 30 segundos
+      // depois, um texto com a lista de servicos. A transcricao estava no
+      // contexto, inteira. O Eddy respondeu so o texto e o audio sumiu. A
+      // linha de abertura dizia "a ultima mensagem do historico e a que esta
+      // esperando resposta" -- e ele obedeceu: a ultima era o texto.
+      //
+      // Dono manda em rajada: audio, texto, foto, outro audio. Cada uma e uma
+      // pergunta ou uma informacao. Aqui elas vao numeradas, na ordem, e sao
+      // a ultima coisa que ele le.
+      const historico = (contexto.history ?? []) as Array<{
+        direction?: string;
+        text?: string;
+        leituraDaMidia?: string | null;
+      }>;
+      const leva: string[] = [];
+      for (let i = historico.length - 1; i >= 0; i--) {
+        const h = historico[i];
+        if (h.direction !== 'INBOUND') break;
+        const texto = (h.text ?? '').trim();
+        const midia = (h.leituraDaMidia ?? '').trim();
+        const tipo = midia ? (/áudio/i.test(midia) ? 'ÁUDIO' : 'MÍDIA') : 'TEXTO';
+        leva.unshift(`[${tipo}] ${[texto, midia].filter(Boolean).join(' — ')}`);
+      }
+      const blocoDaLeva =
+        leva.length === 0
+          ? ''
+          : '\n\nAS MENSAGENS DELE QUE ESTÃO ESPERANDO A SUA RESPOSTA (' +
+            leva.length +
+            ', na ordem em que ele mandou):\n' +
+            leva.map((m, i) => `${i + 1}. ${m}`).join('\n') +
+            '\n\nResponda TODAS. Áudio é mensagem como texto: o que ele falou no áudio exige resposta tanto quanto o que ele escreveu. ' +
+            'Grave o que cada uma trouxe e, na resposta, trate cada uma (mesmo que em uma linha) antes da próxima pergunta do roteiro. ' +
+            'Se alguma pede uma coisa que você NÃO faz, diga isso com clareza e diga o que dá para fazer no lugar. Nunca pule em silêncio.' +
+            '\n' +
+            O_QUE_AINDA_NAO_FACO;
+
       const mensagens: Anthropic.MessageParam[] = [
         {
           role: 'user',
           content:
-            'Esta conversa com o dono (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
+            'Esta conversa com o dono (JSON). As mensagens dele que esperam resposta estão listadas no fim.\n\n' +
             JSON.stringify({
               dono: contexto.dono,
               negocio: contexto.negocio,
@@ -991,7 +1037,8 @@ Deno.serve(async (req: Request) => {
             (listaHabilidades ||
               '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)') +
             fotosERegua +
-            perguntasAbertas,
+            perguntasAbertas +
+            blocoDaLeva,
         },
       ];
 
