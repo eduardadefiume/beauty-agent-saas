@@ -52,6 +52,35 @@ const O_QUE_AINDA_NAO_FACO =
   'Se ele pedir, diga isso claramente e ofereça o caminho que funciona hoje: ele (ou a profissional) te manda por aqui as datas em que ela vem, ' +
   'e você marca cada uma com `marcar_dia_da_profissional`.';
 
+// O EDDY NAO SABIA QUE DIA E HOJE.
+//
+// 25/09/2026: "a Carla vem dia 3 e dia 17 de outubro". O modelo chutou o ano,
+// mandou 2025, o banco recusou (DATA_NO_PASSADO) e o Eddy disse ao dono que
+// "3 e 17 de outubro ja passaram". Nenhuma linha do contexto dizia a data.
+const FUSO = 'America/Sao_Paulo';
+function hojeNoSalao(): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: FUSO,
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date());
+}
+function hojeISO(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: FUSO }).format(new Date());
+}
+// Cinto e suspensorio: data com ano ja vencido vira a proxima ocorrencia do
+// mesmo dia e mes. Dono nao marca profissional no passado; ano errado e chute.
+export function proximaOcorrencia(data: string, hoje = hojeISO()): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(data ?? '').trim());
+  if (!m || data >= hoje) return data;
+  const anoHoje = Number(hoje.slice(0, 4));
+  if (Number(m[1]) >= anoHoje) return data;
+  const esteAno = `${anoHoje}-${m[2]}-${m[3]}`;
+  return esteAno >= hoje ? esteAno : `${anoHoje + 1}-${m[2]}-${m[3]}`;
+}
+
 const MAX_VOLTAS = 8;
 
 type Aguardando = {
@@ -1021,6 +1050,9 @@ Deno.serve(async (req: Request) => {
         {
           role: 'user',
           content:
+            'HOJE: ' +
+            hojeNoSalao() +
+            '. Data sem ano que ele disser é a PRÓXIMA vez que esse dia chega a partir de hoje.\n\n' +
             'Esta conversa com o dono (JSON). As mensagens dele que esperam resposta estão listadas no fim.\n\n' +
             JSON.stringify({
               dono: contexto.dono,
@@ -1725,7 +1757,7 @@ Deno.serve(async (req: Request) => {
                   {
                     p_tenant_id: tenantId,
                     p_nome: args.nome,
-                    p_data: args.data,
+                    p_data: proximaOcorrencia(args.data),
                     p_abre: typeof args.abre === 'string' && args.abre ? args.abre : null,
                     p_fecha: typeof args.fecha === 'string' && args.fecha ? args.fecha : null,
                   }
