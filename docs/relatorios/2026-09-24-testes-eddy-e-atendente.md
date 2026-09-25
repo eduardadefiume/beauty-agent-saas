@@ -139,12 +139,39 @@ Para chegar lá precisei corrigir **27 defeitos**. Os 4 mais graves teriam apare
 26. **Resposta do dono + mensagem nova = 2 turnos.** A cliente recebia uma segunda mensagem sem sentido 4 segundos depois. Corrigido na fila.
 27. **Cliente de hidratação recebia "manda foto do cabelo".** A ficha de química não vale para serviço sem química.
 
+## Rodada 5 (25/09 à tarde) — mensagens fora da janela de 24h
+
+O WhatsApp só deixa a empresa escrever primeiro com **modelo aprovado pela Meta**. Com modelo, o agente manda a qualquer hora, pagando por mensagem (categoria utilidade).
+
+**Modelos criados na WABA do 7035** (`27715432581451174`) pela nova função `whatsapp-templates`:
+
+| Modelo                                   | Texto                                                                                                                                                                   | Status na Meta       |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `lembrete_vespera` (id 1893126281664868) | "Olá, {{1}}! Passando para lembrar do seu horário amanhã, {{2}}, às {{3}}, no {{4}}. Se precisar remarcar, é só responder esta mensagem."                               | PENDING (em análise) |
+| `aviso_ao_dono` (id 2168959266989051)    | "Olá! A atendente do {{1}} precisa de uma resposta sua sobre a cliente {{2}}. Pergunta: {{3}} (código {{4}}). Responda esta mensagem que eu passo a resposta para ela." | PENDING (em análise) |
+
+- A primeira versão do `aviso_ao_dono` foi recusada na hora: "variáveis não podem estar no fim". O texto foi corrigido e reenviado.
+- Um cron relê o status a cada 30 min e grava no salão. Só modelo APPROVED é usado.
+
+**Teste no robô com janela fechada** (última mensagem do dono e da Marina empurrada 3 dias para trás):
+
+| Passo                                          | Resultado (prova)                                                                                                                                                     |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lembrete da Marina                             | ✔ saiu como MODELO `lembrete_vespera` com `[Marina, 26/09, 10:00, Studio Rogério Hair]`                                                                               |
+| Ana: "Posso levar meu cachorrinho?"            | ✔ Ana recebe "Vou confirmar aqui no salão" · ✔ o dono recebe o MODELO `aviso_ao_dono` com `[Studio Rogério Hair, Ana, "Pode a cliente levar um cachorrinho…", #9044]` |
+| Dono responde o modelo: "Pode sim, só no colo" | ✔ janela reabre · ✔ Eddy: "Passei pra Ana" + criou regra · ✔ Ana: "Pode sim, cachorrinho pequeno pode ir, só no colo."                                                |
+
+**Mínimo da química/cor** definido pela Duda: nome, foto do cabelo, foto do tom desejado, se tem química, se tem coloração.
+
+- Só isso trava a agenda.
+- O resto da régua (comprimento, espessura, "há quanto tempo") não segura mais o agendamento.
+
 ## Pendências abertas (não corrigidas)
 
 Em ordem de risco:
 
-1. **Modelo da Meta para lembrete.** Hoje o lembrete só sai para quem falou com o salão nas últimas 24h. Exemplo: a Lara marcou dia 25 para dia 30, então a janela fecha e o lembrete dela **será pulado**. Falta criar o modelo `LEMBRETE_VESPERA` no WhatsApp Manager do número do William e registrar. **Sem isso, a maioria dos lembretes não sai.**
-2. **O aviso ao dono também depende da janela de 24h.** Se o William ficar um dia sem falar com o Eddy, as perguntas da atendente não chegam a ele. Precisa de modelo da Meta também.
+1. **Modelos da Meta em análise.** Até aprovar, lembrete e aviso ao dono fora da janela ficam pendentes. O cron grava a aprovação sozinho.
+2. **Aviso que falha por modelo pendente não é reenviado depois.** Fica registrado (`aviso_falhou`), mas não há nova tentativa.
 3. **Serviço impossível de agendar publicado sem aviso.** A hidratação só a Bia faz e a Bia não tem dia fixo, então nunca há horário. O Eddy deveria avisar o dono antes de publicar. Hoje ele avisa a cada resposta ("Ainda falta a Paula…"), o que vira ruído.
 4. **Variação sem duração própria.** A escova longa (90 min) entra na agenda com 40 min, e a variação escolhida não é gravada no agendamento.
 5. **O Eddy fez uma "correção" que ninguém pediu.** Regravou a pausa das mechas com o mesmo valor e disse "Corrigi". Não estragou nada, mas ele age sobre mensagem antiga do histórico.
