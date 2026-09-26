@@ -1,0 +1,102 @@
+# MIGRAR BANCO: APLICA NO PROJETO CERTO SO AS MIGRACOES QUE AINDA FALTAM.
+#
+# 26/09/2026. As migracoes eram aplicadas a mao, uma a uma, direto no
+# projeto beleza-PRODUCAO -- que era, na pratica, o unico banco que andava. O
+# beleza-DEV parou em 23/09. Regra da Duda: dev -> beleza-DEV, main ->
+# beleza-PRODUCAO, e a producao so recebe o que ja passou pelo DEV.
+#
+# Como funciona: le `supabase_migrations.schema_migrations` do projeto alvo e
+# aplica, em ordem, cada arquivo de supabase/migrations cuja versao ainda nao
+# esta la. Arquivo e registro vao no MESMO comando: se a migracao falhar,
+# nada e gravado e o workflow para ali. O texto guardado em `statements` e o
+# arquivo byte a byte, entao o md5 confere com o repositorio.
+
+name: Migrar banco
+
+on:
+  # Push na dev com migracao nova: o DEV acompanha sozinho.
+  push:
+    branches:
+      - dev
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/migrar-banco.yml'
+  # A mao: da main para a PRODUCAO (e da dev, para listar o que falta).
+  workflow_dispatch:
+    inputs:
+      so_listar:
+        description: 'Só listar o que falta, sem aplicar'
+        type: boolean
+        default: true
+
+concurrency:
+  group: migrar-banco-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Escolher o projeto pela branch
+        id: alvo
+        run: |
+          case "${GITHUB_REF}" in
+            refs/heads/dev)  echo "ref=dboygmtrzgsfcmoquegp" >> "$GITHUB_OUTPUT"; echo "Alvo: beleza-DEV" ;;
+            refs/heads/main) echo "ref=hjghwryhphgusefyivbl" >> "$GITHUB_OUTPUT"; echo "Alvo: beleza-PRODUCAO" ;;
+            *) echo "Só as branches dev (beleza-DEV) e main (beleza-PRODUCAO) migram banco. Recebido: ${GITHUB_REF}"; exit 1 ;;
+          esac
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Aplicar o que falta
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.alvo.outputs.ref }}
+          SO_LISTAR: ${{ github.event.inputs.so_listar || 'false' }}
+        run: |
+          set -euo pipefail
+          consulta() {
+            jq -n --arg q "$1" '{query: $q}' > /tmp/corpo.json
+            curl -sS -o /tmp/resposta.json -w '%{http_code}' \
+              -X POST "https://api.supabase.com/v1/projects/${REF}/database/query" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/corpo.json
+          }
+
+          codigo=$(consulta "select version from supabase_migrations.schema_migrations")
+          if [ "$codigo" -ge 300 ]; then echo "Falha ao ler o histórico ($codigo):"; cat /tmp/resposta.json; exit 1; fi
+          jq -r '.[].version' /tmp/resposta.json | sort > /tmp/aplicadas.txt
+          echo "Já aplicadas no alvo: $(wc -l < /tmp/aplicadas.txt)"
+
+          pendentes=0
+          for arquivo in $(ls supabase/migrations/*.sql | sort); do
+            base=$(basename "$arquivo" .sql)
+            versao="${base%%_*}"
+            nome="${base#*_}"
+            if grep -qx "$versao" /tmp/aplicadas.txt; then continue; fi
+            pendentes=$((pendentes + 1))
+            echo "::group::$versao $nome"
+            if [ "${SO_LISTAR}" = "true" ]; then
+              echo "falta (só listando)"
+              echo "::endgroup::"
+              continue
+            fi
+            conteudo=$(cat "$arquivo"; printf 'x')
+            conteudo="${conteudo%x}"
+            if printf '%s' "$conteudo" | grep -q '\$conteudo_da_migracao\$'; then
+              echo "O arquivo usa o marcador reservado \$conteudo_da_migracao\$"; exit 1
+            fi
+            sql="${conteudo}
+          ;
+          insert into supabase_migrations.schema_migrations (version, name, statements)
+          values ('${versao}', '${nome}', array[\$conteudo_da_migracao\$${conteudo}\$conteudo_da_migracao\$]);"
+            codigo=$(consulta "$sql")
+            if [ "$codigo" -ge 300 ]; then
+              echo "FALHOU ($codigo):"; cat /tmp/resposta.json; echo "::endgroup::"; exit 1
+            fi
+            echo "aplicada"
+            echo "::endgroup::"
+          done
+          echo "Pendentes encontradas: $pendentes"

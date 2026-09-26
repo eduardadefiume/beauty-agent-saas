@@ -13,7 +13,7 @@
 # Publica so o que mudou no commit. Republicar funcao intocada nao quebra nada,
 # mas enche o historico de versoes e esconde a mudanca que importa.
 
-name: Publicar Edge Functions no DEV
+name: Publicar Edge Functions na PRODUCAO
 
 on:
   workflow_dispatch:
@@ -22,24 +22,22 @@ on:
         description: 'Funções a publicar, separadas por espaço. Vazio = as que mudaram no último commit.'
         required: false
         default: ''
-  # 26/09/2026: dev -> beleza-DEV. Ate aqui este workflow publicava no
-  # projeto beleza-PRODUCAO, e todo "teste" era teste em producao.
-  push:
-    branches:
-      - dev
-    paths:
-      - 'supabase/functions/**'
-      - 'supabase/config.toml'
-      - '.github/workflows/deploy-edge-functions-dev.yml'
 
 concurrency:
-  group: deploy-edge-functions-dev
+  group: deploy-edge-functions-producao
   cancel-in-progress: false
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
     steps:
+      # Producao so recebe o que esta na main: o que ja passou pelo DEV.
+      - name: So a partir da main
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Producao so publica a partir da branch main (recebido: ${GITHUB_REF})."; exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -80,6 +78,6 @@ jobs:
               continue
             fi
             echo "::group::$f"
-            supabase functions deploy "$f" --project-ref dboygmtrzgsfcmoquegp
+            supabase functions deploy "$f" --project-ref hjghwryhphgusefyivbl
             echo "::endgroup::"
           done
