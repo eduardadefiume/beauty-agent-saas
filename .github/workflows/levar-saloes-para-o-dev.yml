@@ -1,0 +1,179 @@
+# LEVAR OS SALOES PARA O DEV E LIMPAR A PRODUCAO.
+#
+# 26/09/2026, pedido da Duda: "leva tudo isso para dev e deixa a producao
+# limpa". Duas coisas diferentes, com regras diferentes:
+#
+#   SO_CONFIG -- salao real (o da Duda, o Piloto e os do William). Vai para o
+#                DEV so a CONFIGURACAO: equipe, servicos, etapas, horarios,
+#                regras, regua, identidade. NADA de cliente (LGPD): contatos,
+#                conversas, mensagens, fichas, agendamentos, fotos, conexoes de
+#                WhatsApp e Google ficam so na producao.
+#   TUDO      -- salao-robo dos testes. Vai inteiro para o DEV (os testes
+#                foram validos e continuam la) e depois SAI da producao.
+#
+# A producao so e APAGADA depois de conferir, tabela por tabela, que o DEV tem
+# as mesmas linhas do robo. Se alguma contagem nao bater, nada e apagado.
+# Arquivos do storage (fotos do robo) nao entram aqui.
+
+name: Levar saloes para o DEV
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - '.github/workflows/levar-saloes-para-o-dev.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: levar-saloes-para-o-dev
+  cancel-in-progress: false
+
+jobs:
+  levar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: So a partir da dev
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/dev" ]; then
+            echo "Roda só a partir da branch dev."; exit 1
+          fi
+
+      - name: Levar e limpar
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROD: hjghwryhphgusefyivbl
+          DEV: dboygmtrzgsfcmoquegp
+          # Eduarda Defiume - Beauty, Piloto Eduarda, S-William, Salao do William
+          SO_CONFIG: "b5634041-140a-48c6-9040-b78623c46eed 4b2a8e37-1716-41c4-9201-eefce890638d d808b8cc-8093-4f0d-9f0b-611564dfe3d1 b6f65c60-5ed8-4e9a-a196-ab73b43213d4"
+          # Studio Rogerio Hair (robo-1-teste-eddy)
+          TUDO: "44d17e3c-441a-47e4-88b7-e1705e3b9261"
+          # So configuracao de salao. Tabela fora desta lista nao vai para o DEV
+          # nos saloes reais -- o padrao e NAO levar.
+          TABELAS_DE_CONFIG: >-
+            agent_automation agent_policies agent_scope color_policies
+            configuration_drafts configuration_versions knowledge_dimensions
+            knowledge_options member_availability member_dynamic_shifts
+            member_skills onboarding_answers onboarding_sessions operating_hours
+            owner_whatsapp resource_types resources
+            service_step_resource_requirements service_step_skill_requirements
+            service_steps service_technical_profiles service_variations services
+            site_identities skills team_members tone_families unit_service_limits
+            units
+          LIMPAR_PRODUCAO: 'true'
+        run: |
+          set -euo pipefail
+          consulta() {
+            # Pelo arquivo: um argumento de linha de comando para em 128 KB.
+            printf '%s' "$2" > /tmp/sql.txt
+            jq -n --rawfile q /tmp/sql.txt '{query: $q}' > /tmp/q.json
+            codigo=$(curl -sS -o /tmp/r.json -w '%{http_code}' \
+              -X POST "https://api.supabase.com/v1/projects/$1/database/query" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              -H 'Content-Type: application/json' --data-binary @/tmp/q.json)
+            if [ "$codigo" -ge 300 ]; then
+              echo "FALHOU em $1 ($codigo):"; cat /tmp/r.json; echo; echo "SQL: ${2:0:300}"; return 1
+            fi
+          }
+          lista_sql() { printf "'%s'," $1 | sed 's/,$//'; }
+          CONFIG_IN=$(lista_sql "$SO_CONFIG")
+          TUDO_IN=$(lista_sql "$TUDO")
+          TODOS_IN="$CONFIG_IN,$TUDO_IN"
+
+          # Todas as tabelas de salao (tem tenant_id) que existem nos dois lados.
+          consulta "$PROD" "select coalesce(json_agg(c.table_name order by c.table_name), '[]') j from information_schema.columns c join information_schema.tables t using (table_schema, table_name) where c.table_schema='app' and c.column_name='tenant_id' and t.table_type='BASE TABLE' and c.table_name not like '%arquivo%'"
+          TABELAS=$(jq -r '.[0].j[]' /tmp/r.json)
+
+          # copiar <tabela> <filtro-sql>: le na producao, escreve no DEV.
+          # session_replication_role=replica: sem gatilho (nada de acordar o
+          # agente ou mandar mensagem ao inserir) e sem checar FK na ordem.
+          copiar() {
+            local t="$1" filtro="$2"
+            consulta "$PROD" "select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) j, count(*) n from app.$t x where $filtro"
+            local n; n=$(jq -r '.[0].n' /tmp/r.json)
+            [ "$n" = "0" ] && return 0
+            jq -c '.[0].j' /tmp/r.json > /tmp/dados.json
+            if grep -q 'dados_do_salao_9c1' /tmp/dados.json; then echo "marcador reservado nos dados de $t"; exit 1; fi
+            consulta "$DEV" "select string_agg(quote_ident(attname), ',' order by attnum) c from pg_attribute where attrelid='app.$t'::regclass and attnum>0 and not attisdropped and attgenerated=''"
+            local cols; cols=$(jq -r '.[0].c' /tmp/r.json)
+            local sql
+            sql="set session_replication_role = replica;
+          insert into app.$t ($cols) overriding system value
+          select $cols from jsonb_populate_recordset(null::app.$t, \$dados_do_salao_9c1\$$(cat /tmp/dados.json)\$dados_do_salao_9c1\$::jsonb)
+          on conflict do nothing;
+          set session_replication_role = origin;"
+            consulta "$DEV" "$sql"
+            echo "  $t: $n"
+          }
+
+          echo "::group::1. Os saloes (linha em tenants)"
+          copiar tenants "id in ($TODOS_IN)"
+          echo "::endgroup::"
+
+          echo "::group::2. Configuracao dos saloes reais (sem cliente)"
+          for t in $TABELAS_DE_CONFIG; do
+            if ! grep -qx "$t" <<<"$TABELAS"; then echo "  $t: nao existe, pulando"; continue; fi
+            copiar "$t" "tenant_id in ($CONFIG_IN)"
+          done
+          echo "::endgroup::"
+
+          echo "::group::3. Salao-robo inteiro"
+          for t in $TABELAS; do
+            copiar "$t" "tenant_id in ($TUDO_IN)"
+          done
+          echo "::endgroup::"
+
+          echo "::group::4. Conferir: DEV tem tudo do robo e a config dos reais?"
+          contar() {
+            local sql="select coalesce(json_object_agg(k, n), '{}') j from ("
+            local primeiro=1
+            for t in $TABELAS; do
+              [ $primeiro = 1 ] || sql="$sql union all "
+              primeiro=0
+              sql="$sql select 'robo.$t' k, count(*) n from app.$t where tenant_id in ($TUDO_IN)"
+              if grep -qw "$t" <<<"$TABELAS_DE_CONFIG"; then
+                sql="$sql union all select 'config.$t', count(*) from app.$t where tenant_id in ($CONFIG_IN)"
+              fi
+            done
+            sql="$sql union all select 'tenants', count(*) from app.tenants where id in ($TODOS_IN)) x"
+            consulta "$1" "$sql"
+            jq -S '.[0].j' /tmp/r.json > "$2"
+          }
+          contar "$PROD" /tmp/prod.json
+          contar "$DEV" /tmp/dev.json
+          if ! diff <(jq -r 'to_entries[] | "\(.key)=\(.value)"' /tmp/prod.json) \
+                    <(jq -r 'to_entries[] | "\(.key)=\(.value)"' /tmp/dev.json); then
+            echo "AS CONTAGENS NAO BATEM. Producao NAO foi limpa."; exit 1
+          fi
+          echo "Tudo bate:"; jq -r 'to_entries[] | select(.value>0) | "  \(.key)=\(.value)"' /tmp/prod.json
+          echo "::endgroup::"
+
+          # Os saloes reais nao tem cliente no DEV: conferir que nenhuma tabela
+          # de cliente recebeu linha deles.
+          echo "::group::5. Nenhum dado de cliente dos saloes reais no DEV"
+          sql="select coalesce(sum(n),0) n from ("
+          primeiro=1
+          for t in $TABELAS; do
+            grep -qw "$t" <<<"$TABELAS_DE_CONFIG" && continue
+            [ $primeiro = 1 ] || sql="$sql union all "
+            primeiro=0
+            sql="$sql select count(*) n from app.$t where tenant_id in ($CONFIG_IN)"
+          done
+          consulta "$DEV" "$sql) x"
+          vazou=$(jq -r '.[0].n' /tmp/r.json)
+          if [ "$vazou" != "0" ]; then echo "VAZOU: $vazou linha(s) de cliente no DEV"; exit 1; fi
+          echo "  zero linhas de cliente dos saloes reais no DEV"
+          echo "::endgroup::"
+
+          if [ "$LIMPAR_PRODUCAO" != "true" ]; then echo "LIMPAR_PRODUCAO desligado."; exit 0; fi
+
+          echo "::group::6. Limpar a producao: o salao-robo sai"
+          sql="begin; set local session_replication_role = replica;"
+          for t in $TABELAS; do
+            sql="$sql delete from app.$t where tenant_id in ($TUDO_IN);"
+          done
+          sql="$sql delete from app.tenants where id in ($TUDO_IN); commit;"
+          consulta "$PROD" "$sql"
+          consulta "$PROD" "select (select count(*) from app.tenants where id in ($TUDO_IN)) robo, (select count(*) from app.channel_connections where simulado) canais_simulados, (select count(*) from app.calendar_connections where tenant_id in ($TUDO_IN)) google_falso"
+          cat /tmp/r.json; echo
+          echo "::endgroup::"
