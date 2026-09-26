@@ -62,6 +62,14 @@ jobs:
             echo "funcoes=$PEDIDAS" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Mudou o proprio workflow (ou o config.toml): publica TODAS. Foi
+          # assim que o beleza-DEV recebeu as funcoes pela primeira vez.
+          if git diff --name-only HEAD^ HEAD | grep -qE '^(\.github/workflows/deploy-edge-functions-dev\.yml|supabase/config\.toml)$'; then
+            todas=$(ls -d supabase/functions/*/ | xargs -n1 basename | grep -v '^_' | tr '\n' ' ')
+            echo "Publicando todas: $todas"
+            echo "funcoes=$todas" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           mudadas=$(git diff --name-only HEAD^ HEAD -- 'supabase/functions/*' \
             | awk -F/ 'NF>=3 {print $3}' | sort -u | tr '\n' ' ')
           echo "Mudaram: ${mudadas:-nenhuma}"
@@ -74,12 +82,16 @@ jobs:
           FUNCOES: ${{ steps.alvo.outputs.funcoes }}
         run: |
           set -euo pipefail
+          falhas=""
           for f in $FUNCOES; do
             if [ ! -d "supabase/functions/$f" ]; then
               echo "pulando $f: a pasta não existe no repositório"
               continue
             fi
             echo "::group::$f"
-            supabase functions deploy "$f" --project-ref dboygmtrzgsfcmoquegp
+            if ! supabase functions deploy "$f" --project-ref dboygmtrzgsfcmoquegp; then
+              falhas="$falhas $f"
+            fi
             echo "::endgroup::"
           done
+          if [ -n "$falhas" ]; then echo "FALHARAM:$falhas"; exit 1; fi
