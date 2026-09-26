@@ -16,6 +16,17 @@
 - Dados de clientes (conversas, fotos, telefones, fichas) **não** vão para o DEV (LGPD). Para o
   DEV vai só configuração de salão (serviços, equipe, horários, regras, régua) e dados de teste.
 
+## Estado dos ambientes (26/09/2026)
+
+- beleza-DEV espelhado da produção (estrutura, funções, prompts, cron) + as 15 edge functions
+  publicadas + `worker_endpoints`/`worker_gateway_jwt` próprios do DEV.
+- No DEV: configuração (sem cliente) de Eduarda Defiume - Beauty, Piloto Eduarda, S-William e
+  Salão do William; o salão-robô Studio Rogério Hair inteiro, com canal simulado e Google falso.
+- Produção limpa do robô. Fotos do robô no storage da produção ainda não foram movidas.
+- **Não rodar de novo `espelhar-producao-no-dev.yml`**: ele copia a produção por cima do DEV e
+  desfaz o que o DEV tem a mais (ex.: a migração 20260923235500, que a produção nunca recebeu e
+  vai receber no próximo `dev → main` pelo `migrar-banco`).
+
 ## Como trabalhar
 
 - Responder à Duda **sempre em português**, curto, passo a passo, com honestidade brutal.
