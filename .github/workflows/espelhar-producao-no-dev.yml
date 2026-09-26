@@ -18,7 +18,7 @@
 name: Espelhar producao no DEV
 
 on:
-  # Roda quando este arquivo muda na dev (o disparo manual so vale depois que
+  # Roda quando este arquivo muda na dev (2a rodada: prompts por code+agent) (o disparo manual so vale depois que
   # o arquivo existir na main).
   push:
     branches:
@@ -125,7 +125,7 @@ jobs:
           # pg_get_functiondef nao traz GRANT/REVOKE. Sem isto, funcao nova no
           # DEV nasceria executavel por qualquer um -- inclusive as SECURITY
           # DEFINER que a producao fechou para anon e authenticated.
-          consulta "$PROD" "select coalesce(json_agg(json_build_object('cmd', format('revoke all on function %s from public, anon, authenticated, service_role; ', p.oid::regprocedure) || coalesce((select string_agg(format('grant execute on function %s to %s', p.oid::regprocedure, case when a.grantee = 0 then 'public' else quote_ident(pg_get_userbyid(a.grantee)) end), '; ') from aclexplode(p.proacl) a where a.privilege_type = 'EXECUTE'), ''))), '[]') j from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','public','private') and p.prokind in ('f','p') and p.proacl is not null"
+          consulta "$PROD" "select coalesce(json_agg(json_build_object('cmd', format('revoke all on function %s from public, anon, authenticated, service_role; ', p.oid::regprocedure) || coalesce((select string_agg(format('grant execute on function %s to %s', p.oid::regprocedure, case when a.grantee = 0 then 'public' else quote_ident(pg_get_userbyid(a.grantee)) end), '; ') from aclexplode(p.proacl) a where a.privilege_type = 'EXECUTE'), ''))), '[]') j from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','public','private') and p.prokind in ('f','p') and p.proacl is not null and md5(pg_get_functiondef(p.oid)) = any(string_to_array('$(jq -r '[.[].h] | join(",")' /tmp/funcoes_aplicar.json)', ','))"
           jq '.[0].j' /tmp/r.json > /tmp/acl.json
           aplicar_lista /tmp/acl.json
           echo "::endgroup::"
@@ -175,11 +175,11 @@ jobs:
             consulta "$DEV" "select count(*) n from app.${tabela}"
             echo "  ${tabela}: $(jq length /tmp/dados.json) na producao, $(jq -r '.[0].n' /tmp/r.json) no DEV"
           done
-          # Linhas que ja existiam no DEV mas mudaram na producao (os prompts
-          # sao editados no lugar): o conteudo da producao prevalece.
+          # Os prompts: o DEV tem os mesmos blocos com OUTRO id (cada banco
+          # criou os seus). A chave e (code, agent); o texto da producao vale.
           consulta "$PROD" "select coalesce(json_agg(t), '[]')::text j from app.agent_prompt_blocks t"
           dados=$(jq -r '.[0].j' /tmp/r.json)
-          consulta "$DEV" "update app.agent_prompt_blocks d set code=p.code, title=p.title, body=p.body, position=p.position, status=p.status, agent=p.agent, updated_at=p.updated_at from json_populate_recordset(null::app.agent_prompt_blocks, \$dados_globais\$${dados}\$dados_globais\$) p where d.id=p.id"
+          consulta "$DEV" "with p as (select * from json_populate_recordset(null::app.agent_prompt_blocks, \$dados_globais\$${dados}\$dados_globais\$)), apaga as (delete from app.agent_prompt_blocks d where not exists (select 1 from p where p.code=d.code and p.agent=d.agent) returning 1), atualiza as (update app.agent_prompt_blocks d set title=p.title, body=p.body, position=p.position, status=p.status, updated_at=p.updated_at from p where d.code=p.code and d.agent=p.agent returning 1) insert into app.agent_prompt_blocks select p.* from p where not exists (select 1 from app.agent_prompt_blocks d where d.code=p.code and d.agent=p.agent)"
           echo "::endgroup::"
 
           echo "::group::9. Registrar no DEV as migracoes do repositorio que faltavam"
@@ -195,7 +195,7 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::10. Impressao digital (tem que bater)"
-          impressao="with f as (select n.nspname||'.'||p.proname||'('||pg_get_function_identity_arguments(p.oid)||')' k, md5(pg_get_functiondef(p.oid))||'|'||coalesce(p.proacl::text,'') v from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','public','private') and p.prokind in ('f','p')), c as (select table_schema||'.'||table_name||'.'||column_name k, data_type||':'||coalesce(column_default,'')||':'||is_nullable v from information_schema.columns where table_schema in ('app','public','private') and table_name not like '%arquivo%'), k as (select c.conrelid::regclass::text||'.'||c.conname k, pg_get_constraintdef(c.oid) v from pg_constraint c join pg_namespace n on n.oid=c.connamespace join pg_class cl on cl.oid=c.conrelid where n.nspname in ('app','public','private') and cl.relname not like '%arquivo%'), g as (select t.tgrelid::regclass::text||'.'||t.tgname k, pg_get_triggerdef(t.oid) v from pg_trigger t join pg_class cl on cl.oid=t.tgrelid join pg_namespace n on n.oid=cl.relnamespace where not t.tgisinternal and n.nspname in ('app','public','private') and cl.relname not like '%arquivo%'), j as (select jobname k, schedule||'|'||command v from cron.job), pb as (select code||'|'||agent k, md5(body) v from app.agent_prompt_blocks) select json_build_object('funcoes', (select md5(string_agg(k||'='||v, ',' order by k)) from f), 'colunas', (select md5(string_agg(k||'='||v, ',' order by k)) from c), 'restricoes', (select md5(string_agg(k||'='||v, ',' order by k)) from k), 'gatilhos', (select md5(string_agg(k||'='||v, ',' order by k)) from g), 'cron', (select md5(string_agg(k||'='||v, ',' order by k)) from j), 'prompts', (select md5(string_agg(k||'='||v, ',' order by k)) from pb)) j"
+          impressao="with f as (select n.nspname||'.'||p.proname||'('||pg_get_function_identity_arguments(p.oid)||')' k, md5(pg_get_functiondef(p.oid))||'|'||coalesce(p.proacl::text,'') v from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','public','private') and p.prokind in ('f','p')), c as (select table_schema||'.'||table_name||'.'||column_name k, data_type||':'||coalesce(column_default,'')||':'||is_nullable v from information_schema.columns where table_schema in ('app','public','private') and table_name not like '%arquivo%'), k as (select c.conrelid::regclass::text||'.'||c.conname k, pg_get_constraintdef(c.oid) v from pg_constraint c join pg_namespace n on n.oid=c.connamespace join pg_class cl on cl.oid=c.conrelid where n.nspname in ('app','public','private') and cl.relname not like '%arquivo%'), g as (select t.tgrelid::regclass::text||'.'||t.tgname k, pg_get_triggerdef(t.oid) v from pg_trigger t join pg_class cl on cl.oid=t.tgrelid join pg_namespace n on n.oid=cl.relnamespace where not t.tgisinternal and n.nspname in ('app','public','private') and cl.relname not like '%arquivo%'), j as (select jobname k, schedule||'|'||command v from cron.job), pb as (select code||'|'||agent k, md5(body)||'|'||position||'|'||status v from app.agent_prompt_blocks) select json_build_object('funcoes', (select md5(string_agg(k||'='||v, ',' order by k)) from f), 'colunas', (select md5(string_agg(k||'='||v, ',' order by k)) from c), 'restricoes', (select md5(string_agg(k||'='||v, ',' order by k)) from k), 'gatilhos', (select md5(string_agg(k||'='||v, ',' order by k)) from g), 'cron', (select md5(string_agg(k||'='||v, ',' order by k)) from j), 'prompts', (select md5(string_agg(k||'='||v, ',' order by k)) from pb)) j"
           consulta "$PROD" "$impressao"; jq '.[0].j' /tmp/r.json > /tmp/imp_prod.json
           consulta "$DEV" "$impressao"; jq '.[0].j' /tmp/r.json > /tmp/imp_dev.json
           echo "PRODUCAO:"; cat /tmp/imp_prod.json
