@@ -1,0 +1,208 @@
+# ESPELHAR A ESTRUTURA DA PRODUCAO NO DEV (SEM DADO DE CLIENTE).
+#
+# 26/09/2026. O projeto beleza-PRODUCAO andou sozinho desde 23/09 e recebeu
+# mudancas que nunca viraram arquivo de migracao (ex.: `build_agent_context`
+# ganhou as regras do salao direto no banco). Aplicar as migracoes do
+# repositorio no beleza-DEV nao reproduz a producao: a 13a falhou procurando
+# um trecho que so existe la.
+#
+# Este workflow copia a ESTRUTURA da producao para o DEV -- colunas, tipos
+# enumerados, restricoes, funcoes, gatilhos, robos do cron e os dados GLOBAIS
+# de configuracao (prompts, catalogo do produto, precos de modelo). Nao copia
+# nada de salao nem de cliente. No fim, registra no DEV as migracoes do
+# repositorio que faltavam (o estado ja e o delas) e compara a impressao
+# digital dos dois bancos.
+#
+# So roda a mao, a partir da dev. Nunca escreve na producao: ela so e lida.
+
+name: Espelhar producao no DEV
+
+on:
+  # Roda quando este arquivo muda na dev (o disparo manual so vale depois que
+  # o arquivo existir na main).
+  push:
+    branches:
+      - dev
+    paths:
+      - '.github/workflows/espelhar-producao-no-dev.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: espelhar-producao-no-dev
+  cancel-in-progress: false
+
+jobs:
+  espelhar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: So a partir da dev
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/dev" ]; then
+            echo "Roda só a partir da branch dev."; exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Espelhar
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROD: hjghwryhphgusefyivbl
+          DEV: dboygmtrzgsfcmoquegp
+        run: |
+          set -euo pipefail
+          # consulta <projeto> <sql> -> escreve /tmp/r.json; falha alto.
+          consulta() {
+            jq -n --arg q "$2" '{query: $q}' > /tmp/q.json
+            codigo=$(curl -sS -o /tmp/r.json -w '%{http_code}' \
+              -X POST "https://api.supabase.com/v1/projects/$1/database/query" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              -H 'Content-Type: application/json' --data-binary @/tmp/q.json)
+            if [ "$codigo" -ge 300 ]; then
+              echo "FALHOU em $1 ($codigo):"; cat /tmp/r.json; echo; echo "SQL: ${2:0:400}"; return 1
+            fi
+          }
+          # Roda no DEV cada comando da lista (um por linha do JSON).
+          aplicar_lista() {
+            local n=0
+            while IFS= read -r -d $'\x1e' cmd; do
+              [ -z "$cmd" ] && continue
+              consulta "$DEV" "$cmd"
+              n=$((n+1))
+            done < <(jq -j '.[] | .cmd + "\u001e"' "$1")
+            echo "  $n comando(s)"
+          }
+
+          echo "::group::1. Tipos enumerados (valores que faltam)"
+          consulta "$PROD" "select coalesce(json_agg(json_build_object('t', n.nspname||'.'||t.typname, 'v', e.enumlabel) order by n.nspname, t.typname, e.enumsortorder), '[]') j from pg_enum e join pg_type t on t.oid=e.enumtypid join pg_namespace n on n.oid=t.typnamespace where n.nspname in ('app','public','private')"
+          jq '.[0].j' /tmp/r.json > /tmp/enums.json
+          jq -c '.[]' /tmp/enums.json | while read -r linha; do
+            t=$(jq -r '.t' <<<"$linha"); v=$(jq -r '.v' <<<"$linha")
+            vq=${v//\'/\'\'}
+            consulta "$DEV" "do \$\$ begin if not exists (select 1 from pg_enum e join pg_type t on t.oid=e.enumtypid join pg_namespace n on n.oid=t.typnamespace where n.nspname||'.'||t.typname='${t}' and e.enumlabel='${vq}') then execute format('alter type %s add value %L', '${t}', '${vq}'); end if; end \$\$"
+          done
+          echo "::endgroup::"
+
+          echo "::group::2. Colunas que faltam no DEV"
+          consulta "$PROD" "select coalesce(json_agg(json_build_object('k', n.nspname||'.'||c.relname||'.'||a.attname, 'cmd', format('alter table %I.%I add column if not exists %I %s%s%s', n.nspname, c.relname, a.attname, format_type(a.atttypid, a.atttypmod), coalesce(' default '||pg_get_expr(d.adbin, d.adrelid), ''), case when a.attnotnull then ' not null' else '' end))), '[]') j from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where n.nspname in ('app','public','private') and c.relkind='r' and a.attnum>0 and not a.attisdropped and c.relname not like '%arquivo%'"
+          jq '.[0].j' /tmp/r.json > /tmp/colunas_prod.json
+          consulta "$DEV" "select coalesce(json_agg(n.nspname||'.'||c.relname||'.'||a.attname), '[]') j from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('app','public','private') and c.relkind='r' and a.attnum>0 and not a.attisdropped"
+          jq '.[0].j' /tmp/r.json > /tmp/colunas_dev.json
+          jq --slurpfile d /tmp/colunas_dev.json '[.[] | select(.k as $k | ($d[0] | index($k)) | not)]' /tmp/colunas_prod.json > /tmp/colunas_faltam.json
+          jq -r '.[].k' /tmp/colunas_faltam.json
+          aplicar_lista /tmp/colunas_faltam.json
+          echo "::endgroup::"
+
+          echo "::group::3. Funcoes diferentes ou que faltam"
+          consulta "$PROD" "select coalesce(json_agg(json_build_object('k', n.nspname||'.'||p.proname||'('||pg_get_function_identity_arguments(p.oid)||')', 'h', md5(pg_get_functiondef(p.oid)), 'cmd', pg_get_functiondef(p.oid))), '[]') j from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','public','private') and p.prokind in ('f','p')"
+          jq '.[0].j' /tmp/r.json > /tmp/funcoes_prod.json
+          consulta "$DEV" "select coalesce(json_object_agg(n.nspname||'.'||p.proname||'('||pg_get_function_identity_arguments(p.oid)||')', md5(pg_get_functiondef(p.oid))), '{}') j from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','public','private') and p.prokind in ('f','p')"
+          jq '.[0].j' /tmp/r.json > /tmp/funcoes_dev.json
+          jq --slurpfile d /tmp/funcoes_dev.json '[.[] | select(.h != ($d[0][.k] // ""))]' /tmp/funcoes_prod.json > /tmp/funcoes_aplicar.json
+          echo "a aplicar: $(jq length /tmp/funcoes_aplicar.json)"
+          # Funcao SQL e validada na criacao e pode depender de outra; roda
+          # em rodadas ate nao sobrar nada (ou ate uma rodada nao avancar).
+          cp /tmp/funcoes_aplicar.json /tmp/pendentes.json
+          for rodada in 1 2 3 4 5; do
+            echo '[]' > /tmp/falharam.json
+            while IFS= read -r -d $'\x1e' item; do
+              cmd=$(jq -r '.cmd' <<<"$item")
+              if ! consulta "$DEV" "$cmd" > /tmp/saida.txt 2>&1; then
+                jq --argjson i "$item" '. + [$i]' /tmp/falharam.json > /tmp/f2.json && mv /tmp/f2.json /tmp/falharam.json
+              fi
+            done < <(jq -j '.[] | tojson + "\u001e"' /tmp/pendentes.json)
+            restantes=$(jq length /tmp/falharam.json)
+            echo "rodada $rodada: sobraram $restantes"
+            [ "$restantes" -eq 0 ] && break
+            if [ "$restantes" -eq "$(jq length /tmp/pendentes.json)" ]; then
+              jq -r '.[].k' /tmp/falharam.json; cat /tmp/saida.txt; exit 1
+            fi
+            cp /tmp/falharam.json /tmp/pendentes.json
+          done
+          echo "::endgroup::"
+
+          echo "::group::3b. Permissoes das funcoes (quem pode executar)"
+          # pg_get_functiondef nao traz GRANT/REVOKE. Sem isto, funcao nova no
+          # DEV nasceria executavel por qualquer um -- inclusive as SECURITY
+          # DEFINER que a producao fechou para anon e authenticated.
+          consulta "$PROD" "select coalesce(json_agg(json_build_object('cmd', format('revoke all on function %s from public, anon, authenticated, service_role; ', p.oid::regprocedure) || coalesce((select string_agg(format('grant execute on function %s to %s', p.oid::regprocedure, case when a.grantee = 0 then 'public' else quote_ident(pg_get_userbyid(a.grantee)) end), '; ') from aclexplode(p.proacl) a where a.privilege_type = 'EXECUTE'), ''))), '[]') j from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','public','private') and p.prokind in ('f','p') and p.proacl is not null"
+          jq '.[0].j' /tmp/r.json > /tmp/acl.json
+          aplicar_lista /tmp/acl.json
+          echo "::endgroup::"
+
+          echo "::group::4. Funcoes que so existem no DEV (assinatura antiga)"
+          jq -r --slurpfile p /tmp/funcoes_prod.json '[$p[0][].k] as $pk | keys[] | select(. as $k | $pk | index($k) | not)' /tmp/funcoes_dev.json > /tmp/so_dev.txt || true
+          cat /tmp/so_dev.txt
+          while read -r f; do
+            [ -z "$f" ] && continue
+            esquema=${f%%.*}; resto=${f#*.}; nome=${resto%%(*}; args=${resto#*(}; args=${args%)}
+            consulta "$DEV" "drop function if exists \"${esquema}\".\"${nome}\"(${args})"
+          done < /tmp/so_dev.txt
+          echo "::endgroup::"
+
+          echo "::group::5. Restricoes diferentes ou que faltam"
+          consulta "$PROD" "select coalesce(json_agg(json_build_object('k', c.conrelid::regclass::text||'.'||c.conname, 'h', md5(pg_get_constraintdef(c.oid)), 'cmd', format('alter table %s drop constraint if exists %I; alter table %s add constraint %I %s', c.conrelid::regclass, c.conname, c.conrelid::regclass, c.conname, pg_get_constraintdef(c.oid)))), '[]') j from pg_constraint c join pg_namespace n on n.oid=c.connamespace join pg_class cl on cl.oid=c.conrelid where n.nspname in ('app','public','private') and cl.relname not like '%arquivo%' and c.contype in ('c','u','f','x')"
+          jq '.[0].j' /tmp/r.json > /tmp/rest_prod.json
+          consulta "$DEV" "select coalesce(json_object_agg(c.conrelid::regclass::text||'.'||c.conname, md5(pg_get_constraintdef(c.oid))), '{}') j from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname in ('app','public','private')"
+          jq '.[0].j' /tmp/r.json > /tmp/rest_dev.json
+          jq --slurpfile d /tmp/rest_dev.json '[.[] | select(.h != ($d[0][.k] // ""))]' /tmp/rest_prod.json > /tmp/rest_aplicar.json
+          jq -r '.[].k' /tmp/rest_aplicar.json
+          aplicar_lista /tmp/rest_aplicar.json
+          echo "::endgroup::"
+
+          echo "::group::6. Gatilhos que faltam"
+          consulta "$PROD" "select coalesce(json_agg(json_build_object('k', t.tgrelid::regclass::text||'.'||t.tgname, 'cmd', format('drop trigger if exists %I on %s; %s', t.tgname, t.tgrelid::regclass, pg_get_triggerdef(t.oid)))), '[]') j from pg_trigger t join pg_class cl on cl.oid=t.tgrelid join pg_namespace n on n.oid=cl.relnamespace where not t.tgisinternal and n.nspname in ('app','public','private') and cl.relname not like '%arquivo%'"
+          jq '.[0].j' /tmp/r.json > /tmp/gat_prod.json
+          consulta "$DEV" "select coalesce(json_agg(t.tgrelid::regclass::text||'.'||t.tgname), '[]') j from pg_trigger t join pg_class cl on cl.oid=t.tgrelid join pg_namespace n on n.oid=cl.relnamespace where not t.tgisinternal and n.nspname in ('app','public','private')"
+          jq '.[0].j' /tmp/r.json > /tmp/gat_dev.json
+          jq --slurpfile d /tmp/gat_dev.json '[.[] | select(.k as $k | ($d[0] | index($k)) | not)]' /tmp/gat_prod.json > /tmp/gat_aplicar.json
+          jq -r '.[].k' /tmp/gat_aplicar.json
+          aplicar_lista /tmp/gat_aplicar.json
+          echo "::endgroup::"
+
+          echo "::group::7. Robos do cron"
+          consulta "$PROD" "select coalesce(json_agg(json_build_object('cmd', format('select cron.schedule(%L, %L, %L)', jobname, schedule, command))), '[]') j from cron.job"
+          jq '.[0].j' /tmp/r.json > /tmp/cron.json
+          aplicar_lista /tmp/cron.json
+          echo "::endgroup::"
+
+          echo "::group::8. Dados globais de configuracao"
+          for tabela in agent_prompt_blocks model_prices product_color_questions product_knowledge_dimensions product_knowledge_options product_rules product_tone_families tone_levels; do
+            consulta "$PROD" "select coalesce(json_agg(t), '[]')::text j from app.${tabela} t"
+            jq -r '.[0].j' /tmp/r.json > /tmp/dados.json
+            dados=$(cat /tmp/dados.json)
+            consulta "$DEV" "insert into app.${tabela} select * from json_populate_recordset(null::app.${tabela}, \$dados_globais\$${dados}\$dados_globais\$) on conflict do nothing"
+            consulta "$DEV" "select count(*) n from app.${tabela}"
+            echo "  ${tabela}: $(jq length /tmp/dados.json) na producao, $(jq -r '.[0].n' /tmp/r.json) no DEV"
+          done
+          # Linhas que ja existiam no DEV mas mudaram na producao (os prompts
+          # sao editados no lugar): o conteudo da producao prevalece.
+          consulta "$PROD" "select coalesce(json_agg(t), '[]')::text j from app.agent_prompt_blocks t"
+          dados=$(jq -r '.[0].j' /tmp/r.json)
+          consulta "$DEV" "update app.agent_prompt_blocks d set code=p.code, title=p.title, body=p.body, position=p.position, status=p.status, agent=p.agent, updated_at=p.updated_at from json_populate_recordset(null::app.agent_prompt_blocks, \$dados_globais\$${dados}\$dados_globais\$) p where d.id=p.id"
+          echo "::endgroup::"
+
+          echo "::group::9. Registrar no DEV as migracoes do repositorio que faltavam"
+          consulta "$DEV" "select coalesce(json_agg(version), '[]') j from supabase_migrations.schema_migrations"
+          jq -r '.[0].j[]' /tmp/r.json | sort > /tmp/aplicadas.txt
+          for arquivo in $(ls supabase/migrations/*.sql | sort); do
+            base=$(basename "$arquivo" .sql); versao="${base%%_*}"; nome="${base#*_}"
+            grep -qx "$versao" /tmp/aplicadas.txt && continue
+            conteudo=$(cat "$arquivo"; printf 'x'); conteudo="${conteudo%x}"
+            consulta "$DEV" "insert into supabase_migrations.schema_migrations (version, name, statements) values ('${versao}', '${nome}', array[\$conteudo_da_migracao\$${conteudo}\$conteudo_da_migracao\$])"
+            echo "registrada $versao"
+          done
+          echo "::endgroup::"
+
+          echo "::group::10. Impressao digital (tem que bater)"
+          impressao="with f as (select n.nspname||'.'||p.proname||'('||pg_get_function_identity_arguments(p.oid)||')' k, md5(pg_get_functiondef(p.oid))||'|'||coalesce(p.proacl::text,'') v from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','public','private') and p.prokind in ('f','p')), c as (select table_schema||'.'||table_name||'.'||column_name k, data_type||':'||coalesce(column_default,'')||':'||is_nullable v from information_schema.columns where table_schema in ('app','public','private') and table_name not like '%arquivo%'), k as (select c.conrelid::regclass::text||'.'||c.conname k, pg_get_constraintdef(c.oid) v from pg_constraint c join pg_namespace n on n.oid=c.connamespace join pg_class cl on cl.oid=c.conrelid where n.nspname in ('app','public','private') and cl.relname not like '%arquivo%'), g as (select t.tgrelid::regclass::text||'.'||t.tgname k, pg_get_triggerdef(t.oid) v from pg_trigger t join pg_class cl on cl.oid=t.tgrelid join pg_namespace n on n.oid=cl.relnamespace where not t.tgisinternal and n.nspname in ('app','public','private') and cl.relname not like '%arquivo%'), j as (select jobname k, schedule||'|'||command v from cron.job), pb as (select code||'|'||agent k, md5(body) v from app.agent_prompt_blocks) select json_build_object('funcoes', (select md5(string_agg(k||'='||v, ',' order by k)) from f), 'colunas', (select md5(string_agg(k||'='||v, ',' order by k)) from c), 'restricoes', (select md5(string_agg(k||'='||v, ',' order by k)) from k), 'gatilhos', (select md5(string_agg(k||'='||v, ',' order by k)) from g), 'cron', (select md5(string_agg(k||'='||v, ',' order by k)) from j), 'prompts', (select md5(string_agg(k||'='||v, ',' order by k)) from pb)) j"
+          consulta "$PROD" "$impressao"; jq '.[0].j' /tmp/r.json > /tmp/imp_prod.json
+          consulta "$DEV" "$impressao"; jq '.[0].j' /tmp/r.json > /tmp/imp_dev.json
+          echo "PRODUCAO:"; cat /tmp/imp_prod.json
+          echo "DEV:"; cat /tmp/imp_dev.json
+          echo "::endgroup::"
+          if ! diff <(jq -S . /tmp/imp_prod.json) <(jq -S . /tmp/imp_dev.json); then
+            echo "::warning::A impressao digital ainda difere nos itens acima."
+          else
+            echo "DEV e PRODUCAO com a mesma estrutura."
+          fi
