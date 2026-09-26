@@ -259,7 +259,8 @@ async function conectarOWhatsApp(
     // O modelo que a Meta oferece hoje entrega token de 60 dias. Guardar a
     // data de morte junto e o que separa "o salao para de responder um dia
     // desses" de "avisamos dez dias antes".
-    expiraEm = typeof corpo.expires_in === 'number' && corpo.expires_in > 0 ? corpo.expires_in : null;
+    expiraEm =
+      typeof corpo.expires_in === 'number' && corpo.expires_in > 0 ? corpo.expires_in : null;
   } catch (erro) {
     return json(502, { error: 'META_INDISPONIVEL', detail: String(erro).slice(0, 200) });
   }
@@ -433,7 +434,7 @@ async function fotoDaConversa(
       authorization: `Bearer ${serviceRoleKey}`,
       'content-type': baixada.mime,
     },
-    body: baixada.bytes,
+    body: baixada.bytes.slice(),
   });
   if (!subida.ok) {
     return json(502, { error: 'UPLOAD_FAILED', detail: (await subida.text()).slice(0, 200) });
@@ -537,7 +538,7 @@ async function baixarDoBalde(
 
 async function transcrever(bytes: Uint8Array, mime: string, chave: string): Promise<string> {
   const formulario = new FormData();
-  formulario.append('file', new Blob([bytes], { type: mime }), 'audio');
+  formulario.append('file', new Blob([bytes.slice()], { type: mime }), 'audio');
   formulario.append('model', 'whisper-1');
   formulario.append('language', 'pt');
   const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {

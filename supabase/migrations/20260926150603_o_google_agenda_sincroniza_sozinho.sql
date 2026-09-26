@@ -329,9 +329,11 @@ revoke all on function app.agenda_conexoes_para_sincronizar(integer) from public
 revoke all on function app.agenda_gravar_sincronizacao(uuid, timestamptz, timestamptz, jsonb, text, timestamptz, text) from public, anon, authenticated;
 revoke all on function public.agenda_conexoes_para_sincronizar(integer) from public, anon, authenticated;
 revoke all on function public.agenda_gravar_sincronizacao(uuid, timestamptz, timestamptz, jsonb, text, timestamptz, text) from public, anon, authenticated;
+revoke all on function public.schedule_list_calendar_shifts(text, text, uuid, uuid) from public, anon, authenticated;
 revoke all on function public.schedule_list_calendar_workdays(text, text, uuid, uuid) from public, anon, authenticated;
 grant execute on function public.agenda_conexoes_para_sincronizar(integer) to service_role;
 grant execute on function public.agenda_gravar_sincronizacao(uuid, timestamptz, timestamptz, jsonb, text, timestamptz, text) to service_role;
+grant execute on function public.schedule_list_calendar_shifts(text, text, uuid, uuid) to service_role;
 grant execute on function public.schedule_list_calendar_workdays(text, text, uuid, uuid) to service_role;
 
 -- 5. O worker AGENDA, de 15 em 15 minutos.

@@ -14,7 +14,7 @@ type IntentRequest = {
 function response(req: Request, body: unknown, status: number): Response {
   const allowedOrigin = Deno.env.get('APP_ORIGIN') ?? '';
   const origin = req.headers.get('origin');
-  const corsHeaders =
+  const corsHeaders: Record<string, string> =
     origin && origin === allowedOrigin
       ? {
           'Access-Control-Allow-Origin': origin,

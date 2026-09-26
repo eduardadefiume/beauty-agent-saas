@@ -17,12 +17,10 @@
 
 name: Levar saloes para o DEV
 
+# Rodou uma vez, em 26/09/2026 (run 36257540260): robo no DEV, producao limpa.
+# Ficou so o disparo manual -- rodar de novo nao apaga nada (a conferencia da
+# passo 4 falha antes, porque o robo ja nao esta na producao).
 on:
-  push:
-    branches:
-      - dev
-    paths:
-      - '.github/workflows/levar-saloes-para-o-dev.yml'
   workflow_dispatch:
 
 concurrency:
@@ -45,9 +43,9 @@ jobs:
           PROD: hjghwryhphgusefyivbl
           DEV: dboygmtrzgsfcmoquegp
           # Eduarda Defiume - Beauty, Piloto Eduarda, S-William, Salao do William
-          SO_CONFIG: "b5634041-140a-48c6-9040-b78623c46eed 4b2a8e37-1716-41c4-9201-eefce890638d d808b8cc-8093-4f0d-9f0b-611564dfe3d1 b6f65c60-5ed8-4e9a-a196-ab73b43213d4"
+          SO_CONFIG: 'b5634041-140a-48c6-9040-b78623c46eed 4b2a8e37-1716-41c4-9201-eefce890638d d808b8cc-8093-4f0d-9f0b-611564dfe3d1 b6f65c60-5ed8-4e9a-a196-ab73b43213d4'
           # Studio Rogerio Hair (robo-1-teste-eddy)
-          TUDO: "44d17e3c-441a-47e4-88b7-e1705e3b9261"
+          TUDO: '44d17e3c-441a-47e4-88b7-e1705e3b9261'
           # So configuracao de salao. Tabela fora desta lista nao vai para o DEV
           # nos saloes reais -- o padrao e NAO levar.
           TABELAS_DE_CONFIG: >-

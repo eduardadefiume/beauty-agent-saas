@@ -1126,7 +1126,7 @@ Deno.serve(async (req: Request) => {
           messages: mensagens,
         });
 
-        const u = (resposta.usage ?? {}) as Record<string, number>;
+        const u = (resposta.usage ?? {}) as unknown as Record<string, number>;
         uso.voltas += 1;
         uso.input += u.input_tokens ?? 0;
         uso.output += u.output_tokens ?? 0;

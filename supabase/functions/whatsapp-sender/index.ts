@@ -66,7 +66,7 @@ const NOME_DE_SEGREDO = /^[A-Z][A-Z0-9_]{2,63}$/;
 // uma e token que aparece em log.
 async function tokenDaConexao(
   item: Reservada,
-  padrao: string,
+  padrao: string | null,
   supabaseUrl: string,
   serviceKey: string,
   cache: Map<string, string | null>
@@ -204,12 +204,11 @@ Deno.serve(async (req) => {
   if (!(await autorizado(req, supabaseUrl, serviceKey))) {
     return json(401, { ok: false, reason: 'WORKER_TOKEN_INVALID' });
   }
-  // Sem nenhum token no ambiente nao ha o que tentar. Devolve cedo em vez de
-  // reservar mensagens e falhar todas, o que so gastaria tentativas do recuo
-  // exponencial. Conexao com segredo proprio e conferida mensagem a mensagem.
-  if (!tokenPadrao) {
-    return json(500, { ok: false, reason: 'WHATSAPP_ACCESS_TOKEN_MISSING' });
-  }
+  // Sem token padrao o worker CONTINUA: claim_outbox_batch entrega o canal
+  // simulado sem tocar a Meta, e conexao com segredo proprio tem o token
+  // dela. Antes daqui saia cedo, e no DEV (so canal simulado, sem token da
+  // Meta) nenhuma mensagem saia. Conexao real sem token falha mensagem a
+  // mensagem, com o motivo gravado.
 
   let reservadas: Reservada[];
   try {
@@ -240,7 +239,7 @@ Deno.serve(async (req) => {
 
       const accessToken = await tokenDaConexao(
         item,
-        tokenPadrao,
+        tokenPadrao ?? null,
         supabaseUrl,
         serviceKey,
         tokensPorConexao

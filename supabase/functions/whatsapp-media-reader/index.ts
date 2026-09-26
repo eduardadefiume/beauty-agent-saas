@@ -465,7 +465,7 @@ async function lerImagem(
 async function transcrever(bytes: Uint8Array, mime: string, chave: string): Promise<string> {
   const formulario = new FormData();
   const extensao = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'mp3';
-  formulario.append('file', new File([bytes], `audio.${extensao}`, { type: mime }));
+  formulario.append('file', new File([bytes.slice()], `audio.${extensao}`, { type: mime }));
   formulario.append('model', 'whisper-1');
   formulario.append('language', 'pt');
 
@@ -492,7 +492,13 @@ Deno.serve(async (req) => {
   const accessToken = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
   const chaveClaude = Deno.env.get('ANTHROPIC_API_KEY');
   const chaveOpenAI = Deno.env.get('OPENAI_API_KEY');
-  if (!accessToken) return json(500, { ok: false, reason: 'WHATSAPP_ACCESS_TOKEN_MISSING' });
+  // Sem token so a midia de canal simulado pode ser lida (ela mora no balde).
+  // A falta do token e conferida na hora de ir a Meta, midia a midia: antes
+  // saia daqui cedo e o DEV, que so tem canal simulado, nao lia nada.
+  const daMeta = (id: string) => {
+    if (!accessToken) throw new Error('WHATSAPP_ACCESS_TOKEN ausente');
+    return baixarDaMeta(id, accessToken);
+  };
 
   let pendentes: Pendente[];
   try {
@@ -545,7 +551,7 @@ Deno.serve(async (req) => {
         if (!chaveClaude) throw new Error('ANTHROPIC_API_KEY ausente');
         const { bytes, mime } = ids.caminhoSimulado
           ? await baixarDoBalde(supabaseUrl, serviceKey, ids.caminhoSimulado)
-          : await baixarDaMeta(imagemId, accessToken);
+          : await daMeta(imagemId);
 
         // Guardar vem antes de ler: se a leitura falhar, a proxima tentativa
         // ainda tem o arquivo, e a Meta so entrega a midia por pouco tempo.
@@ -593,7 +599,7 @@ Deno.serve(async (req) => {
         if (!chaveClaude) throw new Error('ANTHROPIC_API_KEY ausente');
         const { bytes, mime } = ids.caminhoSimulado
           ? await baixarDoBalde(supabaseUrl, serviceKey, ids.caminhoSimulado)
-          : await baixarDaMeta(imagemId, accessToken);
+          : await daMeta(imagemId);
         const lido = separarTipo(await lerImagem(bytes, mime, chaveClaude));
         entendimento = lido.texto;
         tipo = lido.tipo;
@@ -622,7 +628,7 @@ Deno.serve(async (req) => {
           entendimento = `${quem} mandou um áudio. Transcrição: "${ids.transcricaoSimulada}"`;
         } else {
           if (!chaveOpenAI) throw new Error('OPENAI_API_KEY ausente — sem transcricao de audio');
-          const { bytes, mime } = await baixarDaMeta(audioId, accessToken);
+          const { bytes, mime } = await daMeta(audioId);
           entendimento = `${quem} mandou um áudio. Transcrição: "${await transcrever(bytes, mime, chaveOpenAI)}"`;
         }
       } else if (ids.videoId) {
