@@ -23,3 +23,15 @@
 - Migração: aplicar no DEV, salvar em `supabase/migrations/<versão>_<nome>.sql` com o md5 igual ao
   aplicado. Função SECURITY DEFINER nova: `revoke ... from public, anon, authenticated` no mesmo arquivo.
 - Deploy de edge function: uma função por execução do workflow e conferir o código no ar depois.
+
+## Pendências de produto que a Duda pediu para não esquecer
+
+- **Sinal para agendar (prioridade comercial — "é isso que vai fazer eu vender").** O dono define,
+  no Eddy, o valor do sinal por procedimento. A cliente aceita o horário → vira pré-agendamento com
+  prazo → recebe um link de pagamento (Pix ou cartão) com um texto educado explicando por que o sinal
+  existe (se desmarcar, o salão não perde) → pagou = confirmado na agenda. Pensar antes de construir:
+  quanto tempo o horário fica segurado; se outra cliente pagar o mesmo horário primeiro, quem paga
+  primeiro leva e a outra recebe estorno automático ou crédito e novos horários; expiração;
+  reembolso em cancelamento; provedor de pagamento e confirmação por webhook. Já existe base no
+  banco (`service_deposit_policies`, `appointment_deposits`, `appointment_deposit_events`,
+  workflows `g2-deposit-*`) — revisar antes de construir.
