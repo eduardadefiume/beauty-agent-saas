@@ -1,0 +1,44 @@
+# CONFERIR OS SEGREDOS DAS EDGE FUNCTIONS: DEV x PRODUCAO.
+#
+# Lista so os NOMES, e diz se o valor e igual nos dois projetos comparando o
+# hash que a CLI devolve. Nenhum valor e nenhum hash aparece no log.
+
+name: Conferir segredos
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - '.github/workflows/conferir-segredos.yml'
+  workflow_dispatch:
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar a CLI do Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Comparar
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          supabase secrets list --project-ref hjghwryhphgusefyivbl -o json > /tmp/prod.json
+          supabase secrets list --project-ref dboygmtrzgsfcmoquegp -o json > /tmp/dev.json
+          jq -r '.[] | "\(.name)\t\(.value)"' /tmp/prod.json | sort > /tmp/prod.tsv
+          jq -r '.[] | "\(.name)\t\(.value)"' /tmp/dev.json | sort > /tmp/dev.tsv
+          echo "SEGREDO | PRODUCAO | DEV | VALOR"
+          cut -f1 /tmp/prod.tsv /tmp/dev.tsv | sort -u | while read -r nome; do
+            p=$(awk -F'\t' -v n="$nome" '$1==n{print $2}' /tmp/prod.tsv)
+            d=$(awk -F'\t' -v n="$nome" '$1==n{print $2}' /tmp/dev.tsv)
+            if [ -n "$p" ] && [ -n "$d" ]; then
+              [ "$p" = "$d" ] && v="igual" || v="DIFERENTE"
+            else v="-"; fi
+            [ -n "$p" ] && tp="tem" || tp="FALTA"
+            [ -n "$d" ] && td="tem" || td="FALTA"
+            echo "$nome | $tp | $td | $v"
+          done
