@@ -87,7 +87,9 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         aPartirDe: {
           type: 'string',
           description:
-            'Data de início da busca, no formato AAAA-MM-DD. Use a data de hoje quando a cliente não disser um dia.',
+            'Data de início da busca, no formato AAAA-MM-DD. Use a data de hoje quando a cliente não disser um dia. ' +
+            'Quando ela disser um dia da semana ("sábado"), use a PRÓXIMA data desse dia em que o período pedido ainda não passou: ' +
+            'se hoje é sábado à tarde e ela pediu "sábado de manhã", é o sábado da semana que vem (hoje + 7 dias).',
         },
         dias: {
           type: 'integer',
