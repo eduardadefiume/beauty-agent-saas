@@ -97,3 +97,8 @@ verify_jwt = true
 
 [functions.google-agenda]
 verify_jwt = true
+
+# Link do convite (Eddy -> WhatsApp -> navegador). Sem JWT: quem abre e um
+# navegador; a prova e o codigo do convite (uso unico, 24h).
+[functions.google-agenda-conectar]
+verify_jwt = false
