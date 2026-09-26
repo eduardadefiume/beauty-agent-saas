@@ -95,6 +95,32 @@ Deno.serve(async (req) => {
     return json(500, { ok: false, reason: 'GOOGLE_ENV_MISSING' });
   }
 
+  // Diagnostico da chave, sem tocar em conexao nenhuma: troca um refresh
+  // token inventado. Chave boa -> o Google recusa o TOKEN (invalid_grant);
+  // chave ruim -> recusa o CLIENTE (invalid_client). Foi o que faltou em
+  // 26/09 para separar "chave errada" de "conexao morta".
+  const corpo = (await req.json().catch(() => ({}))) as { acao?: string };
+  if (corpo.acao === 'testar_chave') {
+    const r = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        refresh_token: 'diagnostico-token-inexistente',
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token',
+      }),
+    });
+    const dados = (await r.json().catch(() => ({}))) as { error?: string };
+    return json(200, {
+      ok: true,
+      acao: 'testar_chave',
+      respostaDoGoogle: dados.error ?? `HTTP_${r.status}`,
+      chaveValida: dados.error === 'invalid_grant',
+      clientIdTermina: clientId.slice(-30),
+    });
+  }
+
   const conexoes = ((await rpc(supabaseUrl, serviceKey, 'agenda_conexoes_para_sincronizar', {
     p_limite: 20,
   })) ?? []) as Conexao[];
