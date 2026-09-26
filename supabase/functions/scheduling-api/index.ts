@@ -46,7 +46,9 @@ function emailFromVerifiedJwt(authorizationHeader: string | null): string | null
   try {
     const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(atob(base64)) as { email?: unknown };
-    return typeof payload.email === 'string' && payload.email.length > 0 && payload.email.length <= 320
+    return typeof payload.email === 'string' &&
+      payload.email.length > 0 &&
+      payload.email.length <= 320
       ? payload.email
       : null;
   } catch {
@@ -104,7 +106,11 @@ interface SnapshotStep {
   kind: 'ACTIVE' | 'PASSIVE';
   releases_member: boolean;
   skillRequirements: { skill_id: string; quantity: number; qualifier: SnapshotQualifier | null }[];
-  resourceRequirements: { resource_type_id: string; quantity: number; retain_until_service_end: boolean }[];
+  resourceRequirements: {
+    resource_type_id: string;
+    quantity: number;
+    retain_until_service_end: boolean;
+  }[];
 }
 
 interface Snapshot {
@@ -123,7 +129,11 @@ interface Snapshot {
     status: string;
     availability_mode: 'FIXED' | 'HYBRID' | 'DYNAMIC';
     skillIds: string[];
-    skillQualifiers: { skill_id: string; qualifier_option_id: string | null; custom_value: string | null }[];
+    skillQualifiers: {
+      skill_id: string;
+      qualifier_option_id: string | null;
+      custom_value: string | null;
+    }[];
     availability: { weekday: number; starts_at: string; ends_at: string }[];
     dynamicShifts: { shift_date: string; starts_at: string; ends_at: string }[];
   }[];
@@ -170,7 +180,9 @@ function toPublishedSteps(steps: SnapshotStep[]): PublishedStep[] {
   }));
 }
 
-function toWeeklyHours(entries: { weekday: number; starts_at: string; ends_at: string }[]): WeeklyOperatingHours[] {
+function toWeeklyHours(
+  entries: { weekday: number; starts_at: string; ends_at: string }[]
+): WeeklyOperatingHours[] {
   return entries.map((entry) => ({
     weekday: entry.weekday,
     startMinuteOfDay: parseLocalTimeToMinutes(entry.starts_at),
@@ -178,14 +190,18 @@ function toWeeklyHours(entries: { weekday: number; starts_at: string; ends_at: s
   }));
 }
 
-function toWeeklyLimits(entries: { weekday: number; latest_end_time: string }[]): WeeklyServiceLimit[] {
+function toWeeklyLimits(
+  entries: { weekday: number; latest_end_time: string }[]
+): WeeklyServiceLimit[] {
   return entries.map((entry) => ({
     weekday: entry.weekday,
     latestEndMinuteOfDay: parseLocalTimeToMinutes(entry.latest_end_time),
   }));
 }
 
-function toDynamicShifts(entries: { shift_date: string; starts_at: string; ends_at: string }[]): DynamicShift[] {
+function toDynamicShifts(
+  entries: { shift_date: string; starts_at: string; ends_at: string }[]
+): DynamicShift[] {
   return entries.map((entry) => ({
     shiftDateIso: entry.shift_date,
     startMinuteOfDay: parseLocalTimeToMinutes(entry.starts_at),
@@ -209,7 +225,8 @@ function matchClientExceptions(
   if (clientPhoneDigits) {
     const normalizedPhone = onlyDigits(clientPhoneDigits);
     const byPhone = exceptions.filter(
-      (entry) => entry.client_phone_digits && onlyDigits(entry.client_phone_digits) === normalizedPhone
+      (entry) =>
+        entry.client_phone_digits && onlyDigits(entry.client_phone_digits) === normalizedPhone
     );
     if (byPhone.length > 0) return byPhone;
   }
@@ -262,7 +279,9 @@ function buildEligibleMembers(
           ...(q.qualifier_option_id ? { qualifierOptionId: q.qualifier_option_id } : {}),
           ...(q.custom_value ? { customValue: q.custom_value } : {}),
         })),
-        availableWindows: [...weeklyWindows, ...dynamicWindows].sort((left, right) => left.startMs - right.startMs),
+        availableWindows: [...weeklyWindows, ...dynamicWindows].sort(
+          (left, right) => left.startMs - right.startMs
+        ),
       };
     });
 }
@@ -272,7 +291,9 @@ async function callRpc(
   serviceRoleKey: string,
   functionName: string,
   body: Record<string, unknown>
-): Promise<{ ok: true; data: unknown } | { ok: false; status: number; error: string; code: string | null }> {
+): Promise<
+  { ok: true; data: unknown } | { ok: false; status: number; error: string; code: string | null }
+> {
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${functionName}`, {
     method: 'POST',
     headers: {
@@ -284,7 +305,10 @@ async function callRpc(
   });
 
   if (!response.ok) {
-    const failure = (await response.json().catch(() => ({}))) as { code?: string; message?: string };
+    const failure = (await response.json().catch(() => ({}))) as {
+      code?: string;
+      message?: string;
+    };
     const status =
       failure.code === '42501'
         ? 403
@@ -297,7 +321,12 @@ async function callRpc(
               : response.status >= 400 && response.status < 500
                 ? response.status
                 : 502;
-    return { ok: false, status, error: failure.message ?? 'DATABASE_REQUEST_FAILED', code: failure.code ?? null };
+    return {
+      ok: false,
+      status,
+      error: failure.message ?? 'DATABASE_REQUEST_FAILED',
+      code: failure.code ?? null,
+    };
   }
 
   // RPCs que RETURNS void (ex.: schedule_cancel_hold, schedule_cancel_appointment)
@@ -308,7 +337,8 @@ async function callRpc(
   return { ok: true, data: rawBody ? JSON.parse(rawBody) : null };
 }
 
-type RpcResult = { ok: true; data: unknown } | { ok: false; status: number; error: string; code: string | null };
+type RpcResult =
+  { ok: true; data: unknown } | { ok: false; status: number; error: string; code: string | null };
 type RpcCaller = (name: string, body: Record<string, unknown>) => Promise<RpcResult>;
 type StrandTestResult =
   | { scheduled: true; startsAt: string; endsAt: string; memberName: string }
@@ -331,11 +361,61 @@ type StrandTestResult =
  *   (searchSlots) nunca enxerga, então um atendimento de verdade ainda pode
  *   cair em cima do horário do teste depois.
  */
+// OS DIAS DE TRABALHO QUE VEM DO GOOGLE AGENDA ENTRAM AO VIVO.
+//
+// 26/09/2026: a dona marca no Google "Duda vai trabalhar" nos dias em que a
+// profissional sem dia fixo vem. O sincronizador (worker AGENDA) guarda esses
+// dias em member_calendar_shifts como TRABALHO. Os dias avulsos do cadastro
+// vivem no snapshot publicado; estes nao podem esperar publicacao -- a Duda
+// marcou hoje para sabado, a cliente pergunta amanha. Entao somam aqui, na
+// hora da busca, a pessoa de mesmo nome. Falha em buscar nao trava a busca:
+// ela so fica com os dias do cadastro, como era antes.
+async function comDiasDoGoogle(
+  rpc: RpcCaller,
+  userEmail: string,
+  tenantId: string,
+  unitId: string,
+  snapshot: Snapshot
+): Promise<Snapshot> {
+  const r = await rpc('schedule_list_calendar_workdays', {
+    target_site_project_id: SITE_PROJECT_ID,
+    target_email: userEmail,
+    target_tenant_id: tenantId,
+    target_unit_id: unitId,
+  });
+  if (!r.ok || !Array.isArray(r.data) || r.data.length === 0) return snapshot;
+  const dias = r.data as {
+    memberName: string;
+    shift_date: string;
+    starts_at: string;
+    ends_at: string;
+  }[];
+  const nome = (texto: string) => texto.trim().toLowerCase();
+  return {
+    ...snapshot,
+    teamMembers: snapshot.teamMembers.map((member) => {
+      const extras = dias
+        .filter((d) => nome(d.memberName ?? '') === nome(member.name))
+        .filter((d) => !(member.dynamicShifts ?? []).some((j) => j.shift_date === d.shift_date))
+        .map((d) => ({ shift_date: d.shift_date, starts_at: d.starts_at, ends_at: d.ends_at }));
+      return extras.length === 0
+        ? member
+        : { ...member, dynamicShifts: [...(member.dynamicShifts ?? []), ...extras] };
+    }),
+  };
+}
+
 async function tryAutoScheduleStrandTest(
   rpc: RpcCaller,
   userEmail: string,
   tenantId: string,
-  confirmed: { appointmentId: string; unitId: string; serviceId: string; startsAt: string; endsAt: string }
+  confirmed: {
+    appointmentId: string;
+    unitId: string;
+    serviceId: string;
+    startsAt: string;
+    endsAt: string;
+  }
 ): Promise<StrandTestResult | null> {
   const configResult = await rpc('schedule_get_active_configuration', {
     target_site_project_id: SITE_PROJECT_ID,
@@ -356,7 +436,8 @@ async function tryAutoScheduleStrandTest(
   const activeSteps = service.steps.filter((step) => step.kind === 'ACTIVE');
   const candidateSkillId = activeSteps.flatMap((step) => step.skillRequirements)[0]?.skill_id;
   if (!candidateSkillId) return { scheduled: false, reason: 'NO_QUALIFYING_SKILL' };
-  const candidateResourceTypeId = activeSteps.flatMap((step) => step.resourceRequirements)[0]?.resource_type_id;
+  const candidateResourceTypeId = activeSteps.flatMap((step) => step.resourceRequirements)[0]
+    ?.resource_type_id;
 
   const mainAppointmentStartMs = Date.parse(confirmed.startsAt);
   const strandWindow = resolveStrandTestWindow({
@@ -371,7 +452,10 @@ async function tryAutoScheduleStrandTest(
     return { scheduled: false, reason: 'WINDOW_IN_PAST' };
   }
 
-  const utcOffsetMinutes = resolveUtcOffsetMinutes(config.timezone, new Date(strandWindow.searchWindow.startMs));
+  const utcOffsetMinutes = resolveUtcOffsetMinutes(
+    config.timezone,
+    new Date(strandWindow.searchWindow.startMs)
+  );
   const operatingWindows = resolveOperatingWindows({
     utcOffsetMinutes,
     searchWindow: strandWindow.searchWindow,
@@ -398,11 +482,19 @@ async function tryAutoScheduleStrandTest(
     return { scheduled: false, reason: 'INVALID_STEP_CONFIG' };
   }
 
-  const members = buildEligibleMembers(config.snapshot, utcOffsetMinutes, strandWindow.searchWindow);
+  const members = buildEligibleMembers(
+    await comDiasDoGoogle(rpc, userEmail, tenantId, confirmed.unitId, config.snapshot),
+    utcOffsetMinutes,
+    strandWindow.searchWindow
+  );
   const resources: EligibleResource[] = config.snapshot.resourceTypes.flatMap((resourceType) =>
     resourceType.resources
       .filter((resource) => resource.status === 'ACTIVE')
-      .map((resource) => ({ id: resource.id, resourceTypeId: resourceType.id, capacity: resource.capacity }))
+      .map((resource) => ({
+        id: resource.id,
+        resourceTypeId: resourceType.id,
+        capacity: resource.capacity,
+      }))
   );
 
   // Duas fontes de ocupação, as duas só leitura: os compromissos REAIS da
@@ -435,7 +527,9 @@ async function tryAutoScheduleStrandTest(
     resourceOccupancies: { resourceId: string; startMs: number; endMs: number }[];
   };
 
-  const toRanges = (entries: { memberId?: string; resourceId?: string; startMs: number; endMs: number }[]) =>
+  const toRanges = (
+    entries: { memberId?: string; resourceId?: string; startMs: number; endMs: number }[]
+  ) =>
     entries.map((entry) => ({
       subjectId: (entry.memberId ?? entry.resourceId) as string,
       startMs: entry.startMs,
@@ -468,7 +562,8 @@ async function tryAutoScheduleStrandTest(
   const step = candidate.steps[0];
   const memberId = step.memberId;
   if (!memberId) return { scheduled: false, reason: 'NO_SLOT_FOUND' };
-  const memberName = config.snapshot.teamMembers.find((member) => member.id === memberId)?.name ?? 'Profissional';
+  const memberName =
+    config.snapshot.teamMembers.find((member) => member.id === memberId)?.name ?? 'Profissional';
   const resourceId = step.resourceAssignments[0]?.resourceId ?? null;
 
   const recordResult = await rpc('schedule_record_strand_test_booking', {
@@ -573,7 +668,8 @@ Deno.serve(async (request: Request) => {
     return json(503, { error: 'SERVICE_NOT_CONFIGURED' });
   }
 
-  const rpc = (name: string, body: Record<string, unknown>) => callRpc(supabaseUrl, serviceRoleKey, name, body);
+  const rpc = (name: string, body: Record<string, unknown>) =>
+    callRpc(supabaseUrl, serviceRoleKey, name, body);
 
   if (action === 'listBookableServices') {
     const configResult = await rpc('schedule_get_active_configuration', {
@@ -582,11 +678,14 @@ Deno.serve(async (request: Request) => {
       target_tenant_id: tenantId,
       target_unit_id: unitId,
     });
-    if (!configResult.ok) return json(configResult.status, { error: configResult.error, code: configResult.code });
+    if (!configResult.ok)
+      return json(configResult.status, { error: configResult.error, code: configResult.code });
 
     const config = configResult.data as { configurationVersionId: string; snapshot: Snapshot };
     const services = config.snapshot.services
-      .filter((service) => service.bookable && service.status === 'ACTIVE' && service.steps.length > 0)
+      .filter(
+        (service) => service.bookable && service.status === 'ACTIVE' && service.steps.length > 0
+      )
       .map((service) => ({ id: service.id, name: service.name }));
 
     return json(200, { data: { configurationVersionId: config.configurationVersionId, services } });
@@ -599,7 +698,8 @@ Deno.serve(async (request: Request) => {
     const searchDays = Number.isInteger(input.searchDays) ? (input.searchDays as number) : 7;
     // Identifica a cliente para enxergar exceções de horário cadastradas para
     // ela (BT-15) — opcional; sem isso, a busca só vê o expediente normal.
-    const clientPhoneDigits = typeof input.clientPhoneDigits === 'string' ? input.clientPhoneDigits : null;
+    const clientPhoneDigits =
+      typeof input.clientPhoneDigits === 'string' ? input.clientPhoneDigits : null;
     const clientName = typeof input.clientName === 'string' ? input.clientName : null;
 
     if (typeof serviceId !== 'string' || typeof searchFromIso !== 'string') {
@@ -615,10 +715,15 @@ Deno.serve(async (request: Request) => {
       target_tenant_id: tenantId,
       target_unit_id: unitId,
     });
-    if (!configResult.ok) return json(configResult.status, { error: configResult.error, code: configResult.code });
+    if (!configResult.ok)
+      return json(configResult.status, { error: configResult.error, code: configResult.code });
 
-    const config = configResult.data as { configurationVersionId: string; timezone: string; snapshot: Snapshot };
-    const snapshot = config.snapshot;
+    const config = configResult.data as {
+      configurationVersionId: string;
+      timezone: string;
+      snapshot: Snapshot;
+    };
+    const snapshot = await comDiasDoGoogle(rpc, userEmail, tenantId, unitId, config.snapshot);
 
     const service = snapshot.services.find((entry) => entry.id === serviceId);
     if (!service || !service.bookable || service.status !== 'ACTIVE') {
@@ -656,7 +761,11 @@ Deno.serve(async (request: Request) => {
     // Exceção de horário por cliente: soma janelas extras (fora do
     // expediente normal, sem o teto de unit_service_limits) só quando a
     // busca identificou a cliente e ela tem exceção cadastrada.
-    const matchedExceptions = matchClientExceptions(snapshot.clientExceptions, clientPhoneDigits, clientName);
+    const matchedExceptions = matchClientExceptions(
+      snapshot.clientExceptions,
+      clientPhoneDigits,
+      clientName
+    );
     const exceptionWindows =
       matchedExceptions.length === 0
         ? []
@@ -689,7 +798,10 @@ Deno.serve(async (request: Request) => {
       target_unit_id: unitId,
     });
     if (!occupanciesResult.ok) {
-      return json(occupanciesResult.status, { error: occupanciesResult.error, code: occupanciesResult.code });
+      return json(occupanciesResult.status, {
+        error: occupanciesResult.error,
+        code: occupanciesResult.code,
+      });
     }
     const occupancies = occupanciesResult.data as {
       memberOccupancies: { memberId: string; startMs: number; endMs: number }[];
@@ -755,11 +867,13 @@ Deno.serve(async (request: Request) => {
         }));
       }),
     ];
-    const existingResourceOccupancies: OccupancyRange[] = occupancies.resourceOccupancies.map((entry) => ({
-      subjectId: entry.resourceId,
-      startMs: entry.startMs,
-      endMs: entry.endMs,
-    }));
+    const existingResourceOccupancies: OccupancyRange[] = occupancies.resourceOccupancies.map(
+      (entry) => ({
+        subjectId: entry.resourceId,
+        startMs: entry.startMs,
+        endMs: entry.endMs,
+      })
+    );
 
     const searchResult = findAvailableSlots({
       referenceNowMs: Date.now(),
@@ -807,10 +921,15 @@ Deno.serve(async (request: Request) => {
   }
 
   if (action === 'createHold') {
-    const { configurationVersionId, serviceId, variationId, startsAt, endsAt, plan, idempotencyKey } = input as Record<
-      string,
-      unknown
-    >;
+    const {
+      configurationVersionId,
+      serviceId,
+      variationId,
+      startsAt,
+      endsAt,
+      plan,
+      idempotencyKey,
+    } = input as Record<string, unknown>;
     if (
       typeof configurationVersionId !== 'string' ||
       typeof serviceId !== 'string' ||
@@ -887,7 +1006,9 @@ Deno.serve(async (request: Request) => {
     // agendamento principal — qualquer falha aqui (config ausente, sem
     // profissional qualificado, sem horário livre, corrida perdida) vira só
     // um `strandTest.scheduled: false`, nunca um erro pra quem chamou.
-    const strandTest = await tryAutoScheduleStrandTest(rpc, userEmail, tenantId, confirmed).catch(() => null);
+    const strandTest = await tryAutoScheduleStrandTest(rpc, userEmail, tenantId, confirmed).catch(
+      () => null
+    );
 
     return json(200, { data: { ...confirmed, ...(strandTest ? { strandTest } : {}) } });
   }

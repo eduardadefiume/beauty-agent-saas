@@ -94,3 +94,6 @@ verify_jwt = true
 
 [functions.whatsapp-templates]
 verify_jwt = true
+
+[functions.google-agenda]
+verify_jwt = true
