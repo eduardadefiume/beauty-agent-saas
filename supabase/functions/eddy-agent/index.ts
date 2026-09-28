@@ -986,8 +986,56 @@ Deno.serve(async (req: Request) => {
         .slice(0, basicoPronto ? 10 : 20)
         .map((p) => `- [${p.chave}] (${p.modulo}) ${p.pergunta} — hoje: ${p.contexto}`)
         .join('\n');
+      // A PERGUNTA DO ROTEIRO NAO VIRA REFRAO. 28/09/2026, teste com dono-robo:
+      // depois de publicar, o dono mandou 6 mudancas seguidas (preco, pausa,
+      // servico novo) e o Eddy fechou TODAS as respostas com "e sobre cor:
+      // prefere foto ou audio?". A etapa CORES fica aberta ate as perguntas
+      // de cor serem respondidas, entao ela era sempre a "proxima". Se ele ja
+      // perguntou nas duas ultimas rodadas e o dono esta em outro assunto,
+      // a pergunta espera o dono terminar.
+      const SINAL_DA_ETAPA: Record<string, RegExp> = {
+        CORES: /\bcor(es)?\b|mechas|colora/i,
+        REGRAS: /\bregra/i,
+        LEMBRETE: /lembr/i,
+        MENSAGEM_DE_CONFIRMACAO: /confirma(ção|cao)|recebe para fechar/i,
+        REDES_SOCIAIS: /instagram|redes/i,
+        PUBLICAR: /publi/i,
+        WHATSAPP: /whatsapp/i,
+      };
+      const sinalDaEtapa = etapa ? SINAL_DA_ETAPA[etapa] : undefined;
+      let jaPerguntouAgora = false;
+      if (sinalDaEtapa) {
+        const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
+        let i = hist.length - 1;
+        while (i >= 0 && hist[i].direction === 'INBOUND') i--; // a leva de agora
+        const levaAgora = hist.slice(i + 1).map((h) => h.text ?? '').join(' ');
+        let rodadas = 0;
+        let perguntou = false;
+        while (i >= 0 && rodadas < 2) {
+          if (hist[i].direction === 'OUTBOUND') {
+            if (sinalDaEtapa.test(hist[i].text ?? '')) perguntou = true;
+            if (i === 0 || hist[i - 1].direction !== 'OUTBOUND') rodadas++;
+          }
+          i--;
+        }
+        jaPerguntouAgora = perguntou && !sinalDaEtapa.test(levaAgora);
+      }
+      // MUDANCA DEPOIS DE PUBLICAR. 28/09/2026: o dono mudou o preco da escova
+      // com o salao ja publicado e o Eddy disse "Prontinho". Estava gravado,
+      // mas no rascunho: a atendente seguia cobrando o preco antigo e o dono
+      // achava que ja valia.
+      const jaPublicado = (contexto.negocio as { publicado?: boolean } | null)?.publicado === true;
+      const avisoDePublicado = jaPublicado
+        ? '\n\nO SALÃO JÁ ESTÁ PUBLICADO. O que você gravar agora fica no rascunho e a atendente só passa a usar depois de publicar de novo. ' +
+          'Ao confirmar uma mudança, diga isso numa linha e pergunte se publica agora ou se ele ainda tem mais mudanças (aí publica no fim, de uma vez). ' +
+          'Nunca diga "já está valendo" antes de `publicar` dar certo.'
+        : '';
       const textoDoRoteiro = roteiro.length
-        ? `PRÓXIMA PERGUNTA: [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n` +
+        ? (jaPerguntouAgora
+            ? `PRÓXIMA PERGUNTA (JÁ FEITA HÁ POUCO — NÃO REPITA NESTA RESPOSTA): [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n` +
+              'Ele está em outro assunto. Resolva só o que ele mandou e, no fim, pergunte se tem mais alguma mudança. ' +
+              'Volte a esta pergunta quando ele disser que terminou.\n'
+            : `PRÓXIMA PERGUNTA: [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n`) +
           (roteiro.length > 1
             ? `Depois, nesta ordem: ${roteiro
                 .slice(1)
@@ -1121,6 +1169,19 @@ Deno.serve(async (req: Request) => {
         const tipo = midia ? (/áudio/i.test(midia) ? 'ÁUDIO' : 'MÍDIA') : 'TEXTO';
         leva.unshift(`[${tipo}] ${[texto, midia].filter(Boolean).join(' — ')}`);
       }
+      // FOTO DE TABELA DE PRECOS. 28/09/2026, caso E14: o dono mandou "essa e
+      // minha tabela atual" e o Eddy decidiu sozinho que era "uma foto
+      // antiga", nao gravou nada e sumiu com os 4 servicos que so a tabela
+      // tinha. Quem diz se a tabela vale e o dono; o Eddy compara e pergunta.
+      const temTabela = leva.some((m) => /tabela|R\$\s?\d/i.test(m) && m.startsWith('[MÍDIA]'));
+      const regraDaTabela = temTabela
+        ? '\n\nUMA DELAS É FOTO DE TABELA DE PREÇOS. Compare item a item com O CADASTRO COMO ESTÁ AGORA e responda em três grupos: ' +
+          '(1) iguais ao cadastro — só diga que batem; ' +
+          '(2) diferentes — diga os dois valores ("na foto R$ 120, no cadastro R$ 130") e pergunte qual vale, UMA pergunta para todos; ' +
+          '(3) serviços que só a foto tem — liste e pergunte se cria (e quanto tempo leva cada). "A partir de" na foto vira `aPartirDe`. ' +
+          'Nunca decida sozinho que a foto é antiga ou nova (mesmo que ele diga "atual", o cadastro pode ter um valor que ele te deu depois), ' +
+          'nunca ignore um item e não grave nada do grupo 2 antes de ele responder.'
+        : '';
       const blocoDaLeva =
         leva.length === 0
           ? ''
@@ -1131,6 +1192,7 @@ Deno.serve(async (req: Request) => {
             '\n\nResponda TODAS. Áudio é mensagem como texto: o que ele falou no áudio exige resposta tanto quanto o que ele escreveu. ' +
             'Grave o que cada uma trouxe e, na resposta, trate cada uma (mesmo que em uma linha) antes da próxima pergunta do roteiro. ' +
             'Se alguma pede uma coisa que você NÃO faz, diga isso com clareza e diga o que dá para fazer no lugar. Nunca pule em silêncio.' +
+            regraDaTabela +
             '\n' +
             O_QUE_AINDA_NAO_FACO;
 
@@ -1149,6 +1211,7 @@ Deno.serve(async (req: Request) => {
             }) +
             '\n\nO ROTEIRO DO CADASTRO (a primeira é a sua próxima pergunta; se ele já respondeu outra coisa, grave e volte a ela):\n' +
             textoDoRoteiro +
+            avisoDePublicado +
             '\n\nO CADASTRO COMO ESTÁ AGORA (lido do banco neste turno; é daqui que você confirma qualquer coisa; dias: 0=domingo … 6=sábado):\n' +
             cadastroAgora +
             '\n\nDETALHES QUE `anotar` ACEITA NESTA ETAPA (a chave entre colchetes é obrigatória em `anotar`, e você nunca inventa uma):\n' +
