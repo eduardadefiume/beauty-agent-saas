@@ -60,34 +60,9 @@ jobs:
             echo "  subiu $1 ($(stat -c%s "$2") bytes)"
           }
 
-          echo "::group::1. Fotos do robo: producao -> DEV"
-          ROBO=(
-            44d17e3c-441a-47e4-88b7-e1705e3b9261/dono/72ed94c7-d338-4819-81c0-cdc657b30a87.jpg
-            44d17e3c-441a-47e4-88b7-e1705e3b9261/dono/94898ce6-2780-47a3-b6ad-31767fbc4382.jpg
-            44d17e3c-441a-47e4-88b7-e1705e3b9261/dono/d115862b-82ca-4ce0-b816-7d6cec45f05d.jpg
-          )
-          for p in "${ROBO[@]}"; do
-            code=$(curl -sS -o /tmp/f.jpg -w '%{http_code}' \
-              "https://$PROD.supabase.co/storage/v1/object/conhecimento/$p" \
-              -H "Authorization: Bearer $KP" -H "apikey: $KP")
-            [ "$code" = "200" ] || { echo "falhou baixar $p ($code)"; exit 1; }
-            tam_prod=$(stat -c%s /tmp/f.jpg)
-            subir "$p" /tmp/f.jpg image/jpeg
-            curl -sS -o /tmp/g.jpg "https://$DEV.supabase.co/storage/v1/object/conhecimento/$p" \
-              -H "Authorization: Bearer $KD" -H "apikey: $KD"
-            [ "$(stat -c%s /tmp/g.jpg)" = "$tam_prod" ] || { echo "DEV nao confere para $p"; exit 1; }
-          done
-          echo "::endgroup::"
-
-          echo "::group::2. Conferidas no DEV: saem da producao"
-          corpo=$(printf '%s\n' "${ROBO[@]}" | jq -R . | jq -s '{prefixes: .}')
-          code=$(curl -sS -o /tmp/del.json -w '%{http_code}' -X DELETE \
-            "https://$PROD.supabase.co/storage/v1/object/conhecimento" \
-            -H "Authorization: Bearer $KP" -H "apikey: $KP" -H 'Content-Type: application/json' \
-            -d "$corpo")
-          [ "$code" -lt 300 ] || { echo "falhou apagar na producao ($code)"; cat /tmp/del.json; exit 1; }
-          echo "  apagadas na producao: $(jq length /tmp/del.json)"
-          echo "::endgroup::"
+          # Partes 1 e 2 (fotos do robo: producao -> DEV, depois apagadas na
+          # producao) rodaram em 28/09 no run 36418399432: 3 de 3 conferidas.
+          # Nao repetem -- os arquivos ja nao existem na producao.
 
           echo "::group::3. Fotos livres para o salao-robo William"
           UA="beauty-agent-saas-test/1.0 (eddigital.oficial@gmail.com)"
@@ -99,9 +74,9 @@ jobs:
             done
             return 1
           }
-          baixar "https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Woman_with_long_black_hair_from_behind.jpg/640px-Woman_with_long_black_hair_from_behind.jpg" /tmp/preto.jpg
-          baixar "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Woman_with_long%2C_light_brown_hair_from_behind.jpg/640px-Woman_with_long%2C_light_brown_hair_from_behind.jpg" /tmp/castanho-claro.jpg
-          baixar "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Woman_with_long_wavy_brown_hair_from_behind.jpg/640px-Woman_with_long_wavy_brown_hair_from_behind.jpg" /tmp/castanho-ondulado.jpg
+          baixar "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Woman_with_long_black_hair_from_behind.jpg/960px-Woman_with_long_black_hair_from_behind.jpg" /tmp/preto.jpg
+          baixar "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6b/Woman_with_long%2C_light_brown_hair_from_behind.jpg/960px-Woman_with_long%2C_light_brown_hair_from_behind.jpg" /tmp/castanho-claro.jpg
+          baixar "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/Woman_with_long_wavy_brown_hair_from_behind.jpg/960px-Woman_with_long_wavy_brown_hair_from_behind.jpg" /tmp/castanho-ondulado.jpg
           for f in preto castanho-claro castanho-ondulado; do
             file /tmp/$f.jpg | grep -q JPEG || { echo "$f nao e JPEG"; exit 1; }
             subir "$W/$f.jpg" /tmp/$f.jpg image/jpeg
