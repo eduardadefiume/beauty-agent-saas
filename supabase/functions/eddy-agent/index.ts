@@ -306,7 +306,9 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'desativar_servico',
     description:
-      'Tira do catálogo um serviço que o salão não faz. Só depois de ele confirmar. O serviço não é apagado, fica inativo.',
+      'Tira do catálogo um serviço que o salão não faz. O serviço não é apagado, fica inativo e volta se ele pedir. ' +
+      'Pedido claro dele ("tira o botox", "não faço mais botox") JÁ É a confirmação: desative e diga "Tirei o Botox; se quiser de volta, é só falar." ' +
+      'Só pergunte ANTES, sem desativar, quando a ideia de tirar foi sua e não dele. NUNCA desative e depois peça confirmação ("já tirei, mas confirma?").',
     input_schema: {
       type: 'object',
       properties: {
@@ -680,7 +682,15 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       properties: {
         quer: { type: 'boolean' },
         hora: { type: 'integer', description: 'Hora cheia, de 8 a 21. Ex.: 18.' },
-        textoDesejado: { type: 'string' },
+        textoDesejado: {
+          type: 'string',
+          description:
+            'Só quando o texto muda: mande o texto INTEIRO novo, partindo do atual (está em O CADASTRO). Para mudar só a hora, NÃO mande: o texto atual fica.',
+        },
+        voltarAoPadrao: {
+          type: 'boolean',
+          description: 'true só quando ele pedir para largar o texto dele e usar o modelo padrão.',
+        },
       },
       required: ['quer'],
       additionalProperties: false,
@@ -2337,6 +2347,7 @@ Deno.serve(async (req: Request) => {
                         p_quer: a.quer,
                         p_hora: a.hora ?? null,
                         p_texto_desejado: a.textoDesejado ?? null,
+                        p_voltar_ao_padrao: a.voltarAoPadrao === true,
                       },
                     ];
             try {
