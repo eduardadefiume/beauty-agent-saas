@@ -218,7 +218,8 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       properties: {
         servicoId: {
           type: 'string',
-          description: 'O id que veio depois de SERVICO_PRECO: na lista de pendências.',
+          description:
+            'O serviço: o id que veio na pendência OU o nome dele como está no cadastro ("Escova"). Serve também para MUDAR o preço de um serviço já publicado.',
         },
         precoReais: { type: 'number', description: 'Em reais, sem símbolo: 160, não "R$ 160,00".' },
         ehPiso: {
@@ -242,7 +243,11 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        servicoId: { type: 'string', description: 'O id do serviço, como veio na pendência.' },
+        servicoId: {
+          type: 'string',
+          description:
+            'O serviço: o id da pendência OU o nome como está no cadastro ("Progressiva").',
+        },
         nome: {
           type: 'string',
           description:
@@ -252,6 +257,49 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         confianca: { type: 'number', description: 'Abaixo de 0,75 não grava.' },
       },
       required: ['servicoId', 'nome', 'precoReais', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'definir_duracao',
+    description:
+      'MUDA quanto tempo um serviço que já existe leva no total ("a progressiva agora demora 4h"). A pausa continua a mesma; o atendimento vira o resto. Para mudar a pausa use `definir_pausa`.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        servico: { type: 'string', description: 'O nome do serviço como está no cadastro.' },
+        minutosTotais: {
+          type: 'number',
+          description: 'O tempo total novo, em minutos (4h = 240).',
+        },
+        confianca: { type: 'number', description: 'Abaixo de 0,75 não grava.' },
+      },
+      required: ['servico', 'minutosTotais', 'confianca'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'corrigir_foto',
+    description:
+      'Muda uma foto de família de tom e/ou grava o TOM que ele disse ("essa é castanho claro tom 6"). Serve para foto já arquivada (lista fotosJaArquivadas) e para foto sem lugar. A palavra dele vale mais que a leitura da foto: se ele disse o tom, grave o tom dele. Só diga que corrigiu depois de receber "Corrigido".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        foto: {
+          type: 'string',
+          description: 'O id da foto, como veio em fotosJaArquivadas ou fotosSemDestino.',
+        },
+        familia: {
+          type: 'string',
+          description:
+            'A família de tom, EXATAMENTE como está em familiasDeTom (ex.: "Preto", "Castanho").',
+        },
+        tom: {
+          type: 'number',
+          description: 'O tom (1 a 10) que ELE disse. Omita se ele não disse o número.',
+        },
+      },
+      required: ['foto', 'familia'],
       additionalProperties: false,
     },
   },
@@ -487,7 +535,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'arquivar_fotos',
     description:
-      'Grava fotos que ele mandou no lugar certo da régua do salão, para a atendente reconhecer isso na foto da cliente. Use depois que ele disser o que as fotos são ("essas são ruivo", "isso é um pixie"). Várias fotos seguidas antes da legenda são um lote: mande todos os ids juntos. Se a leitura da foto deixou dúvida entre tom e corte, pergunte a ele antes. Só diga que guardou depois de receber "Arquivei".',
+      'Grava fotos que ele mandou no lugar certo da régua do salão, para a atendente reconhecer isso na foto da cliente. Use depois que ele disser o que as fotos são ("essas são ruivo", "isso é um pixie"). Várias fotos seguidas antes da legenda são um lote: mande todos os ids juntos. Se a leitura da foto deixou dúvida entre tom e corte, pergunte a ele antes. Só diga que guardou depois de receber "Arquivei". Se ele disse a cor com outras palavras que a leitura da foto (ele: "castanho claro"; leitura: "mechas"), a palavra DELE decide; se as duas brigam, pergunte antes. Quando ele disser o número do tom, grave com `corrigir_foto` logo depois.',
     input_schema: {
       type: 'object',
       properties: {
@@ -525,7 +573,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'criar_regra',
     description:
-      'Grava uma regra que muda como a atendente fala com as clientes: o que o salão NÃO faz ("não faço pixie"), uma condição ("luzes só com teste de mecha"), um jeito de falar. Escreva a regra como instrução clara para a atendente e mande as palavras dele junto. Entra em rascunho: só vale para cliente depois que ele publicar.',
+      'Grava uma regra que muda como a atendente fala com as clientes: o que o salão NÃO faz ("não faço pixie"), uma condição ("luzes só com teste de mecha"), um jeito de falar. TUDO que ele disser sobre um serviço e que não cabe em preço, variação, duração ou pausa vira regra aqui: o que está incluso ("luzes já com hidratação e reconstrução"), o que acontece depois ("se passar no teste de mecha, faz no mesmo dia"), preço que muda por volume de cabelo. Sem regra gravada, NÃO diga que anotou. Escreva a regra como instrução clara para a atendente e mande as palavras dele junto. Entra em rascunho: só vale para cliente depois que ele publicar.',
     input_schema: {
       type: 'object',
       properties: {
@@ -770,6 +818,30 @@ async function rpc(url: string, key: string, fn: string, args: unknown): Promise
   });
   if (!r.ok) throw new Error(`RPC ${fn}: ${r.status} ${await r.text()}`);
   return await r.json();
+}
+
+// 28/09/2026: o servico pelo nome OU pelo id. As ferramentas de preco e de
+// variacao pediam o id da lista de PENDENCIAS -- e servico ja publicado nao e
+// pendencia. "A escova subiu, agora e 80" virava um laco de "confirma?".
+async function resolverServico(
+  url: string,
+  key: string,
+  tenantId: string,
+  texto: string
+): Promise<{ id: string | null; motivo: string }> {
+  const r = (await rpc(url, key, 'eddy_resolver_servico', {
+    p_tenant_id: tenantId,
+    p_texto: texto ?? '',
+  })) as { ok?: boolean; id?: string; reason?: string; servicos?: string[] } | null;
+  if (r?.ok && r.id) return { id: r.id, motivo: '' };
+  const lista = (r?.servicos ?? []).join(', ');
+  return {
+    id: null,
+    motivo:
+      r?.reason === 'AMBIGUO'
+        ? `"${texto}" bate com mais de um servico (${lista}); pergunte qual`
+        : `nao achei "${texto}" no cadastro (${lista})`,
+  };
 }
 
 async function autorizado(req: Request, url: string, key: string): Promise<boolean> {
@@ -1080,6 +1152,14 @@ Deno.serve(async (req: Request) => {
       // ter chamado `resumo` nesta conversa, `publicar` e recusado aqui mesmo,
       // antes de chegar ao banco. Prompt convence; codigo garante.
       let viuOResumo = false;
+      // 28/09/2026: o que ESTE turno gravou de preco e de foto. A trava do
+      // "anotei" so via se ALGO tinha sido gravado; "Anotei: progressiva R$199,
+      // com muito volume R$450" passou porque a progressiva foi gravada e o
+      // 450 nao foi para lugar nenhum. Agora cada valor dito e conferido.
+      const precosGravados = new Set<number>();
+      let mexeuEmFoto = false;
+      let jaCobreiOValor = false;
+      let jaCobreiAFoto = false;
       // QUANTAS GRAVACOES EXISTIAM ANTES DESTE TURNO.
       //
       // 23/09/2026, primeira conversa real num salao zerado. A dona mandou o
@@ -1202,6 +1282,76 @@ Deno.serve(async (req: Request) => {
                   'ferramenta propria; nome e endereco `registrar_identidade`; servico ' +
                   '`criar_servico`; preco `definir_preco`) -- ou, se faltar informacao, chame ' +
                   '`atender` de novo e apenas PERGUNTE, sem dizer que anotou.',
+              })),
+            });
+            continue;
+          }
+
+          // A TRAVA DO VALOR. 28/09/2026: "Anotei: progressiva R$199, com muito
+          // volume R$450" -- a progressiva foi gravada, o 450 nao, e a trava de
+          // cima nao pegou porque ALGO tinha sido gravado. Cada R$ que ele diz
+          // ter anotado tem que estar gravado: neste turno ou ja no cadastro.
+          const frasesDeGravacao = (escolha.messages ?? [])
+            .map((m) => String(m ?? ''))
+            .filter((m) => prometeuTerGravado.test(m));
+          const valoresDitos = frasesDeGravacao.flatMap((m) =>
+            [...m.matchAll(/R\$\s?(\d{1,5}(?:[.,]\d{1,2})?)/g)].map((x) =>
+              Number(x[1].replace(',', '.'))
+            )
+          );
+          if (valoresDitos.length > 0 && !jaCobreiOValor && volta < MAX_VOLTAS - 1) {
+            let noCadastro: number[] = [];
+            try {
+              noCadastro = (
+                ((await rpc(supabaseUrl, serviceKey, 'eddy_valores_gravados', {
+                  p_tenant_id: tenantId,
+                })) as number[] | null) ?? []
+              ).map(Number);
+            } catch {
+              noCadastro = [];
+            }
+            const faltando = [...new Set(valoresDitos)].filter(
+              (v) => !precosGravados.has(v) && !noCadastro.some((c) => Math.abs(c - v) < 0.005)
+            );
+            if (faltando.length > 0) {
+              jaCobreiOValor = true;
+              mensagens.push({ role: 'assistant', content: resposta.content });
+              mensagens.push({
+                role: 'user',
+                content: chamadas.map((c) => ({
+                  type: 'tool_result' as const,
+                  tool_use_id: c.id,
+                  content:
+                    `NAO ENVIEI. Voce escreveu que anotou R$ ${faltando.join(', R$ ')}, e esse valor nao ` +
+                    'esta gravado em lugar nenhum. Grave antes: preco de servico com `definir_preco`, ' +
+                    'segundo preco do mesmo servico (por volume, tamanho) com `criar_variacao`, condicao ' +
+                    'com `criar_regra`. Se nao tiver como gravar, diga a ele que esse valor AINDA NAO ' +
+                    'ficou registrado.',
+                })),
+              });
+              continue;
+            }
+          }
+
+          // A TRAVA DA FOTO. 28/09/2026: "Corrigido: aquela primeira foto nao e
+          // mais Iluminado" -- e ela continuou em Iluminado.
+          const falaDeFoto =
+            /\b(foto|fotos|fam[ií]lia)\b/i.test(frasesDeGravacao.join(' ')) ||
+            /\b(corrig|mov|mud)(i|ido|ida|ei)\b.*\b(foto|fam[ií]lia)\b/i.test(
+              (escolha.messages ?? []).join(' ')
+            );
+          if (falaDeFoto && !mexeuEmFoto && !jaCobreiAFoto && volta < MAX_VOLTAS - 1) {
+            jaCobreiAFoto = true;
+            mensagens.push({ role: 'assistant', content: resposta.content });
+            mensagens.push({
+              role: 'user',
+              content: chamadas.map((c) => ({
+                type: 'tool_result' as const,
+                tool_use_id: c.id,
+                content:
+                  'NAO ENVIEI. Voce disse que arquivou ou corrigiu foto, e nenhuma foto foi arquivada ' +
+                  'ou corrigida neste turno. Use `arquivar_fotos` (foto sem lugar) ou `corrigir_foto` ' +
+                  '(foto ja arquivada, ou para gravar o tom que ele disse) antes de dizer isso.',
               })),
             });
             continue;
@@ -1371,6 +1521,8 @@ Deno.serve(async (req: Request) => {
 
                 if (r?.ok) {
                   criados += 1;
+                  if (typeof args.precoReais === 'number')
+                    precosGravados.add(Number(args.precoReais));
                   let piso = '';
                   if (args.aPartirDe === true) {
                     const p = (await rpc(supabaseUrl, serviceKey, 'eddy_marcar_piso', {
@@ -1464,14 +1616,22 @@ Deno.serve(async (req: Request) => {
               texto = 'NAO gravei: confianca abaixo de 0,75. Pergunte o valor a ele de novo.';
             } else {
               try {
+                const alvo = await resolverServico(
+                  supabaseUrl,
+                  serviceKey,
+                  tenantId,
+                  args.servicoId
+                );
+                if (!alvo.id) throw new Error(alvo.motivo);
                 const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_definir_preco', {
                   p_tenant_id: tenantId,
-                  p_service_id: args.servicoId,
+                  p_service_id: alvo.id,
                   p_preco_reais: args.precoReais,
                   p_e_piso: args.ehPiso === true,
                 })) as { ok?: boolean; reason?: string; servico?: string; ehPiso?: boolean } | null;
                 if (r?.ok) {
                   anotadas += 1;
+                  precosGravados.add(Number(args.precoReais));
                   texto = r.ehPiso
                     ? `Gravado: ${r.servico} a partir de R$ ${args.precoReais}. Confirme com ele que e "a partir de" mesmo.`
                     : `Gravado: ${r.servico} R$ ${args.precoReais}, valor fechado.`;
@@ -1493,14 +1653,22 @@ Deno.serve(async (req: Request) => {
               texto = 'NAO gravei: confianca abaixo de 0,75. Confirme com ele antes.';
             } else {
               try {
+                const alvo = await resolverServico(
+                  supabaseUrl,
+                  serviceKey,
+                  tenantId,
+                  args.servicoId
+                );
+                if (!alvo.id) throw new Error(alvo.motivo);
                 const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_criar_variacao', {
                   p_tenant_id: tenantId,
-                  p_service_id: args.servicoId,
+                  p_service_id: alvo.id,
                   p_nome: args.nome,
                   p_preco_reais: args.precoReais,
                 })) as { ok?: boolean; reason?: string; nome?: string } | null;
                 if (r?.ok) {
                   anotadas += 1;
+                  precosGravados.add(Number(args.precoReais));
                   texto = `Gravado: variacao "${r.nome}" R$ ${args.precoReais}. Se houver mais precos, chame de novo, um por vez.`;
                 } else if (r?.reason === 'VARIACAO_JA_EXISTE') {
                   texto = `Ja existe uma variacao "${args.nome}" neste servico. Confirme com ele se e outra coisa ou se e a mesma.`;
@@ -1510,6 +1678,75 @@ Deno.serve(async (req: Request) => {
               } catch (erro) {
                 texto = `Nao deu para gravar a variacao agora (${String(erro).slice(0, 120)}).`;
               }
+            }
+          } else if (chamada.name === 'definir_duracao') {
+            const args = chamada.input as {
+              servico: string;
+              minutosTotais: number;
+              confianca: number;
+            };
+            if (typeof args.confianca !== 'number' || args.confianca < 0.75) {
+              texto = 'NAO gravei: confianca abaixo de 0,75. Confirme o tempo com ele.';
+            } else {
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_duracao', {
+                  p_tenant_id: tenantId,
+                  p_servico: args.servico,
+                  p_minutos: Math.round(args.minutosTotais),
+                })) as {
+                  ok?: boolean;
+                  reason?: string;
+                  servico?: string;
+                  totalAntes?: number;
+                  totalMinutos?: number;
+                  pausaMinutos?: number;
+                } | null;
+                if (r?.ok) {
+                  anotadas += 1;
+                  texto =
+                    `Gravado: ${r.servico} passa de ${r.totalAntes} para ${r.totalMinutos} min no total` +
+                    (r.pausaMinutos ? ` (pausa de ${r.pausaMinutos} min continua dentro).` : '.') +
+                    ' Vale para as clientes quando ele publicar.';
+                } else if (r?.reason === 'SERVICO_NAO_EXISTE') {
+                  texto = `NAO gravei: nao achei o servico "${args.servico}" no cadastro. Confirme o nome com ele.`;
+                } else if (r?.reason === 'DURACAO_MENOR_QUE_A_PAUSA') {
+                  texto = `NAO gravei: o total ficou menor que a pausa (${r.pausaMinutos} min). Pergunte a ele.`;
+                } else {
+                  texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar a duracao agora (${String(erro).slice(0, 120)}).`;
+              }
+            }
+          } else if (chamada.name === 'corrigir_foto') {
+            const args = chamada.input as { foto: string; familia: string; tom?: number };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_corrigir_foto', {
+                p_tenant_id: tenantId,
+                p_conversation_id: item.conversation_id,
+                p_foto: args.foto,
+                p_familia: args.familia,
+                p_tom: typeof args.tom === 'number' ? Math.round(args.tom) : null,
+              })) as {
+                ok?: boolean;
+                reason?: string;
+                familia?: string;
+                tom?: number;
+                familias?: string[];
+              } | null;
+              if (r?.ok) {
+                criados += 1;
+                mexeuEmFoto = true;
+                texto =
+                  `Corrigido: a foto agora esta em "${r.familia}"` +
+                  (r.tom ? `, tom ${r.tom} (dito por ele).` : '.');
+              } else if (r?.reason === 'FAMILIA_NAO_EXISTE') {
+                texto = `NAO corrigi: "${args.familia}" nao e familia deste salao. As que existem: ${(r.familias ?? []).join(', ')}.`;
+              } else {
+                texto = `NAO corrigi: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que corrigiu.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para corrigir a foto agora (${String(erro).slice(0, 120)}). Nao diga que corrigiu.`;
             }
           } else if (chamada.name === 'desativar_servico') {
             const args = chamada.input as { nome: string };
@@ -1899,6 +2136,7 @@ Deno.serve(async (req: Request) => {
               } | null;
               if (r?.ok) {
                 criados += r.arquivadas ?? 0;
+                mexeuEmFoto = true;
                 texto =
                   args.destino === 'DESCARTADA'
                     ? `Descartei ${r.arquivadas} foto(s).`
@@ -2156,8 +2394,9 @@ Deno.serve(async (req: Request) => {
                 } else if (r?.reason === 'DONO_SEM_EMAIL') {
                   texto =
                     'NAO publiquei: o cadastro esta pronto, mas o numero dele ainda nao esta ligado ao ' +
-                    'e-mail de acesso ao painel, e publicar exige isso. Diga em uma linha que a equipe da ' +
-                    'EDDigital libera o acesso e publica. NAO diga que o numero nao e reconhecido: ele e.';
+                    'e-mail de acesso ao painel, e publicar exige isso. Responda com REPLY (NUNCA HANDOFF), ' +
+                    'em uma linha: esta tudo pronto e a equipe da EDDigital libera o acesso dele e publica. ' +
+                    'NAO diga que o numero nao e reconhecido: ele e.';
                 } else if (r?.reason === 'NAO_E_O_DONO') {
                   texto =
                     'NAO publiquei: este numero nao esta cadastrado como dono deste salao. Nao insista e nao explique a trava.';
