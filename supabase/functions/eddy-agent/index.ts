@@ -1196,6 +1196,20 @@ Deno.serve(async (req: Request) => {
         const tipo = midia ? (/áudio/i.test(midia) ? 'ÁUDIO' : 'MÍDIA') : 'TEXTO';
         leva.unshift(`[${tipo}] ${[texto, midia].filter(Boolean).join(' — ')}`);
       }
+      // O que o Eddy disse na rodada anterior (os baloes logo antes desta
+      // leva). A trava do publicar confere se cada mudanca foi dita por um dos
+      // dois: pelo dono agora, ou pelo Eddy quando perguntou "publico?".
+      const faladoAntes: string[] = [];
+      {
+        let i = historico.length - 1;
+        while (i >= 0 && historico[i].direction === 'INBOUND') i--;
+        while (i >= 0 && historico[i].direction === 'OUTBOUND') {
+          faladoAntes.unshift(historico[i].text ?? '');
+          i--;
+        }
+      }
+      const semAcento = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const conversaDaPublicacao = semAcento([...leva, ...faladoAntes].join(' '));
       // FOTO DE TABELA DE PRECOS. 28/09/2026, caso E14: o dono mandou "essa e
       // minha tabela atual" e o Eddy decidiu sozinho que era "uma foto
       // antiga", nao gravou nada e sumiu com os 4 servicos que so a tabela
@@ -2484,20 +2498,56 @@ Deno.serve(async (req: Request) => {
                 p_conversation_id: item.conversation_id,
               })) as Record<string, unknown> | null;
               viuOResumo = true;
+              let muda: unknown = null;
+              try {
+                muda = await rpc(supabaseUrl, serviceKey, 'eddy_o_que_muda_ao_publicar', { p_tenant_id: tenantId });
+              } catch {
+                muda = null;
+              }
               texto =
-                'O que esta no rascunho agora (conte isso a ele em portugues, antes de falar em publicar):\n' +
+                'O QUE MUDA SE PUBLICAR (rascunho x o que esta no ar; e ISTO que voce conta a ele, item por item):\n' +
+                JSON.stringify(muda) +
+                '\n\nO rascunho inteiro, para consulta:\n' +
                 JSON.stringify(r);
             } catch (erro) {
               texto = `Nao consegui ler o rascunho agora (${String(erro).slice(0, 120)}). Nao fale em publicar sem isso.`;
             }
           } else if (chamada.name === 'publicar') {
             const args = chamada.input as { confirmacaoDoDono: string };
+            let travaDaPublicacao: string | null = null;
             if (!viuOResumo) {
               texto =
                 'NAO publiquei: voce ainda nao chamou `resumo` nesta conversa. ' +
                 'Chame o resumo, conte a ele o que mudou, espere ele confirmar, e so entao publique.';
             } else if (!args.confirmacaoDoDono || args.confirmacaoDoDono.trim().length < 2) {
               texto = 'NAO publiquei: faltou a confirmacao dele, com as palavras dele.';
+            } else if (
+              (travaDaPublicacao = await (async (): Promise<string | null> => {
+                // 28/09/2026: "fioterapia 290, publica" levou junto o penteado
+                // que ele tinha mudado antes e nao citou. Cada mudanca que vai
+                // ao ar precisa ter sido dita agora -- pelo dono nesta mensagem
+                // ou pelo Eddy na pergunta "publico?".
+                try {
+                  const itens = (await rpc(supabaseUrl, serviceKey, 'eddy_o_que_muda_ao_publicar', {
+                    p_tenant_id: tenantId,
+                  })) as Array<{ servico: string | null; mudanca: string }> | null;
+                  const calados = (itens ?? []).filter((m) => {
+                    if (m.servico) return !conversaDaPublicacao.includes(semAcento(m.servico));
+                    if (/^hor/i.test(m.mudanca)) return !/horari/.test(conversaDaPublicacao);
+                    return !/regra/.test(conversaDaPublicacao);
+                  });
+                  if (calados.length === 0) return null;
+                  return (
+                    'NAO publiquei: o rascunho tambem leva isto, que ele nao citou e voce nao contou: ' +
+                    calados.map((m) => `${m.servico ? m.servico + ': ' : ''}${m.mudanca}`).join('; ') +
+                    '. Conte a ele TUDO o que vai ao ar (inclusive o que ele pediu agora) e pergunte se publica.'
+                  );
+                } catch {
+                  return null;
+                }
+              })()) !== null
+            ) {
+              texto = travaDaPublicacao ?? '';
             } else {
               try {
                 const r = (await rpc(supabaseUrl, serviceKey, 'onboarding_publicar_pela_conversa', {
