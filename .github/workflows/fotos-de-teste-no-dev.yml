@@ -30,6 +30,9 @@ jobs:
         run: |
           if [ "${GITHUB_REF}" != "refs/heads/dev" ]; then echo "Roda só a partir da dev."; exit 1; fi
 
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Instalar a CLI do Supabase
         uses: supabase/setup-cli@v1
         with:
@@ -77,6 +80,8 @@ jobs:
           baixar "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Woman_with_long_black_hair_from_behind.jpg/960px-Woman_with_long_black_hair_from_behind.jpg" /tmp/preto.jpg
           baixar "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6b/Woman_with_long%2C_light_brown_hair_from_behind.jpg/960px-Woman_with_long%2C_light_brown_hair_from_behind.jpg" /tmp/castanho-claro.jpg
           baixar "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/Woman_with_long_wavy_brown_hair_from_behind.jpg/960px-Woman_with_long_wavy_brown_hair_from_behind.jpg" /tmp/castanho-ondulado.jpg
+          # Tabela de precos desenhada para o caso E14 (foto da tabela).
+          subir "$W/tabela-de-precos.jpg" docs/testes/imagens/tabela-de-precos-william.jpg image/jpeg
           for f in preto castanho-claro castanho-ondulado; do
             file /tmp/$f.jpg | grep -q JPEG || { echo "$f nao e JPEG"; exit 1; }
             subir "$W/$f.jpg" /tmp/$f.jpg image/jpeg
