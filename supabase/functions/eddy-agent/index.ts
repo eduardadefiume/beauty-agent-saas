@@ -321,6 +321,20 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'reativar_servico',
+    description:
+      'Volta para o catálogo um serviço que foi tirado, com o preço, o tempo e as etapas que ele tinha (nada foi apagado). ' +
+      'Use quando ele pedir de volta ("volta o selante"). NÃO pergunte preço nem tempo antes: eles voltam sozinhos; diga quais são e, se ele quiser mudar, mude depois.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome do serviço tirado, como estava no catálogo.' },
+      },
+      required: ['nome'],
+      additionalProperties: false,
+    },
+  },
   // AS QUATRO PERGUNTAS QUE ELE FAZIA SEM TER ONDE ESCREVER A RESPOSTA.
   //
   // 23/09/2026: `owner_setup_state` devolvia cinco pendências e ele só sabia
@@ -1851,7 +1865,8 @@ Deno.serve(async (req: Request) => {
                 }
               )) as { ok?: boolean; reason?: string; servico?: string; procurado?: string } | null;
               if (r?.ok) {
-                texto = `Tirei "${r.servico}" do catalogo. Ele continua salvo, so nao aparece mais. Confirme com ele antes do proximo.`;
+                texto = `Tirei "${r.servico}" do catalogo. Ele continua salvo e volta com \`reativar_servico\` se ele pedir. Diga que tirou; NAO peca confirmacao do que ja fez.`;
+                anotadas++;
               } else if (r?.reason === 'SERVICO_NAO_ENCONTRADO') {
                 texto = `Nao achei nenhum servico chamado "${r.procurado}" no catalogo dele. Confirme o nome com ele.`;
               } else if (r?.reason === 'NOME_AMBIGUO') {
@@ -1861,6 +1876,36 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para tirar do catalogo agora (${String(erro).slice(0, 120)}).`;
+            }
+          } else if (chamada.name === 'reativar_servico') {
+            const args = chamada.input as { nome: string };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_reativar_servico', {
+                p_tenant_id: tenantId,
+                p_nome: args.nome,
+              })) as {
+                ok?: boolean;
+                reason?: string;
+                servico?: string;
+                precoCentavos?: number | null;
+                minutosTotais?: number | null;
+                procurado?: string;
+              } | null;
+              if (r?.ok) {
+                const preco = r.precoCentavos != null ? `R$ ${(r.precoCentavos / 100).toFixed(0)}` : 'sem preco';
+                texto = `Voltou "${r.servico}" ao catalogo: ${preco}, ${r.minutosTotais ?? '?'} min, como era antes. Esta no rascunho.`;
+                anotadas++;
+              } else if (r?.reason === 'JA_ESTA_NO_CATALOGO') {
+                texto = `"${r.procurado}" ja esta no catalogo, ativo. Nada a voltar.`;
+              } else if (r?.reason === 'NAO_HA_SERVICO_TIRADO_COM_ESSE_NOME') {
+                texto = `Nao ha servico tirado com o nome "${r.procurado}". Confira o nome com ele ou crie com \`criar_servico\`.`;
+              } else if (r?.reason === 'NOME_AMBIGUO') {
+                texto = `Mais de um servico tirado com o nome "${r.procurado}". Pergunte qual.`;
+              } else {
+                texto = `NAO voltou: ${r?.reason ?? 'motivo desconhecido'}.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para voltar o servico agora (${String(erro).slice(0, 120)}).`;
             }
           } else if (chamada.name === 'definir_o_que_o_agente_faz') {
             const args = chamada.input as {
