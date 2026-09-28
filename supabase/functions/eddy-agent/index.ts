@@ -674,7 +674,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'definir_lembrete',
     description:
-      'Liga ou desliga o lembrete de véspera e a hora em que ele sai (8 a 21). Se ele quiser um texto próprio, mande em textoDesejado com {nome}, {data} e {hora} no lugar do nome, da data e da hora da cliente (ex.: "Oi {nome}! Amanhã às {hora} te espero aqui"): cada cliente recebe os dela. NUNCA escreva uma hora fixa ("14h") no texto. O texto dele sai para a cliente que falou com o salão nas últimas 24h; para as outras, sai o modelo padrão aprovado no WhatsApp.',
+      'Liga ou desliga o lembrete de véspera e a hora em que ele sai (8 a 21). Se ele quiser um texto próprio, mande em textoDesejado com {nome}, {data} e {hora} no lugar do nome, da data e da hora da cliente (ex.: "Oi {nome}! Amanhã às {hora} te espero aqui"): cada cliente recebe os dela. NUNCA escreva uma hora fixa ("14h") no texto. O texto é o que a CLIENTE lê: recado que ele te dá ("ah, e avisa que tem interfone, é só digitar 2") vira frase para ela ("Temos interfone: quando chegar, é só digitar 2."), nunca "avisa que" nem "ah, e". Na confirmação, mostre a ele o texto exato que vai sair. O texto dele sai para a cliente que falou com o salão nas últimas 24h; para as outras, sai o modelo padrão aprovado no WhatsApp.',
     input_schema: {
       type: 'object',
       properties: {
