@@ -1,0 +1,109 @@
+# FOTOS DE TESTE NO DEV.
+#
+# 28/09/2026. Duas coisas:
+#   1. As 3 fotos do salao-robo (Studio Rogerio Hair) ficaram no storage da
+#      PRODUCAO quando o robo foi levado para o DEV. Aqui elas vao para o DEV,
+#      no mesmo caminho (os registros em midias_do_dono ja apontam para la), e
+#      so DEPOIS de conferidas no DEV saem da producao.
+#   2. Fotos de cabelo com licenca livre (Wikimedia Commons, CC BY-SA 4.0,
+#      tiradas de costas, sem rosto) para o teste de colorimetria do
+#      salao-robo William. Credito: autores na pagina de cada arquivo.
+#
+# As chaves de servico vem da CLI (supabase projects api-keys) com o token do
+# repositorio; nao aparecem no log.
+
+name: Fotos de teste no DEV
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - '.github/workflows/fotos-de-teste-no-dev.yml'
+  workflow_dispatch:
+
+jobs:
+  fotos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: So a partir da dev
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/dev" ]; then echo "Roda só a partir da dev."; exit 1; fi
+
+      - name: Instalar a CLI do Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Copiar, conferir e limpar
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROD: hjghwryhphgusefyivbl
+          DEV: dboygmtrzgsfcmoquegp
+        run: |
+          set -euo pipefail
+          chave() {
+            supabase projects api-keys --project-ref "$1" -o json \
+              | jq -r '[.[] | select(.name=="service_role" or .id=="service_role")][0].api_key'
+          }
+          KP=$(chave "$PROD"); KD=$(chave "$DEV")
+          echo "::add-mask::$KP"; echo "::add-mask::$KD"
+          [ -n "$KP" ] && [ "$KP" != "null" ] || { echo "sem chave da producao"; exit 1; }
+          [ -n "$KD" ] && [ "$KD" != "null" ] || { echo "sem chave do DEV"; exit 1; }
+
+          subir() { # subir <caminho no balde> <arquivo> <mime>
+            code=$(curl -sS -o /tmp/up.json -w '%{http_code}' -X POST \
+              "https://$DEV.supabase.co/storage/v1/object/conhecimento/$1" \
+              -H "Authorization: Bearer $KD" -H "apikey: $KD" \
+              -H "Content-Type: $3" -H "x-upsert: true" --data-binary @"$2")
+            [ "$code" -lt 300 ] || { echo "falhou subir $1 ($code)"; cat /tmp/up.json; exit 1; }
+            echo "  subiu $1 ($(stat -c%s "$2") bytes)"
+          }
+
+          echo "::group::1. Fotos do robo: producao -> DEV"
+          ROBO=(
+            44d17e3c-441a-47e4-88b7-e1705e3b9261/dono/72ed94c7-d338-4819-81c0-cdc657b30a87.jpg
+            44d17e3c-441a-47e4-88b7-e1705e3b9261/dono/94898ce6-2780-47a3-b6ad-31767fbc4382.jpg
+            44d17e3c-441a-47e4-88b7-e1705e3b9261/dono/d115862b-82ca-4ce0-b816-7d6cec45f05d.jpg
+          )
+          for p in "${ROBO[@]}"; do
+            code=$(curl -sS -o /tmp/f.jpg -w '%{http_code}' \
+              "https://$PROD.supabase.co/storage/v1/object/conhecimento/$p" \
+              -H "Authorization: Bearer $KP" -H "apikey: $KP")
+            [ "$code" = "200" ] || { echo "falhou baixar $p ($code)"; exit 1; }
+            tam_prod=$(stat -c%s /tmp/f.jpg)
+            subir "$p" /tmp/f.jpg image/jpeg
+            curl -sS -o /tmp/g.jpg "https://$DEV.supabase.co/storage/v1/object/conhecimento/$p" \
+              -H "Authorization: Bearer $KD" -H "apikey: $KD"
+            [ "$(stat -c%s /tmp/g.jpg)" = "$tam_prod" ] || { echo "DEV nao confere para $p"; exit 1; }
+          done
+          echo "::endgroup::"
+
+          echo "::group::2. Conferidas no DEV: saem da producao"
+          corpo=$(printf '%s\n' "${ROBO[@]}" | jq -R . | jq -s '{prefixes: .}')
+          code=$(curl -sS -o /tmp/del.json -w '%{http_code}' -X DELETE \
+            "https://$PROD.supabase.co/storage/v1/object/conhecimento" \
+            -H "Authorization: Bearer $KP" -H "apikey: $KP" -H 'Content-Type: application/json' \
+            -d "$corpo")
+          [ "$code" -lt 300 ] || { echo "falhou apagar na producao ($code)"; cat /tmp/del.json; exit 1; }
+          echo "  apagadas na producao: $(jq length /tmp/del.json)"
+          echo "::endgroup::"
+
+          echo "::group::3. Fotos livres para o salao-robo William"
+          UA="beauty-agent-saas-test/1.0 (eddigital.oficial@gmail.com)"
+          W=58fac76b-10c9-499e-8253-7999386ae578/teste
+          baixar() { # baixar <url> <arquivo>
+            for i in 1 2 3; do
+              if curl -sS -f -A "$UA" -o "$2" "$1"; then return 0; fi
+              sleep 5
+            done
+            return 1
+          }
+          baixar "https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Woman_with_long_black_hair_from_behind.jpg/640px-Woman_with_long_black_hair_from_behind.jpg" /tmp/preto.jpg
+          baixar "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Woman_with_long%2C_light_brown_hair_from_behind.jpg/640px-Woman_with_long%2C_light_brown_hair_from_behind.jpg" /tmp/castanho-claro.jpg
+          baixar "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Woman_with_long_wavy_brown_hair_from_behind.jpg/640px-Woman_with_long_wavy_brown_hair_from_behind.jpg" /tmp/castanho-ondulado.jpg
+          for f in preto castanho-claro castanho-ondulado; do
+            file /tmp/$f.jpg | grep -q JPEG || { echo "$f nao e JPEG"; exit 1; }
+            subir "$W/$f.jpg" /tmp/$f.jpg image/jpeg
+          done
+          echo "::endgroup::"
