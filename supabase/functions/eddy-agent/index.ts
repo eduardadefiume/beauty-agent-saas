@@ -1037,14 +1037,21 @@ Deno.serve(async (req: Request) => {
         const levaAgora = hist.slice(i + 1).map((h) => h.text ?? '').join(' ');
         let rodadas = 0;
         let perguntou = false;
-        while (i >= 0 && rodadas < 2) {
+        // 28/09 (R6): com 2 rodadas a pergunta voltava na 3a, no meio de uma
+        // sequencia de mudancas. Agora, feita uma vez, ela so volta quando o
+        // dono sinaliza que terminou ou puxa o assunto.
+        while (i >= 0 && rodadas < 12) {
           if (hist[i].direction === 'OUTBOUND') {
             if (sinalDaEtapa.test(hist[i].text ?? '')) perguntou = true;
             if (i === 0 || hist[i - 1].direction !== 'OUTBOUND') rodadas++;
           }
           i--;
         }
-        jaPerguntouAgora = perguntou && !sinalDaEtapa.test(levaAgora);
+        const donoTerminou =
+          /\b(so isso|é isso|e isso|pode seguir|segue|seguimos|vamos (pra|para)|terminei|acabou|mais nada|tudo certo|nao tenho mais|não tenho mais|era isso|por enquanto e so|por enquanto é só)\b/i.test(
+            levaAgora.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          );
+        jaPerguntouAgora = perguntou && !sinalDaEtapa.test(levaAgora) && !donoTerminou;
       }
       // MUDANCA DEPOIS DE PUBLICAR. 28/09/2026: o dono mudou o preco da escova
       // com o salao ja publicado e o Eddy disse "Prontinho". Estava gravado,
