@@ -1055,19 +1055,35 @@ Deno.serve(async (req: Request) => {
           p_conversation_id: item.conversation_id,
         })) as {
           fotosSemDestino?: unknown[];
-          familiasDeTom?: { nome: string; fotos: number }[];
+          fotosJaArquivadas?: unknown[];
+          familiasDeTom?: { nome: string; tons?: string; fotos: number }[];
           regua?: { dimensao: string; opcoes: string[] }[];
         };
-        if ((ctxFotos.fotosSemDestino ?? []).length > 0) {
+        // 28/09/2026: o bloco so entrava com foto SEM lugar. Com todas
+        // arquivadas, "a do preto natural e tom 1, poe em Preto" nao tinha
+        // como ser feito: ele nao via a foto nem o id. Agora entra sempre que
+        // houver foto desta conversa, arquivada ou nao.
+        const semLugar = ctxFotos.fotosSemDestino ?? [];
+        const arquivadas = ctxFotos.fotosJaArquivadas ?? [];
+        if (semLugar.length > 0 || arquivadas.length > 0) {
           const familias = (ctxFotos.familiasDeTom ?? [])
-            .map((f) => `${f.nome} (${f.fotos} foto${f.fotos === 1 ? '' : 's'})`)
+            .map(
+              (f) =>
+                `${f.nome}${f.tons ? ` (tons ${f.tons})` : ''} - ${f.fotos} foto${f.fotos === 1 ? '' : 's'}`
+            )
             .join(', ');
           const regua = (ctxFotos.regua ?? [])
             .map((d) => `- ${d.dimensao}: ${d.opcoes.join(', ')}`)
             .join('\n');
           fotosERegua =
-            '\n\nFOTOS QUE ELE MANDOU E AINDA NÃO TÊM LUGAR (use o id em `arquivar_fotos`; várias seguidas antes de uma legenda costumam ser um lote só):\n' +
-            JSON.stringify(ctxFotos.fotosSemDestino) +
+            (semLugar.length > 0
+              ? '\n\nFOTOS QUE ELE MANDOU E AINDA NÃO TÊM LUGAR (use o id em `arquivar_fotos`; várias seguidas antes de uma legenda costumam ser um lote só):\n' +
+                JSON.stringify(semLugar)
+              : '') +
+            (arquivadas.length > 0
+              ? '\n\nFOTOS DELE QUE JÁ ESTÃO ARQUIVADAS (para mudar de família ou gravar o tom que ele disse, use o id em `corrigir_foto`):\n' +
+                JSON.stringify(arquivadas)
+              : '') +
             '\n\nFAMÍLIAS DE TOM DESTE SALÃO (escreva o nome exatamente assim):\n' +
             (familias || '(nenhuma)') +
             '\n\nRÉGUA DESTE SALÃO (dimensão: opções, escritas exatamente assim):\n' +
