@@ -534,7 +534,9 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'publicar',
     description:
-      'Põe no ar o que está no rascunho. Só depois de você ter chamado `resumo`, contado a ele o que mudou, e ele ter confirmado NESTA conversa.',
+      'Põe no ar o que está no rascunho. Normalmente: chame `resumo`, conte a ele o que mudou e espere ele confirmar NESTA conversa. ' +
+      'Exceção: se na MESMA mensagem ele pediu a mudança E mandou publicar ("a escova agora é 80, pode publicar"), e o rascunho não tem outra mudança além das que ele acabou de pedir, grave, publique e só depois conte o que foi ao ar; não peça confirmação de novo. ' +
+      'Se o rascunho tiver mudança que ele não citou nesta mensagem, conte essa mudança e pergunte antes.',
     input_schema: {
       type: 'object',
       properties: {
