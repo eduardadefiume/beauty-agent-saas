@@ -1255,6 +1255,8 @@ Deno.serve(async (req: Request) => {
             avisoDePublicado +
             '\n\nO CADASTRO COMO ESTÁ AGORA (lido do banco neste turno; é daqui que você confirma qualquer coisa; dias: 0=domingo … 6=sábado):\n' +
             cadastroAgora +
+            '\nSe algo que VOCÊ disse antes nesta conversa contradiz o cadastro acima, o cadastro vale: diga "corrigindo o que eu te falei: ..." e não repita o erro. ' +
+            'Quem está "SEM DIA FIXO" não trabalha em nenhum dia da semana por padrão: só nos dias marcados que aparecem ali.' +
             '\n\nDETALHES QUE `anotar` ACEITA NESTA ETAPA (a chave entre colchetes é obrigatória em `anotar`, e você nunca inventa uma):\n' +
             (pauta || '(nenhum nesta etapa)') +
             '\n\nAS HABILIDADES QUE ESTE SALÃO TEM (é desta lista que você escolhe em `criar_servico`, escrita exatamente assim; você nunca inventa uma):\n' +
