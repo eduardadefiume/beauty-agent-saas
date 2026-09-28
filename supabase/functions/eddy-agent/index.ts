@@ -2509,6 +2509,7 @@ Deno.serve(async (req: Request) => {
                   versao?: { versionNumber?: number };
                   somenteRegras?: boolean;
                   regrasPublicadas?: number;
+                  semEmail?: boolean;
                 } | null;
 
                 if (r?.ok && r.somenteRegras) {
@@ -2533,7 +2534,11 @@ Deno.serve(async (req: Request) => {
                     `Publicado. A configuracao no ar agora e a versao ${r.versao?.versionNumber ?? '?'}. ` +
                     (ligada
                       ? 'A atendente do salao esta LIGADA: ja responde as clientes com isso. Diga isso a ele em uma linha.'
-                      : 'A atendente do salao esta DESLIGADA: NAO diga que ela ja responde. Diga que esta publicado e que ela comeca a atender quando for ligada na tela Agente do app (ou pela equipe da EDDigital).');
+                      : r.semEmail === true
+                        // Dono so de WhatsApp: nao tem acesso ao app, entao
+                        // "liga na tela Agente" seria mandar ele onde nao entra.
+                        ? 'A atendente do salao esta DESLIGADA: NAO diga que ela ja responde. Diga que esta publicado e que quem liga a atendente e a equipe da EDDigital. NAO fale de app nem de tela: ele nao tem acesso ao app.'
+                        : 'A atendente do salao esta DESLIGADA: NAO diga que ela ja responde. Diga que esta publicado e que ela comeca a atender quando for ligada na tela Agente do app (ou pela equipe da EDDigital).');
                 } else if (r?.reason === 'FALTA_COISA') {
                   const faltas = (r.pendencias ?? []).map((p) => `- ${p.oQueFalta}`).join('\n');
                   texto =
