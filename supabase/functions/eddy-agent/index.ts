@@ -1026,7 +1026,8 @@ Deno.serve(async (req: Request) => {
       // achava que ja valia.
       const jaPublicado = (contexto.negocio as { publicado?: boolean } | null)?.publicado === true;
       const avisoDePublicado = jaPublicado
-        ? '\n\nO SALÃO JÁ ESTÁ PUBLICADO. O que você gravar agora fica no rascunho e a atendente só passa a usar depois de publicar de novo. ' +
+        ? '\n\nO SALÃO JÁ ESTÁ PUBLICADO. Serviço, preço, duração, pausa, variação, equipe, horário e regra que você gravar agora ficam no rascunho e a atendente só passa a usar depois de publicar de novo. ' +
+          'O lembrete de véspera (`definir_lembrete`) NÃO passa pelo rascunho: vale na hora, então não diga que ele fica no rascunho. ' +
           'Ao confirmar uma mudança, diga isso numa linha e pergunte se publica agora ou se ele ainda tem mais mudanças (aí publica no fim, de uma vez). ' +
           'Nunca diga "já está valendo" antes de `publicar` dar certo.'
         : '';
