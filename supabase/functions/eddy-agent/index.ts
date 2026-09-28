@@ -2531,7 +2531,13 @@ Deno.serve(async (req: Request) => {
         .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
         .filter((t) => t.length > 0)
         .filter((t, _i, todos) => !(repeteARoteiro(t) && todos.length > 1))
-        .slice(0, 3)
+        // No maximo 3 baloes, mas sem perder nada: 28/09, caso E14, o 4o
+        // balao (os servicos que so a tabela tinha) era cortado calado.
+        .reduce<string[]>((acc, t) => {
+          if (acc.length < 3) acc.push(t);
+          else acc[2] = `${acc[2]}\n\n${t}`;
+          return acc;
+        }, [])
         .map((t) => t.replace(/\s*—\s*/g, ' - ').replace(/\s*–\s*/g, ' - '));
 
       let acao = decisao.action;
