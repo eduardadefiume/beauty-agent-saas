@@ -1688,12 +1688,26 @@ Deno.serve(async (req: Request) => {
 
                 if (r?.ok) {
                   criados += 1;
+                  // O cadastro do prompt foi lido antes desta mudanca: o total
+                  // que vale e o de agora (28/09: ele disse "110 min" num
+                  // servico de 150).
+                  let comoFicou = '';
+                  try {
+                    const cad = (await rpc(supabaseUrl, serviceKey, 'eddy_cadastro_resumido', {
+                      p_tenant_id: tenantId,
+                    })) as { servicos?: string[] } | null;
+                    const alvo = (r.servico ?? args.servico).toLowerCase();
+                    const linha = (cad?.servicos ?? []).find((l) => l.toLowerCase().startsWith(alvo));
+                    if (linha) comoFicou = ` Como ficou (use ESTE total, nao some de cabeca): ${linha}.`;
+                  } catch {
+                    // sem a linha, o texto abaixo ainda diz o que foi gravado
+                  }
                   const livre = r.liberaProfissional !== false;
                   texto = r.corrigida
-                    ? `Corrigi a pausa de ${r.pausaMinutos} min em "${r.servico}": agora a profissional ${livre ? 'FICA livre' : 'NAO fica livre'} para outra cliente.`
+                    ? `Corrigi a pausa de ${r.pausaMinutos} min em "${r.servico}": agora a profissional ${livre ? 'FICA livre' : 'NAO fica livre'} para outra cliente.` + comoFicou
                     : `Gravei a pausa de ${r.pausaMinutos} min em "${r.servico}": ` +
                       `${r.atendimentoMinutos} min de atendimento + ${r.pausaMinutos} de pausa, ` +
-                      `total ${r.totalMinutos} min. Durante a pausa a profissional ${livre ? 'fica livre para outra cliente' : 'NAO fica livre: a agenda nao encaixa ninguem nesse tempo'}.`;
+                      `total ${r.totalMinutos} min. Durante a pausa a profissional ${livre ? 'fica livre para outra cliente' : 'NAO fica livre: a agenda nao encaixa ninguem nesse tempo'}.` + comoFicou;
                 } else if (r?.reason === 'PAUSA_MAIOR_QUE_O_SERVICO') {
                   texto = `NAO gravei: o servico tem ${r.totalAtual} min no total e a pausa pedida e maior. ${r.comoResolver}`;
                 } else if (r?.reason === 'SERVICO_JA_TEM_PAUSA') {
