@@ -2514,9 +2514,23 @@ Deno.serve(async (req: Request) => {
 
       if (!decisao) throw new Error(motivoFalha ?? 'SEM_DECISAO');
 
+      // A trava da pergunta repetida, no codigo. So o aviso no prompt nao
+      // segurou: no reteste de 28/09 ele leu "NAO REPITA" e repetiu, porque a
+      // mesma pergunta vem tambem dentro do `negocio`. Se ela ja foi feita nas
+      // duas ultimas rodadas e o dono falou de outra coisa, o balao que e a
+      // pergunta do roteiro (mais da metade das palavras dela) nao sai.
+      const palavras = (t: string) =>
+        (t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z]{4,}/g) ?? []);
+      const daPergunta = new Set(jaPerguntouAgora && roteiro[0] ? palavras(roteiro[0].perguntaSugerida) : []);
+      const repeteARoteiro = (t: string) => {
+        if (daPergunta.size === 0 || !t.trim().endsWith('?')) return false;
+        const p = palavras(t);
+        return p.length > 0 && p.filter((w) => daPergunta.has(w)).length / p.length >= 0.5;
+      };
       const textos = (decisao.messages ?? [])
         .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
         .filter((t) => t.length > 0)
+        .filter((t, _i, todos) => !(repeteARoteiro(t) && todos.length > 1))
         .slice(0, 3)
         .map((t) => t.replace(/\s*—\s*/g, ' - ').replace(/\s*–\s*/g, ' - '));
 
