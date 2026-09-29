@@ -116,6 +116,13 @@ export function precosDoNegocio(estavel: unknown, volatil: unknown): Set<number>
   for (const servico of Array.isArray(e.catalog) ? e.catalog : []) {
     const preco = inteiroOuNada((servico as Record<string, unknown>)?.priceMinor);
     if (preco != null) conhecidos.add(preco);
+    // A variacao ("cabelo com muito volume": R$ 450) e preco cadastrado tanto
+    // quanto o do servico. Fora daqui, a trava barrava o preco certo.
+    const variacoes = (servico as Record<string, unknown>)?.variations;
+    for (const variacao of Array.isArray(variacoes) ? variacoes : []) {
+      const valor = inteiroOuNada((variacao as Record<string, unknown>)?.priceMinor);
+      if (valor != null) conhecidos.add(valor);
+    }
   }
 
   const cliente = (v.client ?? {}) as Record<string, unknown>;
@@ -148,4 +155,45 @@ export function precosSemLastro(textos: string[], conhecidos: Set<number>): Valo
     }
   }
   return soltos;
+}
+
+/** Centavos escritos como a cliente le: 19900 -> "R$ 199,00". */
+export function reaisEscritos(centavos: number): string {
+  const inteiro = Math.floor(centavos / 100)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `R$ ${inteiro},${String(centavos % 100).padStart(2, '0')}`;
+}
+
+/**
+ * O catalogo com o preco ja escrito ao lado dos centavos.
+ *
+ * 29/09/2026, DEV: o catalogo dizia priceMinor 19900 e a atendente escreveu
+ * "R$ 199,90". Converter centavos de cabeca e onde o modelo erra; aqui ele
+ * recebe o texto pronto ("R$ 199,00") e so copia.
+ */
+export function comPrecoEscrito(estavel: unknown): unknown {
+  const e = (estavel ?? {}) as Record<string, unknown>;
+  if (!Array.isArray(e.catalog)) return estavel;
+  return {
+    ...e,
+    catalog: e.catalog.map((item) => {
+      const s = (item ?? {}) as Record<string, unknown>;
+      const preco = inteiroOuNada(s.priceMinor);
+      const variacoes = Array.isArray(s.variations)
+        ? s.variations.map((v) => {
+            const vv = (v ?? {}) as Record<string, unknown>;
+            const valor = inteiroOuNada(vv.priceMinor);
+            return valor == null ? vv : { ...vv, precoEscrito: reaisEscritos(valor) };
+          })
+        : s.variations;
+      return preco == null
+        ? { ...s, variations: variacoes }
+        : {
+            ...s,
+            precoEscrito: (s.priceIsFloor === true ? 'a partir de ' : '') + reaisEscritos(preco),
+            variations: variacoes,
+          };
+    }),
+  };
 }

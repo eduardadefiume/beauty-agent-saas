@@ -38,7 +38,7 @@ import {
   respostaSemProximoPasso,
   ultimaLevaDaCliente,
 } from './fecha-a-conversa.ts';
-import { precosDoNegocio, precosSemLastro } from './preco-com-lastro.ts';
+import { comPrecoEscrito, precosDoNegocio, precosSemLastro } from './preco-com-lastro.ts';
 import { camposCorrompidos, semEscapes, semMarcacao } from './resposta-limpa.ts';
 
 // Sonnet 5 e nao Opus 5: com o cache ligado, a diferenca de qualidade nesta
@@ -1304,7 +1304,7 @@ Deno.serve(async (req) => {
       const { decisao, usage, motivoFalha, agendou } = await decidir(
         anthropic,
         regras,
-        contexto.stable,
+        comPrecoEscrito(contexto.stable),
         contexto.volatile,
         {
           supabaseUrl,

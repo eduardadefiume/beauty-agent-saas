@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   centavosDoTexto,
+  comPrecoEscrito,
+  reaisEscritos,
   precosDoNegocio,
   precosSemLastro,
   valoresEmCentavos,
@@ -190,5 +192,41 @@ describe('o que sai e o que fica preso', () => {
 
   it('resposta sem numero nenhum passa direto', () => {
     expect(precosSemLastro(['oi, tudo bem? me conta do seu cabelo'], conhecidos)).toEqual([]);
+  });
+});
+
+describe('preco escrito para o modelo copiar', () => {
+  it('escreve centavos como a cliente le', () => {
+    expect(reaisEscritos(19900)).toBe('R$ 199,00');
+    expect(reaisEscritos(19990)).toBe('R$ 199,90');
+    expect(reaisEscritos(125000)).toBe('R$ 1.250,00');
+  });
+
+  it('poe o preco escrito no servico, no piso e na variacao', () => {
+    const saida = comPrecoEscrito({
+      catalog: [
+        {
+          name: 'Progressiva',
+          priceMinor: 19900,
+          variations: [{ name: 'volume', priceMinor: 45000 }],
+        },
+        { name: 'Morena iluminada', priceMinor: 45000, priceIsFloor: true },
+        { name: 'Sem preco', priceMinor: null },
+      ],
+    }) as { catalog: Array<Record<string, unknown>> };
+    expect(saida.catalog[0]!.precoEscrito).toBe('R$ 199,00');
+    expect((saida.catalog[0]!.variations as Array<Record<string, unknown>>)[0]!.precoEscrito).toBe(
+      'R$ 450,00'
+    );
+    expect(saida.catalog[1]!.precoEscrito).toBe('a partir de R$ 450,00');
+    expect(saida.catalog[2]!.precoEscrito).toBeUndefined();
+  });
+
+  it('preco da variacao e lastro', () => {
+    const conhecidos = precosDoNegocio(
+      { catalog: [{ priceMinor: 19900, variations: [{ priceMinor: 45000 }] }] },
+      {}
+    );
+    expect(precosSemLastro(['Fica R$ 450,00 com muito volume.'], conhecidos)).toEqual([]);
   });
 });
