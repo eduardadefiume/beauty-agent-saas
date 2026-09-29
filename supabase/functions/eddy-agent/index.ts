@@ -2778,15 +2778,20 @@ Deno.serve(async (req: Request) => {
       // Silencio e pior que "nao consigo". Se ele nao tem o que dizer, o codigo
       // diz por ele. E o pedido vira alerta para a Eduarda, porque um dono
       // pedindo o que o produto nao faz e informacao de produto, nao incidente.
+      // O link vai logo depois do balao que fala dele: 29/09, ele saiu depois
+      // de um recado sobre outro assunto e o dono leria fora de ordem.
+      const comLink = (lista: string[], link: string): string[] => {
+        const limpos = lista
+          .map((t) => t.replace(/https?:\/\/\S+/g, '').trim())
+          .filter((t) => t.length > 0);
+        const onde = limpos.findIndex((t) => /\blink\b/i.test(t));
+        const pos = onde === -1 ? limpos.length : onde + 1;
+        return [...limpos.slice(0, pos), link, ...limpos.slice(pos)];
+      };
       const saidas =
         acao === 'REPLY'
           ? linkDaAgenda
-            ? [
-                ...textos
-                  .map((t) => t.replace(/https?:\/\/\S+/g, '').trim())
-                  .filter((t) => t.length > 0),
-                linkDaAgenda,
-              ]
+            ? comLink(textos, linkDaAgenda)
             : textos
           : ['Isso aqui eu não consigo fazer por aqui. Já avisei a Eduarda e ela te retorna.'];
 
