@@ -82,7 +82,11 @@ export function centavosDoTexto(bruto: string): number | null {
 export function valoresEmCentavos(texto: string): ValorSemLastro[] {
   const achados: ValorSemLastro[] = [];
   for (const encontro of texto.matchAll(DINHEIRO)) {
-    const numero = encontro[1] ?? encontro[2] ?? '';
+    // A pontuacao da frase gruda no numero: "R$ 199,90, ou" chega aqui como
+    // "199,90," e "R$ 120." como "120.". Sem tirar isso o numero virava
+    // ilegivel e a trava deixava passar -- 29/09/2026, a atendente disse
+    // "R$ 199,90" para uma progressiva de R$ 199 e ninguem pegou.
+    const numero = (encontro[1] ?? encontro[2] ?? '').replace(/[.,]+$/, '');
     const centavos = centavosDoTexto(numero);
     if (centavos == null) continue;
     achados.push({ centavos, trecho: encontro[0].trim() });

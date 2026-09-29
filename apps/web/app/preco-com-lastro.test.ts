@@ -82,6 +82,25 @@ describe('achar dinheiro no meio do texto', () => {
     expect(valoresEmCentavos('sai 180 reais').map((v) => v.centavos)).toEqual([18000]);
   });
 
+  // 29/09/2026, DEV: a atendente escreveu "R$ 199,90, ou R$ 450,00" para uma
+  // progressiva de R$ 199. A virgula da frase grudava no numero, "199,90,"
+  // ficava ilegivel e a trava deixava passar. Pontuacao no fim nao e numero.
+  it('pontuacao da frase colada no preco nao esconde o preco', () => {
+    expect(
+      valoresEmCentavos('A progressiva fica R$ 199,90, ou R$ 450,00 se tiver volume.').map(
+        (v) => v.centavos
+      )
+    ).toEqual([19990, 45000]);
+    expect(valoresEmCentavos('Fica R$ 120. E o corte R$ 95, ok?').map((v) => v.centavos)).toEqual([
+      12000, 9500,
+    ]);
+    expect(
+      precosSemLastro(['A progressiva fica R$ 199,90, ou R$ 450,00.'], new Set([19900, 45000])).map(
+        (v) => v.centavos
+      )
+    ).toEqual([19990]);
+  });
+
   // Sem exigir R$ ou "reais", "14:30" e "3 sessoes" virariam preco e toda
   // resposta com horario cairia na trava. Uma trava que dispara sempre e
   // desligada na primeira semana.
