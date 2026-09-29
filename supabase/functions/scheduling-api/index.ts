@@ -779,7 +779,27 @@ Deno.serve(async (request: Request) => {
       (left, right) => left.startMs - right.startMs
     );
 
-    const members = buildEligibleMembers(snapshot, utcOffsetMinutes, searchWindow);
+    // PROFISSIONAL PEDIDA PELA CLIENTE. 29/09/2026, DEV: a cliente pediu o
+    // William na quarta as 14h; ele estava no dentista, o motor achou a Duda
+    // no mesmo horario e a atendente escreveu "tenho quarta as 14h" sem nome.
+    // A cliente leria que e com o William. Com `memberName`, so essa pessoa
+    // entra na busca; nome que nao bate com ninguem e erro, nao "qualquer um".
+    const comparavel = (t: string) =>
+      t
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    const pedida = typeof input.memberName === 'string' ? comparavel(input.memberName) : '';
+    const todos = buildEligibleMembers(snapshot, utcOffsetMinutes, searchWindow);
+    const idsPedidos = new Set(
+      snapshot.teamMembers.filter((m) => comparavel(m.name) === pedida).map((m) => m.id)
+    );
+    if (pedida && idsPedidos.size === 0) {
+      return json(404, { error: 'MEMBER_NOT_FOUND' });
+    }
+    const members = pedida ? todos.filter((m) => idsPedidos.has(m.id)) : todos;
+    const nomePorId = new Map(snapshot.teamMembers.map((m) => [m.id, m.name]));
 
     const resourceCapacityById = new Map<string, number>();
     const resources: EligibleResource[] = snapshot.resourceTypes.flatMap((resourceType) =>
@@ -899,6 +919,7 @@ Deno.serve(async (request: Request) => {
         startMs: step.startMs,
         endMs: step.endMs,
         memberId: step.memberId,
+        memberName: step.memberId ? (nomePorId.get(step.memberId) ?? null) : null,
         resourceAssignments: step.resourceAssignments.map((assignment) => ({
           resourceId: assignment.resourceId,
           quantity: assignment.quantity,
