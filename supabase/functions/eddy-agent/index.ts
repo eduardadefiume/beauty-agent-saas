@@ -713,6 +713,22 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'conectar_agenda',
+    description:
+      'Gera o link para conectar o Google Agenda (dele ou de alguém da equipe) e manda o link num balão separado, automático. Use quando ele pedir para conectar/ligar/sincronizar a agenda do Google, responder "conectar agenda", ou disser que a agenda caiu. NUNCA escreva link nenhum nas suas mensagens: o link sai sozinho, logo depois dos seus balões. Diga em poucas palavras o que fazer: abrir o link, entrar na conta Google onde está a agenda, permitir. O link vale 24 horas e uma vez só.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        profissional: {
+          type: 'string',
+          description:
+            'O nome de quem é a agenda, como está na equipe. Vazio quando a agenda é dele mesmo.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'responder_cor',
     description:
       'Grava a resposta dele a UMA das perguntasDeCor da pendência CORES (até quantos tons a tinta clareia, teste de mecha, tempo e preço de matização...). É o que a atendente usa para orçar cor. Chame uma vez por resposta, depois que ele confirmar o que você entendeu.',
@@ -949,6 +965,9 @@ Deno.serve(async (req: Request) => {
   let falhas = 0;
 
   for (const item of fila) {
+    // O link do Google Agenda sai num balao proprio, montado aqui: 32 letras
+    // hexadecimais copiadas pelo modelo sao 32 chances de um link quebrado.
+    let linkDaAgenda: string | null = null;
     try {
       const contexto = (await rpc(supabaseUrl, serviceKey, 'build_owner_context', {
         p_conversation_id: item.conversation_id,
@@ -1034,7 +1053,10 @@ Deno.serve(async (req: Request) => {
         const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
         let i = hist.length - 1;
         while (i >= 0 && hist[i].direction === 'INBOUND') i--; // a leva de agora
-        const levaAgora = hist.slice(i + 1).map((h) => h.text ?? '').join(' ');
+        const levaAgora = hist
+          .slice(i + 1)
+          .map((h) => h.text ?? '')
+          .join(' ');
         let rodadas = 0;
         let perguntou = false;
         // 28/09 (R6): com 2 rodadas a pergunta voltava na 3a, no meio de uma
@@ -1215,7 +1237,11 @@ Deno.serve(async (req: Request) => {
           i--;
         }
       }
-      const semAcento = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const semAcento = (t: string) =>
+        t
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '');
       const conversaDaPublicacao = semAcento([...leva, ...faladoAntes].join(' '));
       // FOTO DE TABELA DE PRECOS. 28/09/2026, caso E14: o dono mandou "essa e
       // minha tabela atual" e o Eddy decidiu sozinho que era "uma foto
@@ -1722,17 +1748,22 @@ Deno.serve(async (req: Request) => {
                       p_tenant_id: tenantId,
                     })) as { servicos?: string[] } | null;
                     const alvo = (r.servico ?? args.servico).toLowerCase();
-                    const linha = (cad?.servicos ?? []).find((l) => l.toLowerCase().startsWith(alvo));
-                    if (linha) comoFicou = ` Como ficou (use ESTE total, nao some de cabeca): ${linha}.`;
+                    const linha = (cad?.servicos ?? []).find((l) =>
+                      l.toLowerCase().startsWith(alvo)
+                    );
+                    if (linha)
+                      comoFicou = ` Como ficou (use ESTE total, nao some de cabeca): ${linha}.`;
                   } catch {
                     // sem a linha, o texto abaixo ainda diz o que foi gravado
                   }
                   const livre = r.liberaProfissional !== false;
                   texto = r.corrigida
-                    ? `Corrigi a pausa de ${r.pausaMinutos} min em "${r.servico}": agora a profissional ${livre ? 'FICA livre' : 'NAO fica livre'} para outra cliente.` + comoFicou
+                    ? `Corrigi a pausa de ${r.pausaMinutos} min em "${r.servico}": agora a profissional ${livre ? 'FICA livre' : 'NAO fica livre'} para outra cliente.` +
+                      comoFicou
                     : `Gravei a pausa de ${r.pausaMinutos} min em "${r.servico}": ` +
                       `${r.atendimentoMinutos} min de atendimento + ${r.pausaMinutos} de pausa, ` +
-                      `total ${r.totalMinutos} min. Durante a pausa a profissional ${livre ? 'fica livre para outra cliente' : 'NAO fica livre: a agenda nao encaixa ninguem nesse tempo'}.` + comoFicou;
+                      `total ${r.totalMinutos} min. Durante a pausa a profissional ${livre ? 'fica livre para outra cliente' : 'NAO fica livre: a agenda nao encaixa ninguem nesse tempo'}.` +
+                      comoFicou;
                 } else if (r?.reason === 'PAUSA_MAIOR_QUE_O_SERVICO') {
                   texto = `NAO gravei: o servico tem ${r.totalAtual} min no total e a pausa pedida e maior. ${r.comoResolver}`;
                 } else if (r?.reason === 'SERVICO_JA_TEM_PAUSA') {
@@ -1931,7 +1962,10 @@ Deno.serve(async (req: Request) => {
                 procurado?: string;
               } | null;
               if (r?.ok) {
-                const preco = r.precoCentavos != null ? `R$ ${(r.precoCentavos / 100).toFixed(0)}` : 'sem preco';
+                const preco =
+                  r.precoCentavos != null
+                    ? `R$ ${(r.precoCentavos / 100).toFixed(0)}`
+                    : 'sem preco';
                 texto = `Voltou "${r.servico}" ao catalogo: ${preco}, ${r.minutosTotais ?? '?'} min, como era antes. Esta no rascunho.`;
                 anotadas++;
               } else if (r?.reason === 'JA_ESTA_NO_CATALOGO') {
@@ -2448,6 +2482,38 @@ Deno.serve(async (req: Request) => {
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
             }
+          } else if (chamada.name === 'conectar_agenda') {
+            const a = chamada.input as { profissional?: string };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_conectar_agenda', {
+                p_tenant_id: tenantId,
+                p_profissional: a.profissional ?? null,
+              })) as {
+                ok?: boolean;
+                reason?: string;
+                codigo?: string;
+                agendaDe?: string;
+                ehDoDono?: boolean;
+                jaConectadas?: unknown[];
+                equipe?: string[];
+                procurado?: string;
+              } | null;
+              if (r?.ok && r.codigo) {
+                linkDaAgenda = `${supabaseUrl}/functions/v1/google-agenda-conectar?c=${r.codigo}`;
+                texto =
+                  `Link gerado para a agenda de ${r.ehDoDono ? 'dele' : r.agendaDe}. Ele sai sozinho num balao logo depois dos seus; NAO escreva link. ` +
+                  `Ja conectadas: ${JSON.stringify(r.jaConectadas ?? [])} (se a mesma pessoa ja estava funcionando, diga que o link troca a conexao antiga). ` +
+                  'Explique curto: abrir o link, entrar na conta Google onde esta a agenda, permitir. Vale 24h, uma vez so. ' +
+                  'Depois de conectar: a cada 15 minutos o sistema le a agenda; compromisso marcado la fecha o horario para as clientes, e evento com "trabalha" + o nome de alguem da equipe vira dia de trabalho dessa pessoa.';
+                anotadas++;
+              } else if (r?.reason === 'PROFISSIONAL_NAO_ESTA_NA_EQUIPE') {
+                texto = `"${r.procurado}" nao esta na equipe (${(r.equipe ?? []).join(', ')}). Pergunte de quem e a agenda. Nenhum link foi gerado.`;
+              } else {
+                texto = `NAO gerei o link: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que mandou.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para gerar o link agora (${String(erro).slice(0, 120)}). Nao diga que mandou.`;
+            }
           } else if (chamada.name === 'responder_cor') {
             const args = chamada.input as { chave: string; valor: number };
             try {
@@ -2509,7 +2575,9 @@ Deno.serve(async (req: Request) => {
               viuOResumo = true;
               let muda: unknown = null;
               try {
-                muda = await rpc(supabaseUrl, serviceKey, 'eddy_o_que_muda_ao_publicar', { p_tenant_id: tenantId });
+                muda = await rpc(supabaseUrl, serviceKey, 'eddy_o_que_muda_ao_publicar', {
+                  p_tenant_id: tenantId,
+                });
               } catch {
                 muda = null;
               }
@@ -2548,7 +2616,9 @@ Deno.serve(async (req: Request) => {
                   if (calados.length === 0) return null;
                   return (
                     'NAO publiquei: o rascunho tambem leva isto, que ele nao citou e voce nao contou: ' +
-                    calados.map((m) => `${m.servico ? m.servico + ': ' : ''}${m.mudanca}`).join('; ') +
+                    calados
+                      .map((m) => `${m.servico ? m.servico + ': ' : ''}${m.mudanca}`)
+                      .join('; ') +
                     '. Conte a ele TUDO o que vai ao ar (inclusive o que ele pediu agora) e pergunte se publica.'
                   );
                 } catch {
@@ -2596,9 +2666,9 @@ Deno.serve(async (req: Request) => {
                     (ligada
                       ? 'A atendente do salao esta LIGADA: ja responde as clientes com isso. Diga isso a ele em uma linha.'
                       : r.semEmail === true
-                        // Dono so de WhatsApp: nao tem acesso ao app, entao
-                        // "liga na tela Agente" seria mandar ele onde nao entra.
-                        ? 'A atendente do salao esta DESLIGADA: NAO diga que ela ja responde. Diga que esta publicado e que quem liga a atendente e a equipe da EDDigital. NAO fale de app nem de tela: ele nao tem acesso ao app. NAO prometa avisar quando ela for ligada: voce nao fica sabendo.'
+                        ? // Dono so de WhatsApp: nao tem acesso ao app, entao
+                          // "liga na tela Agente" seria mandar ele onde nao entra.
+                          'A atendente do salao esta DESLIGADA: NAO diga que ela ja responde. Diga que esta publicado e que quem liga a atendente e a equipe da EDDigital. NAO fale de app nem de tela: ele nao tem acesso ao app. NAO prometa avisar quando ela for ligada: voce nao fica sabendo.'
                         : 'A atendente do salao esta DESLIGADA: NAO diga que ela ja responde. Diga que esta publicado e que ela comeca a atender quando for ligada na tela Agente do app (ou pela equipe da EDDigital). NAO prometa avisar quando ela for ligada: voce nao fica sabendo.');
                 } else if (r?.reason === 'FALTA_COISA') {
                   const faltas = (r.pendencias ?? []).map((p) => `- ${p.oQueFalta}`).join('\n');
@@ -2657,8 +2727,14 @@ Deno.serve(async (req: Request) => {
       // duas ultimas rodadas e o dono falou de outra coisa, o balao que e a
       // pergunta do roteiro (mais da metade das palavras dela) nao sai.
       const palavras = (t: string) =>
-        (t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z]{4,}/g) ?? []);
-      const daPergunta = new Set(jaPerguntouAgora && roteiro[0] ? palavras(roteiro[0].perguntaSugerida) : []);
+        t
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .match(/[a-z]{4,}/g) ?? [];
+      const daPergunta = new Set(
+        jaPerguntouAgora && roteiro[0] ? palavras(roteiro[0].perguntaSugerida) : []
+      );
       const repeteARoteiro = (t: string) => {
         if (daPergunta.size === 0 || !t.trim().endsWith('?')) return false;
         const p = palavras(t);
@@ -2704,7 +2780,14 @@ Deno.serve(async (req: Request) => {
       // pedindo o que o produto nao faz e informacao de produto, nao incidente.
       const saidas =
         acao === 'REPLY'
-          ? textos
+          ? linkDaAgenda
+            ? [
+                ...textos
+                  .map((t) => t.replace(/https?:\/\/\S+/g, '').trim())
+                  .filter((t) => t.length > 0),
+                linkDaAgenda,
+              ]
+            : textos
           : ['Isso aqui eu não consigo fazer por aqui. Já avisei a Eduarda e ela te retorna.'];
 
       if (acao === 'HANDOFF') {
