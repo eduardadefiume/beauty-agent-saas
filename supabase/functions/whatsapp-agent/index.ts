@@ -101,8 +101,13 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description:
             'Hora a partir da qual procurar, HH:MM, quando a cliente pediu uma hora ("às 10h" -> "10:00", "à tarde" -> "13:00"). Vazio ("") quando ela não pediu hora.',
         },
+        profissional: {
+          type: 'string',
+          description:
+            'O nome de quem ela pediu para fazer ("com o William" -> "William"), como está na equipe. Vazio ("") quando ela não pediu ninguém: aí a agenda escolhe quem estiver livre.',
+        },
       },
-      required: ['servicoId', 'aPartirDe', 'dias', 'aPartirDaHora'],
+      required: ['servicoId', 'aPartirDe', 'dias', 'aPartirDaHora', 'profissional'],
       additionalProperties: false,
     },
   },
@@ -960,7 +965,9 @@ async function decidir(
           aPartirDe: string;
           dias: number;
           aPartirDaHora?: string;
+          profissional?: string;
         };
+        const pedida = (args.profissional ?? '').trim();
         // A busca devolve os primeiros horarios livres a partir do inicio. 24/09:
         // comecando a meia-noite, "sabado as 10h" vinha 08:00..09:45 e a
         // atendente disse a cliente que 10h nao tinha -- com o sabado vazio.
@@ -987,10 +994,13 @@ async function decidir(
             searchDays: Math.min(Math.max(args.dias ?? 7, 1), 30),
             clientPhoneDigits: ambiente.clientePhone,
             clientName: ambiente.clienteNome,
+            ...(pedida ? { memberName: pedida } : {}),
           }
         );
 
-        if (!busca.ok) {
+        if (!busca.ok && busca.error === 'MEMBER_NOT_FOUND') {
+          texto = `Não tem ninguém chamado "${pedida}" na equipe. Não diga que essa pessoa atende aqui; pergunte à cliente se ela quer com quem estiver livre.`;
+        } else if (!busca.ok) {
           texto = `Não foi possível consultar a agenda: ${busca.error}. Não invente horário, use ASK_OWNER.`;
         } else {
           const dados = busca.data as {
@@ -1022,7 +1032,21 @@ async function decidir(
             console.error('FOCO_GRAVACAO_FALHOU', ambiente.conversationId, String(erro));
           }
 
-          const cabecalho = estado.serviceName ? `Agenda de ${estado.serviceName}:` : 'Agenda:';
+          const cabecalho =
+            (estado.serviceName ? `Agenda de ${estado.serviceName}` : 'Agenda') +
+            (pedida ? `, só com ${pedida}:` : ':');
+          // Quem faz cada horario. Sem o nome, "tenho quarta as 14h" e lido
+          // como sendo com quem ela pediu -- e o motor pode ter achado outra.
+          const quemFaz = (c: Candidato): string => {
+            const nomes = [
+              ...new Set(
+                (c.steps as { memberName?: string | null }[])
+                  .map((p) => p.memberName)
+                  .filter((n): n is string => !!n)
+              ),
+            ];
+            return nomes.length > 0 ? ` com ${nomes.join(' e ')}` : '';
+          };
 
           const aviso = trocouDeServico
             ? `ATENÇÃO: esta conversa estava em ${servicoAnterior ?? 'outro serviço'} e você ` +
@@ -1036,6 +1060,9 @@ async function decidir(
             aviso +
             (estado.candidatos.length === 0
               ? `${cabecalho} nenhum horário livre nesse período. Isso é a agenda falando: ` +
+                (pedida
+                  ? `${pedida} não tem horário livre aí. Diga isso a ela e ofereça: outro dia com ${pedida}, ou o mesmo horário com outra pessoa (consulte de novo com profissional vazio). `
+                  : '') +
                 'esse horário não existe. Não peça para a dona confirmar assim mesmo - ' +
                 'ofereça outro período ou outro dia.'
               : cabecalho +
@@ -1043,9 +1070,10 @@ async function decidir(
                 estado.candidatos
                   .map(
                     (c, i) =>
-                      `${i + 1}. ${horarioLocal(c.startMs)} (termina ${horarioLocal(c.endMs)})`
+                      `${i + 1}. ${horarioLocal(c.startMs)} (termina ${horarioLocal(c.endMs)})${quemFaz(c)}`
                   )
                   .join('\n') +
+                '\n\nAo oferecer, diga COM QUEM é. Se ela pediu uma pessoa e o horário é com outra, diga isso com todas as letras.' +
                 '\n\nEsta lista são só os PRIMEIROS horários livres a partir do início da busca, não a agenda inteira. ' +
                 'Horário que não aparece aqui NÃO quer dizer ocupado: se a cliente pediu outro, consulte de novo com aPartirDaHora nele antes de dizer que não tem.' +
                 '\n\nISTO AINDA NÃO É UM AGENDAMENTO. Só existe agendamento depois de reservar_horario.');
