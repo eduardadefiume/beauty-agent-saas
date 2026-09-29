@@ -130,7 +130,12 @@ describe('resposta sem próximo passo', () => {
 
   it('reconhece as formas de cumprimento que o salão usa', () => {
     const leva = ['tem horário?'];
-    for (const cumprimento of ['Oi! Tudo bem?', 'Olá, tudo bom?', 'Bom dia! Tudo bem?', 'Tudo bem?']) {
+    for (const cumprimento of [
+      'Oi! Tudo bem?',
+      'Olá, tudo bom?',
+      'Bom dia! Tudo bem?',
+      'Tudo bem?',
+    ]) {
       expect(respostaSemProximoPasso([cumprimento, 'Fica R$ 430,00'], leva, false)).toBe(true);
     }
   });
@@ -147,9 +152,9 @@ describe('condição comercial ignorada', () => {
   const LEVA_REAL = ['Terça não consigo, tem sexta depois do almoço?', 'Esse valor você dividi?'];
 
   it('pega o caso real: horário respondido, parcelamento ignorado', () => {
-    expect(condicaoComercialIgnorada(['Tenho sexta, 18/09, às 13h, pode ser?'], LEVA_REAL, '')).toBe(
-      true
-    );
+    expect(
+      condicaoComercialIgnorada(['Tenho sexta, 18/09, às 13h, pode ser?'], LEVA_REAL, '')
+    ).toBe(true);
   });
 
   it('deixa passar quando a resposta fala do assunto', () => {
@@ -162,6 +167,22 @@ describe('condição comercial ignorada', () => {
     expect(condicaoComercialIgnorada(['Tenho sexta às 13h, pode ser?'], LEVA_REAL, paraDona)).toBe(
       false
     );
+  });
+
+  // 29/09/2026, DEV (caso C14): a resposta falou de pix e crédito e a trava
+  // deu o desconto por tratado.
+  it('pega desconto respondido com forma de pagamento', () => {
+    const resposta = [
+      'A progressiva está R$ 199,00, e parcelamos em até 3x só acima de R$ 300, então essa fica à vista no pix, débito ou crédito.',
+    ];
+    expect(condicaoComercialIgnorada(resposta, ['Faz um desconto na progressiva?'], '')).toBe(true);
+    expect(
+      condicaoComercialIgnorada(
+        resposta,
+        ['Faz um desconto na progressiva?'],
+        'A cliente pediu desconto na progressiva. Dá?'
+      )
+    ).toBe(false);
   });
 
   it('não dispara quando ela não falou de dinheiro', () => {

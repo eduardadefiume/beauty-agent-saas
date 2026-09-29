@@ -115,9 +115,22 @@ export function respostaSemProximoPasso(
 const ASSUNTO_COMERCIAL =
   /(parcel|dividi|divid[ae]|cart[ãa]o|pix|desconto|sinal|entrada|d[ée]bito|cr[ée]dito|boleto|forma de pagamento|meio de pagamento|pagamento|pagar|maquininha)/i;
 
+// 29/09/2026: "faz um desconto na progressiva?" -> "fica R$ 199, a vista no
+// pix, debito ou credito". A resposta tinha palavra de dinheiro, entao a trava
+// dava a pergunta por tratada -- e o desconto ficou sem resposta. Agora o
+// assunto tem que ser o MESMO: desconto se responde falando de desconto,
+// parcela falando de parcela. Assuntos que a cliente nao separou (pix, cartao,
+// "forma de pagamento") continuam valendo entre si.
+const ASSUNTOS_COMERCIAIS: RegExp[] = [
+  /(desconto|mais barat|abatimento|faz por menos|abaixa|abaixar|promo[çc])/i,
+  /(parcel|dividi|divid[ae]|vezes|\b\d+\s*x\b)/i,
+  /(sinal|entrada|adiantad|metade agora)/i,
+  /(cart[ãa]o|pix|d[ée]bito|cr[ée]dito|boleto|forma de pagamento|meio de pagamento|pagamento|pagar|maquininha)/i,
+];
+
 /**
- * true quando a cliente perguntou de condicao comercial e ninguem tratou:
- * nem a resposta, nem a pergunta enviada a dona.
+ * true quando a cliente perguntou de condicao comercial e ninguem tratou
+ * AQUELE assunto: nem a resposta, nem a pergunta enviada a dona.
  */
 export function condicaoComercialIgnorada(
   textos: string[],
@@ -126,6 +139,8 @@ export function condicaoComercialIgnorada(
 ): boolean {
   const ela = leva.filter((f) => f.includes('?'));
   if (!ela.some((f) => ASSUNTO_COMERCIAL.test(f))) return false;
-  if (ASSUNTO_COMERCIAL.test(perguntaParaDona ?? '')) return false;
-  return !textos.some((t) => ASSUNTO_COMERCIAL.test(t));
+  const tratado = [...textos, perguntaParaDona ?? ''];
+  return ASSUNTOS_COMERCIAIS.some(
+    (assunto) => ela.some((f) => assunto.test(f)) && !tratado.some((t) => assunto.test(t))
+  );
 }
