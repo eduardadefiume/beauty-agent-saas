@@ -32,6 +32,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
 import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
+import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
   condicaoComercialIgnorada,
@@ -1314,6 +1315,20 @@ async function decidir(
             '. Pergunte a primeira delas agora. NÃO diga que está marcado.';
         } else if (!escolhido || !estado.configurationVersionId || !estado.serviceId) {
           texto = 'Essa opção não existe. Consulte os horários antes de reservar.';
+        } else if (!horarioApareceuNaConversa(conversa, escolhido.startMs)) {
+          console.error(
+            JSON.stringify({
+              event: 'reserva_bloqueada_horario_nao_visto',
+              conversationId: ambiente.conversationId,
+              horario: horarioLocal(escolhido.startMs),
+            })
+          );
+          texto =
+            'NÃO reservei: ' +
+            horarioLocal(escolhido.startMs) +
+            ' nunca apareceu para ela -- nem oferecido por você, nem pedido por ela. ' +
+            'Quem escolhe o horário é ela. Ofereça esse horário (dia e hora, com quem) e ' +
+            'espere o sim dela antes de reservar. NÃO diga que está marcado.';
         } else {
           // Reserva temporaria e confirmacao, na sequencia. O hold protege a
           // corrida entre duas clientes pedindo o mesmo horario no mesmo
