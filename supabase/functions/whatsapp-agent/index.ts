@@ -340,6 +340,7 @@ type AgendamentoDaCliente = {
   quando: string;
   diaDaSemana: string;
   com: string | null;
+  quemFazDeVerdade?: string | null;
   situacao: string;
   horasAte: number;
 };
@@ -1612,6 +1613,14 @@ Deno.serve(async (req) => {
           servico: a.servico,
           quando: `${a.diaDaSemana} ${a.quando}`,
           com: a.com,
+          // 30/09: modo um so. "com" e a frente (o que ela ouviu ao marcar);
+          // o nome real so vale se ELA pediu essa pessoa na conversa.
+          ...(a.quemFazDeVerdade && a.quemFazDeVerdade !== a.com
+            ? {
+                quemFazDeVerdade: a.quemFazDeVerdade,
+                comoDizer: `Diga "com ${a.com}". Só diga "${a.quemFazDeVerdade}" se ela mesma pediu ${a.quemFazDeVerdade} nesta conversa.`,
+              }
+            : {}),
           situacao: a.situacao,
         })),
       };
