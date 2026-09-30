@@ -729,6 +729,20 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'resolver_mexida_no_google',
+    description:
+      'Faz o que o dono decidiu sobre um horário de cliente que ele apagou ou mudou no Google (lista em HORÁRIOS QUE O DONO MEXEU NO GOOGLE). DESMARCAR: desmarca e manda à cliente uma mensagem educada pedindo desculpas. MUDAR (só quando ele moveu): passa a cliente para o novo horário e avisa ela. VOLTAR: foi sem querer; o evento volta ao Google como era e a cliente não fica sabendo de nada. Só chame depois que ele decidir.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        codigo: { type: 'string', description: 'O código da mexida, ex.: 3F2A.' },
+        acao: { type: 'string', enum: ['DESMARCAR', 'MUDAR', 'VOLTAR'] },
+      },
+      required: ['codigo', 'acao'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'definir_modo_da_equipe',
     description:
       'Grava se, para a cliente, o salão é UM profissional só (ex.: tudo é "com o William", as assistentes fazem por ele, e a cliente nunca escolhe) ou PROFISSIONAIS SEPARADOS (cada um tem sua cliente e ela pode escolher com quem). Vale na hora, sem publicar. Chame depois que ele responder.',
@@ -1147,6 +1161,22 @@ Deno.serve(async (req: Request) => {
         cadastroAgora = '(indisponível neste turno: não confirme nada do cadastro)';
       }
 
+      // O QUE O DONO MEXEU NO GOOGLE e ainda nao decidiu. So entra quando ha.
+      let mexidasAbertas = '';
+      try {
+        const ms = (await rpc(supabaseUrl, serviceKey, 'eddy_mexidas_abertas', {
+          p_tenant_id: tenantId,
+        })) as unknown[];
+        if (Array.isArray(ms) && ms.length > 0) {
+          mexidasAbertas =
+            '\n\nHORÁRIOS QUE O DONO MEXEU NO GOOGLE E AINDA NÃO DECIDIU (a cliente não sabe de nada até ele decidir; use `resolver_mexida_no_google` com o código quando ele responder. ' +
+            'Se ele disser "desmarca" -> DESMARCAR; "avisa ela"/"muda" (quando moveu) -> MUDAR; "foi sem querer"/"volta" -> VOLTAR. Se não der para saber qual, pergunte):\n' +
+            JSON.stringify(ms);
+        }
+      } catch {
+        // sem a lista, o Eddy so nao ve; nada se perde
+      }
+
       // AS PERGUNTAS DA ATENDENTE QUE ESPERAM O DONO. So entram quando ha
       // alguma: nao custam token no dia a dia.
       let perguntasAbertas = '';
@@ -1343,6 +1373,7 @@ Deno.serve(async (req: Request) => {
             (listaHabilidades ||
               '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)') +
             fotosERegua +
+            mexidasAbertas +
             perguntasAbertas +
             blocoDaLeva,
         },
@@ -2528,6 +2559,42 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
+            }
+          } else if (chamada.name === 'resolver_mexida_no_google') {
+            const a = chamada.input as { codigo: string; acao: string };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_resolver_mexida', {
+                p_tenant_id: tenantId,
+                p_codigo: a.codigo,
+                p_acao: a.acao,
+              })) as {
+                ok?: boolean;
+                reason?: string;
+                feito?: string;
+                mensagemParaCliente?: string;
+                clienteAvisada?: boolean;
+                sinalPagoParaDevolver?: number | null;
+                explicacao?: string;
+              } | null;
+              if (r?.ok) {
+                anotadas++;
+                texto =
+                  `Feito: ${r.feito}.` +
+                  (r.mensagemParaCliente ? ` A cliente recebeu: "${r.mensagemParaCliente}"` : '') +
+                  (r.clienteAvisada === false
+                    ? ' ATENÇÃO: não achei a conversa dela, então ela NÃO foi avisada; diga isso a ele.'
+                    : '') +
+                  (r.sinalPagoParaDevolver
+                    ? ` Ela tinha pagado sinal de R$ ${(r.sinalPagoParaDevolver / 100).toFixed(2).replace('.', ',')}: lembre ele de devolver.`
+                    : '');
+              } else if (r?.reason === 'CHOCA_COM_OUTRA_CLIENTE') {
+                texto =
+                  'NÃO mudei: nesse novo horário a mesma profissional já tem outra cliente. Conte a ele e pergunte o que prefere (outro horário, ou VOLTAR como era).';
+              } else {
+                texto = `NÃO fiz: ${r?.reason ?? 'motivo desconhecido'}. Não diga que fez.`;
+              }
+            } catch (erro) {
+              texto = `Não deu agora (${String(erro).slice(0, 120)}). Não diga que fez.`;
             }
           } else if (chamada.name === 'definir_modo_da_equipe') {
             const a = chamada.input as { umSo: boolean; frente?: string };
