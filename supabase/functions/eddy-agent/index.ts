@@ -48,7 +48,9 @@ const CACHE_TTL = '1h' as const;
 // O que o dono costuma pedir e o Eddy ainda nao faz. Dito com clareza e com
 // a alternativa, para ele nao prometer nem se calar.
 const O_QUE_AINDA_NAO_FACO =
-  'O QUE VOCÊ AINDA NÃO FAZ: você NÃO consegue entrar nem ler o Google Agenda dele (nem de ninguém da equipe). ' +
+  'A AGENDA DO SALÃO você VÊ: quem vem, quantas marcaram, quanto vai entrar, quem está esperando sinal -- use `ver_agenda`. ' +
+  'Nunca diga que não tem acesso à agenda. ' +
+  'O QUE VOCÊ AINDA NÃO FAZ: ler os compromissos que ele pôs direto no Google (dentista, particular); esses só bloqueiam horário. ' +
   'Se ele pedir, diga isso claramente e ofereça o caminho que funciona hoje: ele (ou a profissional) te manda por aqui as datas em que ela vem, ' +
   'e você marca cada uma com `marcar_dia_da_profissional`.';
 
@@ -725,6 +727,23 @@ const FERRAMENTAS: Anthropic.Tool[] = [
             'O nome de quem é a agenda, como está na equipe. Vazio quando a agenda é dele mesmo.',
         },
       },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'ver_agenda',
+    description:
+      'Mostra a agenda do salão num período: cada atendimento (dia, hora, cliente, telefone, serviço, com quem, valor, se está confirmado ou esperando sinal), o total, o valor previsto, quantos foram desmarcados e quantas MARCAÇÕES foram FEITAS no período. ' +
+      'Use sempre que ele perguntar da agenda, de clientes marcadas, movimento, faturamento previsto. "Essa semana" = segunda a domingo da semana de HOJE; "hoje", "amanhã", "sábado", "mês que vem" contam a partir de HOJE. ' +
+      '"Quantas marcaram essa semana" pode ser quem VEM na semana (totalAtendimentos) ou quem MARCOU na semana (marcacoesFeitasNoPeriodo): se os dois números forem diferentes, diga os dois numa frase. ' +
+      'Responda curto: o número primeiro; a lista só se ele pedir ou se forem até 6.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        de: { type: 'string', description: 'Primeiro dia, AAAA-MM-DD.' },
+        ate: { type: 'string', description: 'Último dia (inclusive), AAAA-MM-DD. Máximo 2 meses.' },
+      },
+      required: ['de', 'ate'],
       additionalProperties: false,
     },
   },
@@ -2580,6 +2599,21 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
+            }
+          } else if (chamada.name === 'ver_agenda') {
+            const a = chamada.input as { de: string; ate: string };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_ver_agenda', {
+                p_tenant_id: tenantId,
+                p_de: a.de,
+                p_ate: a.ate,
+              })) as { ok?: boolean; reason?: string } | null;
+              texto = r?.ok
+                ? 'Agenda (só o que passou pelo sistema; compromisso pessoal dele no Google não entra): ' +
+                  JSON.stringify(r)
+                : `Não consegui ver a agenda: ${r?.reason ?? 'motivo desconhecido'}. Não invente números.`;
+            } catch (erro) {
+              texto = `Não consegui ver a agenda agora (${String(erro).slice(0, 120)}). Não invente números.`;
             }
           } else if (chamada.name === 'resolver_mexida_no_google') {
             const a = chamada.input as { codigo: string; acao: string };
