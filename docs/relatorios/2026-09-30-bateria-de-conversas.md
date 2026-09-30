@@ -36,3 +36,17 @@ Cada linha: o que a cliente/dono fez, o que aconteceu, a prova e o conserto.
 - O Eddy não consegue responder "quantas clientes marcaram essa semana" — o dono vai perguntar isso.
 - Modo UM SÓ: no Google aparece quem faz de verdade (ex.: "Quem faz: Karen"); para a cliente é sempre o William. Confirmar com a Duda que é isso que ela quer.
 - Resposta de orientação técnica ("fica murcho?") é honesta mas rasa: empurra para avaliação.
+
+## Rodada 2 (30/09, noite)
+
+| Caso                                                                | Resultado                                                                | Conserto                                                                                        |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Dono: "quantas clientes marcaram essa semana?"                      | FALHOU: HANDOFF (a função nova dava 404, faltava a ponte no public)      | 631a7ae + migr. 20260930193540 — reteste OK: "6 marcações, vêm 2, R$ 220" (confere com o banco) |
+| Dono: "quem vem sábado dia 10?"                                     | OK: Fernanda 11h e Rê 16h; ruído sobre "dias da Duda"                    | 86ae351                                                                                         |
+| Dono: "no Google deixa tudo no meu nome"                            | OK: gravado; título virou WILLIAM, descrição continuou "Quem faz: Karen" | migr. 20260930194118 — 6 eventos conferidos no Google                                           |
+| Áudio (transcrição simulada) de cliente nova com nome, luzes, preço | OK: nome, "a partir de R$ 420" (do cadastro), pede foto                  | —                                                                                               |
+| Cliente some 1h e volta mudando de ideia                            | OK: "só o corte então! quinta 08/10 9h com William, pode ser?"           | —                                                                                               |
+| Cliente some e volta: "ainda tem aquele horário?"                   | Marcou direto (horário tinha sido oferecido a ela)                       | decisão da Duda                                                                                 |
+
+Não testado: transcrição de áudio de verdade (o simulador entrega o texto pronto; só com número real).
+Reteste da desculpa: não reproduzível naturalmente depois das travas; mudança é um filtro de texto.
