@@ -774,6 +774,11 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description:
             'Só quando umSo: o nome de quem a cliente sempre "marca com", como está na equipe. Vazio = o próprio dono.',
         },
+        mostrarQuemFazNoGoogle: {
+          type: 'boolean',
+          description:
+            'Só quando umSo: true = no Google aparece quem faz de verdade (ex.: Karen); false = tudo no nome da frente. Omita se ele ainda não respondeu.',
+        },
       },
       required: ['umSo'],
       additionalProperties: false,
@@ -1397,7 +1402,7 @@ Deno.serve(async (req: Request) => {
             'Quem está "SEM DIA FIXO" não trabalha em nenhum dia da semana por padrão: só nos dias marcados que aparecem ali.' +
             '\n\nAJUSTES QUE FALTAM (olhe modoDaEquipe e tituloNaAgenda no cadastro). Quando o roteiro acima estiver vazio, ou logo depois de ele conectar a agenda, ' +
             'faça UMA destas perguntas por vez (nunca as duas juntas, nunca junto com outra pergunta):\n' +
-            '- modoDaEquipe "AINDA NÃO PERGUNTADO": "Pra cliente, é tudo com você (a equipe faz por você e ela nunca escolhe), ou cada profissional tem a sua cliente e ela pode escolher com quem?" -> definir_modo_da_equipe.\n' +
+            '- modoDaEquipe "AINDA NÃO PERGUNTADO": "Pra cliente, é tudo com você (a equipe faz por você e ela nunca escolhe), ou cada profissional tem a sua cliente e ela pode escolher com quem?" -> definir_modo_da_equipe. Se for tudo com ele, na mesma conversa pergunte: "E na sua agenda do Google, quer ver quem vai fazer cada horário (ex.: Karen), ou tudo no seu nome?" -> definir_modo_da_equipe de novo com mostrarQuemFazNoGoogle.\n' +
             '- tituloNaAgenda "AINDA NÃO ESCOLHIDO": pergunte como ele quer ver o agendamento no Google Agenda e mostre estes modelos NUMERADOS, cada um com o exemplo, e diga que pode ser do jeito dele:\n' +
             '  1) CAROL 16-99425-8547 - LUZES (450 DEU 50 FICOU 400)  [nome, telefone, procedimento e o que pagou de sinal; sem sinal fica (450)]\n' +
             '  2) CAROL 16-99425-8547 - LUZES\n' +
@@ -2652,17 +2657,38 @@ Deno.serve(async (req: Request) => {
               texto = `Não deu agora (${String(erro).slice(0, 120)}). Não diga que fez.`;
             }
           } else if (chamada.name === 'definir_modo_da_equipe') {
-            const a = chamada.input as { umSo: boolean; frente?: string };
+            const a = chamada.input as {
+              umSo: boolean;
+              frente?: string;
+              mostrarQuemFazNoGoogle?: boolean;
+            };
             try {
               const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_modo_da_equipe', {
                 p_tenant_id: tenantId,
                 p_um_so: a.umSo === true,
                 p_frente: a.frente ?? null,
-              })) as { ok?: boolean; reason?: string; frente?: string; equipe?: string[] } | null;
+                p_mostrar_quem_faz:
+                  typeof a.mostrarQuemFazNoGoogle === 'boolean' ? a.mostrarQuemFazNoGoogle : null,
+              })) as {
+                ok?: boolean;
+                reason?: string;
+                frente?: string;
+                equipe?: string[];
+                googleMostraQuemFaz?: boolean;
+                agendamentosReescritos?: number;
+              } | null;
               if (r?.ok) {
                 anotadas++;
                 texto = a.umSo
-                  ? `Gravado e JÁ VALE (isto não passa por publicar: não ofereça publicar por causa disto): para a cliente é tudo com ${r.frente}. A atendente oferece o horário de quem estiver livre, sempre como "com ${r.frente}".`
+                  ? `Gravado e JÁ VALE (isto não passa por publicar: não ofereça publicar por causa disto): para a cliente é tudo com ${r.frente}. A atendente oferece o horário de quem estiver livre, sempre como "com ${r.frente}". ` +
+                    (typeof a.mostrarQuemFazNoGoogle === 'boolean'
+                      ? r.googleMostraQuemFaz
+                        ? 'No Google aparece quem faz de verdade.'
+                        : `No Google fica tudo no nome de ${r.frente}.`
+                      : 'Falta perguntar se no Google ele quer ver quem faz ou tudo no nome dele.') +
+                    (r.agendamentosReescritos
+                      ? ` Os ${r.agendamentosReescritos} horários já marcados foram atualizados no Google.`
+                      : '')
                   : 'Gravado e JÁ VALE (isto não passa por publicar: não ofereça publicar por causa disto): profissionais separados. A atendente diz com quem é cada horário e respeita quando a cliente pede alguém.';
               } else if (r?.reason === 'FRENTE_NAO_ESTA_NA_EQUIPE') {
                 texto = `NAO gravei: esse nome não está na equipe (${(r.equipe ?? []).join(', ')}). Pergunte quem é.`;
