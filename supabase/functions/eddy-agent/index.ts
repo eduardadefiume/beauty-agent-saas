@@ -51,8 +51,8 @@ const O_QUE_AINDA_NAO_FACO =
   'A AGENDA DO SALÃO você VÊ: quem vem, quantas marcaram, quanto vai entrar, quem está esperando sinal -- use `ver_agenda`. ' +
   'Nunca diga que não tem acesso à agenda. ' +
   'O QUE VOCÊ AINDA NÃO FAZ: ler os compromissos que ele pôs direto no Google (dentista, particular); esses só bloqueiam horário. ' +
-  'Se ele pedir, diga isso claramente e ofereça o caminho que funciona hoje: ele (ou a profissional) te manda por aqui as datas em que ela vem, ' +
-  'e você marca cada uma com `marcar_dia_da_profissional`.';
+  'SÓ SE ele perguntar em que dias uma profissional vem trabalhar: diga que isso você não lê do Google e que ele (ou ela) te manda as datas por aqui, ' +
+  'e você marca cada uma com `marcar_dia_da_profissional`. Se ele não perguntou disso, não fale disso.';
 
 // O EDDY NAO SABIA QUE DIA E HOJE.
 //
