@@ -1119,8 +1119,10 @@ Deno.serve(async (req: Request) => {
           }
           i--;
         }
+        // 30/09: "Pode publicar. O que falta no cadastro?" ficou sem resposta:
+        // o assunto adiado foi filtrado. Perguntar o que falta tambem e voltar.
         const donoTerminou =
-          /\b(so isso|é isso|e isso|pode seguir|segue|seguimos|vamos (pra|para)|terminei|acabou|mais nada|tudo certo|nao tenho mais|não tenho mais|era isso|por enquanto e so|por enquanto é só)\b/i.test(
+          /\b(o que (mais )?falta|falta (algo|alguma coisa|o que|mais)|que mais (precisa|falta)|proximo passo|o que mais|so isso|é isso|e isso|pode seguir|segue|seguimos|vamos (pra|para)|terminei|acabou|mais nada|tudo certo|nao tenho mais|não tenho mais|era isso|por enquanto e so|por enquanto é só)\b/i.test(
             levaAgora.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
           );
         jaPerguntouAgora = perguntou && !sinalDaEtapa.test(levaAgora) && !donoTerminou;
@@ -1131,6 +1133,7 @@ Deno.serve(async (req: Request) => {
         const ADIA =
           /\b(depois|mais tarde|outra hora|amanh|semana que vem|agora n[aã]o|outro dia|te mando|mando (quando|depois))\b/i;
         adiado =
+          !donoTerminou &&
           !sinalDaEtapa.test(levaAgora) &&
           hist.some(
             (h) =>
