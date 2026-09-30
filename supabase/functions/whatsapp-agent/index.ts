@@ -128,6 +128,25 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       additionalProperties: false,
     },
   },
+  // 30/09/2026: "Ja cancelei aqui" sem ter cancelado nada. A atendente nao
+  // via os horarios da cliente nem tinha como desmarcar.
+  {
+    name: 'cancelar_agendamento',
+    description:
+      'Desmarca de verdade um horário que a cliente já tem (a lista está em proximosAgendamentos). Use só quando ela pedir para desmarcar/cancelar aquele horário. Para REMARCAR: primeiro consulte e reserve o horário novo com reservar_horario, e só depois cancele o antigo -- ela nunca fica sem horário no meio. Enquanto esta ferramenta não responder que cancelou, NÃO diga que cancelou.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        numero: {
+          type: 'integer',
+          description: 'O numero do horário em proximosAgendamentos (1, 2, ...).',
+        },
+      },
+      required: ['numero'],
+      additionalProperties: false,
+    },
+  },
   // A ficha so anda se alguem escrever nela. Sem isto o agente descobria na
   // conversa que o cabelo e curto, dizia "perfeito, vi aqui" e no minuto
   // seguinte a lista de pendencias mandava perguntar o comprimento de novo.
@@ -312,6 +331,20 @@ function horarioLocal(ms: number): string {
   });
 }
 
+type AgendamentoDaCliente = {
+  appointmentId: string;
+  servico: string;
+  quando: string;
+  diaDaSemana: string;
+  com: string | null;
+  situacao: string;
+  horasAte: number;
+};
+
+// "Cancelei", "desmarquei", "esta cancelado"... sem ter chamado a ferramenta.
+export const AFIRMA_CANCELAMENTO =
+  /(\b(cancelei|desmarquei)\b|j[áa]\s+(cancel|desmarc)|(foi|est[áa]|t[áa]|fic(a|ou))\s+(cancelad|desmarcad))/i;
+
 type Candidato = {
   startMs: number;
   endMs: number;
@@ -458,12 +491,14 @@ async function decidir(
     conversationId: string;
     clientePhone: string | null;
     clienteNome: string | null;
+    agendamentosDaCliente: AgendamentoDaCliente[];
   }
 ): Promise<{
   decisao: Decisao | null;
   usage: Uso;
   motivoFalha?: string;
   agendou?: { quando: string; appointmentId: string } | null;
+  cancelou?: string[];
 }> {
   // A DIRETRIZ DO TURNO, colada depois do JSON da conversa: e a ultima coisa
   // que o modelo le antes de decidir. Nasceu de tres erros seguidos.
@@ -626,6 +661,8 @@ async function decidir(
     voltas: 0,
   };
   let agendou: { quando: string; appointmentId: string } | null = null;
+  const cancelou: string[] = [];
+  let jaCobreiOCancelamento = false;
   // A cobranca do proximo passo acontece UMA vez por turno. Duas seria um
   // agente discutindo consigo mesmo, e cada volta custa dinheiro.
   let jaCobreiOProximoPasso = false;
@@ -845,6 +882,41 @@ async function decidir(
         continue;
       }
 
+      // "JA CANCELEI" SEM TER CANCELADO. A cliente para de vir, o horario
+      // fica preso e o salao descobre com a cadeira vazia.
+      if (
+        decisao.action === 'REPLY' &&
+        !jaCobreiOCancelamento &&
+        cancelou.length === 0 &&
+        volta < MAX_VOLTAS - 1 &&
+        fala.some((t) => AFIRMA_CANCELAMENTO.test(String(t)))
+      ) {
+        jaCobreiOCancelamento = true;
+        console.error(
+          JSON.stringify({
+            event: 'cancelamento_afirmado_sem_cancelar',
+            conversationId: ambiente.conversationId,
+          })
+        );
+        mensagens.push({ role: 'assistant', content: resposta.content });
+        mensagens.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: desfecho.id,
+              content:
+                'NAO ENVIEI. Voce disse que cancelou/desmarcou, mas nada foi cancelado. ' +
+                (ambiente.agendamentosDaCliente.length === 0
+                  ? 'Ela nao tem nenhum horario futuro marcado aqui. Nao diga que cancelou: diga que nao achou horario marcado no nome/telefone dela e pergunte qual dia era.'
+                  : 'Se ela pediu para desmarcar, chame cancelar_agendamento com o numero certo de proximosAgendamentos e so depois confirme. Se nao ficou claro qual, pergunte.') +
+                ' Depois chame atender de novo.',
+            },
+          ],
+        });
+        continue;
+      }
+
       // A MESMA FRASE DE NOVO.
       //
       // 16/09: "Ainda estou esperando aquela foto do seu cabelo hoje, pode me
@@ -948,7 +1020,7 @@ async function decidir(
         continue;
       }
 
-      return { decisao, usage, agendou };
+      return { decisao, usage, agendou, cancelou };
     }
 
     mensagens.push({ role: 'assistant', content: resposta.content });
@@ -1182,6 +1254,36 @@ async function decidir(
             }
           }
         }
+      } else if (chamada.name === 'cancelar_agendamento') {
+        const args = chamada.input as { numero: number };
+        const alvo = ambiente.agendamentosDaCliente[(args.numero ?? 0) - 1];
+        if (!alvo) {
+          texto =
+            ambiente.agendamentosDaCliente.length === 0
+              ? 'Ela não tem nenhum horário futuro marcado. Nada foi cancelado. Não diga que cancelou.'
+              : `Não existe o número ${args.numero} na lista. Nada foi cancelado. Confira proximosAgendamentos.`;
+        } else if (cancelou.includes(alvo.appointmentId)) {
+          texto = `Esse horário (${alvo.servico}, ${alvo.diaDaSemana} ${alvo.quando}) já foi cancelado neste turno.`;
+        } else {
+          const r = await agenda(ambiente.supabaseUrl, ambiente.serviceKey, ambiente.workerToken, {
+            action: 'cancelAppointment',
+            tenantId: ambiente.tenantId,
+            unitId: ambiente.unitId,
+            appointmentId: alvo.appointmentId,
+          });
+          if (!r.ok) {
+            texto = `NÃO cancelou (${r.error}). Não diga que cancelou; diga que vai pedir para o salão cancelar e use ASK_OWNER.`;
+          } else {
+            cancelou.push(alvo.appointmentId);
+            texto =
+              `Cancelado de verdade: ${alvo.servico}, ${alvo.diaDaSemana} ${alvo.quando}` +
+              (alvo.com ? ` com ${alvo.com}` : '') +
+              '. Agora pode confirmar para ela.' +
+              (alvo.horasAte < 24
+                ? ' Faltavam menos de 24h: seja gentil, sem cobrar nada, e avise que o salão foi avisado.'
+                : '');
+          }
+        }
       } else if (chamada.name === 'anotar_na_ficha') {
         // Falhar aqui nao derruba o turno: a cliente esperando resposta importa
         // mais que um campo que pode ser perguntado de novo depois.
@@ -1224,7 +1326,7 @@ async function decidir(
     mensagens.push({ role: 'user', content: resultados });
   }
 
-  return { decisao: null, usage, motivoFalha: 'MAX_VOLTAS_ATINGIDO', agendou };
+  return { decisao: null, usage, motivoFalha: 'MAX_VOLTAS_ATINGIDO', agendou, cancelou };
 }
 
 Deno.serve(async (req) => {
@@ -1329,11 +1431,35 @@ Deno.serve(async (req) => {
       const volatilTipado = contexto.volatile as
         { contact?: { whatsapp?: string | null; displayName?: string | null } } | undefined;
 
-      const { decisao, usage, motivoFalha, agendou } = await decidir(
+      // Os horarios que ela ja tem: sem isto, "quero desmarcar" nao tinha
+      // resposta verdadeira possivel.
+      let agendamentosDaCliente: AgendamentoDaCliente[] = [];
+      try {
+        agendamentosDaCliente = ((await rpc(
+          supabaseUrl,
+          serviceKey,
+          'agente_agendamentos_da_cliente',
+          { p_conversation_id: item.conversation_id }
+        )) ?? []) as AgendamentoDaCliente[];
+      } catch (erro) {
+        console.error('AGENDAMENTOS_DA_CLIENTE_FALHOU', item.conversation_id, String(erro));
+      }
+      const volatilComHorarios = {
+        ...((contexto.volatile ?? {}) as Record<string, unknown>),
+        proximosAgendamentos: agendamentosDaCliente.map((a, i) => ({
+          numero: i + 1,
+          servico: a.servico,
+          quando: `${a.diaDaSemana} ${a.quando}`,
+          com: a.com,
+          situacao: a.situacao,
+        })),
+      };
+
+      const { decisao, usage, motivoFalha, agendou, cancelou } = await decidir(
         anthropic,
         regras,
         comPrecoEscrito(contexto.stable),
-        contexto.volatile,
+        volatilComHorarios,
         {
           supabaseUrl,
           serviceKey,
@@ -1343,6 +1469,7 @@ Deno.serve(async (req) => {
           conversationId: item.conversation_id,
           clientePhone: volatilTipado?.contact?.whatsapp ?? null,
           clienteNome: volatilTipado?.contact?.displayName ?? null,
+          agendamentosDaCliente,
         }
       );
 
@@ -1403,7 +1530,13 @@ Deno.serve(async (req) => {
       // lista so conhecia a forma com verbo ("está marcado", "foi marcado").
       const AFIRMA_AGENDAMENTO =
         /(est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad|^\s*(marcad|agendad|confirmad|reservad)[oa]s?\b|\b(marquei|agendei|reservei)\b|\bt[áa]\s+(marcad|agendad|confirmad|reservad)|\bfic(a|ou)\s+(marcad|agendad|confirmad|reservad))/i;
-      const mentiuAgendamento = agendou == null && textos.some((t) => AFIRMA_AGENDAMENTO.test(t));
+      const mentiuAgendamento =
+        // Quem ja tem horario pode ouvir "seu corte de quarta esta confirmado":
+        // e verdade, esta na lista dela. A trava vale para quem nao tem nenhum.
+        (agendou == null &&
+          agendamentosDaCliente.length === 0 &&
+          textos.some((t) => AFIRMA_AGENDAMENTO.test(t))) ||
+        ((cancelou ?? []).length === 0 && textos.some((t) => AFIRMA_CANCELAMENTO.test(t)));
 
       // PRECO SEM LASTRO NAO SAI DAQUI.
       //
