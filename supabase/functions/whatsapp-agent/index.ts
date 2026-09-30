@@ -33,6 +33,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 
 import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
 import { horarioApareceuNaConversa } from './horario-combinado.ts';
+import { nomeDito } from './nome-dito.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
   condicaoComercialIgnorada,
@@ -547,6 +548,43 @@ async function decidir(
   let faltas =
     (volatil as { client?: { missing?: Array<{ campo: string; perguntaSugerida: string }> } })
       ?.client?.missing ?? [];
+  // O NOME QUE ELA JA DISSE (ver nome-dito.ts). Anota antes do modelo: o
+  // prompt e o contexto deste turno ja saem sem "falta o nome".
+  if (faltas.some((f) => f.campo === 'NOME')) {
+    const nome = nomeDito(
+      falasDaConversa(volatil)
+        .filter((f) => f.direction === 'INBOUND')
+        .map((f) => String(f.text ?? ''))
+    );
+    if (nome) {
+      try {
+        const gravado = (await rpc(
+          ambiente.supabaseUrl,
+          ambiente.serviceKey,
+          'record_client_facts_for_conversation',
+          { p_conversation_id: ambiente.conversationId, p_facts: { nome } }
+        )) as { ok?: boolean; aindaFalta?: Array<{ campo: string; perguntaSugerida: string }> };
+        if (gravado?.ok) {
+          faltas = gravado.aindaFalta ?? faltas.filter((f) => f.campo !== 'NOME');
+          ambiente.clienteNome = nome;
+          const cliente = (volatil as { client?: Record<string, unknown> })?.client;
+          if (cliente) {
+            cliente.missing = faltas;
+            cliente.name = nome;
+          }
+          console.log(
+            JSON.stringify({
+              event: 'nome_anotado_pelo_codigo',
+              conversationId: ambiente.conversationId,
+              nome,
+            })
+          );
+        }
+      } catch (erro) {
+        console.error(JSON.stringify({ event: 'nome_dito_falhou', erro: String(erro) }));
+      }
+    }
+  }
   // A FICHA SO TRAVA A AGENDA DE QUIMICA.
   //
   // 24/09/2026, Studio Rogerio: a Marina aceitou escova sabado 10h e a ficha
