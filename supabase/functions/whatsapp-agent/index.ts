@@ -492,6 +492,9 @@ async function decidir(
     clientePhone: string | null;
     clienteNome: string | null;
     agendamentosDaCliente: AgendamentoDaCliente[];
+    // "Um so": para a cliente e tudo com a frente (William), mesmo quando
+    // quem esta livre e uma assistente.
+    modoDaEquipe: { umSo: boolean; frente: string | null };
   }
 ): Promise<{
   decisao: Decisao | null;
@@ -1039,7 +1042,19 @@ async function decidir(
           aPartirDaHora?: string;
           profissional?: string;
         };
-        const pedida = (args.profissional ?? '').trim();
+        const semAcento = (t: string) =>
+          t
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+        const frente = ambiente.modoDaEquipe.umSo ? ambiente.modoDaEquipe.frente : null;
+        // Pedir a frente, no modo "um so", e pedir o salao: qualquer um da
+        // equipe serve, e o horario sai com o nome dela.
+        const pedida =
+          frente && semAcento(args.profissional ?? '') === semAcento(frente)
+            ? ''
+            : (args.profissional ?? '').trim();
         // A busca devolve os primeiros horarios livres a partir do inicio. 24/09:
         // comecando a meia-noite, "sabado as 10h" vinha 08:00..09:45 e a
         // atendente disse a cliente que 10h nao tinha -- com o sabado vazio.
@@ -1110,6 +1125,7 @@ async function decidir(
           // Quem faz cada horario. Sem o nome, "tenho quarta as 14h" e lido
           // como sendo com quem ela pediu -- e o motor pode ter achado outra.
           const quemFaz = (c: Candidato): string => {
+            if (frente && !pedida) return ` com ${frente}`;
             const nomes = [
               ...new Set(
                 (c.steps as { memberName?: string | null }[])
@@ -1145,7 +1161,9 @@ async function decidir(
                       `${i + 1}. ${horarioLocal(c.startMs)} (termina ${horarioLocal(c.endMs)})${quemFaz(c)}`
                   )
                   .join('\n') +
-                '\n\nAo oferecer, diga COM QUEM é. Se ela pediu uma pessoa e o horário é com outra, diga isso com todas as letras.' +
+                (frente && !pedida
+                  ? `\n\nNeste salão, para a cliente é tudo com ${frente}: ofereça sempre como "com ${frente}" e nunca cite outra pessoa da equipe.`
+                  : '\n\nAo oferecer, diga COM QUEM é. Se ela pediu uma pessoa e o horário é com outra, diga isso com todas as letras.') +
                 '\n\nEsta lista são só os PRIMEIROS horários livres a partir do início da busca, não a agenda inteira. ' +
                 'Horário que não aparece aqui NÃO quer dizer ocupado: se a cliente pediu outro, consulte de novo com aPartirDaHora nele antes de dizer que não tem.' +
                 '\n\nISTO AINDA NÃO É UM AGENDAMENTO. Só existe agendamento depois de reservar_horario.');
@@ -1444,6 +1462,15 @@ Deno.serve(async (req) => {
       } catch (erro) {
         console.error('AGENDAMENTOS_DA_CLIENTE_FALHOU', item.conversation_id, String(erro));
       }
+      let modoDaEquipe: { umSo: boolean; frente: string | null } = { umSo: false, frente: null };
+      try {
+        const m = (await rpc(supabaseUrl, serviceKey, 'agente_modo_da_equipe', {
+          p_conversation_id: item.conversation_id,
+        })) as { umSo?: boolean; frente?: string | null } | null;
+        if (m?.umSo && m.frente) modoDaEquipe = { umSo: true, frente: m.frente };
+      } catch (erro) {
+        console.error('MODO_DA_EQUIPE_FALHOU', item.conversation_id, String(erro));
+      }
       const volatilComHorarios = {
         ...((contexto.volatile ?? {}) as Record<string, unknown>),
         proximosAgendamentos: agendamentosDaCliente.map((a, i) => ({
@@ -1470,6 +1497,7 @@ Deno.serve(async (req) => {
           clientePhone: volatilTipado?.contact?.whatsapp ?? null,
           clienteNome: volatilTipado?.contact?.displayName ?? null,
           agendamentosDaCliente,
+          modoDaEquipe,
         }
       );
 
@@ -1643,6 +1671,28 @@ Deno.serve(async (req) => {
       const enviados: unknown[] = [];
 
       if (acao === 'REPLY') {
+        // UMA CONFIRMACAO SO. 30/09: saiam o "Marcado, Bianca! Quarta 07/10 as
+        // 16h" dela e, logo depois, a confirmacao que o dono escreveu, dizendo
+        // o mesmo. Quando o salao tem a dele, a dele e a oficial: o balao dela
+        // que so afirma o agendamento nao sai. O resto (resposta a outra
+        // pergunta, por exemplo) sai normal.
+        if (agendou?.appointmentId) {
+          try {
+            const temFinalizacao = (await rpc(supabaseUrl, serviceKey, 'agente_tem_finalizacao', {
+              p_appointment_id: agendou.appointmentId,
+            })) as boolean | null;
+            if (temFinalizacao) {
+              // So o balao que e SO a confirmacao: curto e sem pergunta. Um
+              // balao que confirma e responde outra coisa fica inteiro.
+              const sobra = textos.filter(
+                (t) => !(AFIRMA_AGENDAMENTO.test(t) && t.length <= 160 && !t.includes('?'))
+              );
+              textos.splice(0, textos.length, ...sobra);
+            }
+          } catch (erro) {
+            console.error('FINALIZACAO_CHECAGEM_FALHOU', agendou.appointmentId, String(erro));
+          }
+        }
         for (let i = 0; i < textos.length; i++) {
           enviados.push(
             await rpc(supabaseUrl, serviceKey, 'enqueue_outbound_message', {
