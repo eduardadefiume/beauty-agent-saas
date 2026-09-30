@@ -1868,7 +1868,10 @@ Deno.serve(async (req) => {
                   !(
                     (AFIRMA_AGENDAMENTO.test(t) || SO_CONFIRMA.test(t)) &&
                     t.length <= 160 &&
-                    !t.includes('?')
+                    !t.includes('?') &&
+                    // 30/09: "nao confirmei 15h, prefiro 16h" -> remarcou e
+                    // so saiu a finalizacao; o pedido de desculpa sumiu junto.
+                    !/desculp|foi mal|perd[ãa]o|me enganei|engano|errei/i.test(t)
                   )
               );
               textos.splice(0, textos.length, ...sobra);
