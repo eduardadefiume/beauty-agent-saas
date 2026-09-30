@@ -693,6 +693,7 @@ async function decidir(
   // nenhuma naquele turno, com o sabado vazio.
   let consultouNesteTurno = false;
   let jaCobreiONaoTem = false;
+  let jaCobreiAVagaSemConsulta = false;
   let jaCobreiARepeticao = false;
   // A conversa inteira, as duas vozes. Sem a voz DELA nao da para saber se o
   // procedimento foi escolhido ou se foi o agente que inventou.
@@ -851,6 +852,50 @@ async function decidir(
               'NAO ENVIEI. Voce disse que um horario nao tem sem consultar a agenda neste turno. ' +
               'A lista que voce tinha e so dos primeiros livres. Chame consultar_horarios com ' +
               'aPartirDaHora no horario que ela pediu e responda com o que a agenda disser.',
+          })),
+        });
+        continue;
+      }
+
+      // "TENHO HORARIO" SEM TER OLHADO A AGENDA.
+      //
+      // 30/09: "Queria saber ... se tem horario sabado de manha" -> "Sabado de
+      // manha tenho horario! Qual desses voce quer marcar?" Nenhuma consulta,
+      // nenhum horario na mensagem: a promessa era chute e o "desses" nao
+      // apontava para nada. O contrario do NEGA_HORARIO acima.
+      const AFIRMA_VAGA =
+        /(?<!n[ãa]o\s)\b(tenho|temos|tem|h[áa])\s+(sim\s+)?(hor[áa]rios?|vagas?|disponibilidade)\b/i;
+      const TEM_HORA = /\b\d{1,2}\s*(h\b|h\d{2}|:\d{2})/i;
+      const afirmouVagaNoEscuro = (Array.isArray(decisao.messages) ? decisao.messages : []).some(
+        (m) =>
+          !TEM_HORA.test(String(m ?? '')) &&
+          String(m ?? '')
+            .split(/(?<=[.!?])\s+/)
+            .some((frase) => !frase.trim().endsWith('?') && AFIRMA_VAGA.test(frase))
+      );
+      if (
+        decisao.action === 'REPLY' &&
+        !consultouNesteTurno &&
+        !jaCobreiAVagaSemConsulta &&
+        volta < MAX_VOLTAS - 1 &&
+        afirmouVagaNoEscuro
+      ) {
+        jaCobreiAVagaSemConsulta = true;
+        console.error(
+          JSON.stringify({ event: 'vaga_sem_consulta', conversationId: ambiente.conversationId })
+        );
+        mensagens.push({ role: 'assistant', content: resposta.content });
+        mensagens.push({
+          role: 'user',
+          content: chamadas.map((c) => ({
+            type: 'tool_result' as const,
+            tool_use_id: c.id,
+            content:
+              'NAO ENVIEI. Voce disse que tem horario/vaga sem consultar a agenda neste turno e ' +
+              'sem dizer qual horario. Isso e promessa no escuro. Ou (a) ja sabe o servico: chame ' +
+              'consultar_horarios e ofereca horario concreto; ou (b) ainda falta saber o servico: ' +
+              'NAO afirme que tem vaga, diga que ja olha a agenda para o dia que ela quer assim que ' +
+              'souber qual servico e pergunte isso. Depois chame atender de novo.',
           })),
         });
         continue;
