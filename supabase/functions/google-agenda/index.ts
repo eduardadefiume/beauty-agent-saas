@@ -302,6 +302,15 @@ Deno.serve(async (req) => {
       }
 
       const eventos: ReturnType<typeof traduzir>[] = [];
+      // Os NOSSOS eventos (agendamentos que a atendente escreveu), inclusive os
+      // que o dono apagou (showDeleted): e assim que se descobre que ele
+      // mexeu por fora.
+      const nossos: {
+        id: string;
+        cancelado: boolean;
+        inicio: string | null;
+        fim: string | null;
+      }[] = [];
       let pagina: string | undefined;
       for (let i = 0; i < 5; i++) {
         const u = new URL(
@@ -312,6 +321,7 @@ Deno.serve(async (req) => {
         u.searchParams.set('singleEvents', 'true');
         u.searchParams.set('orderBy', 'startTime');
         u.searchParams.set('maxResults', '250');
+        u.searchParams.set('showDeleted', 'true');
         if (pagina) u.searchParams.set('pageToken', pagina);
         const r = await fetch(u.toString(), { headers: { authorization: `Bearer ${token}` } });
         const dados = (await r.json().catch(() => ({}))) as {
@@ -322,6 +332,14 @@ Deno.serve(async (req) => {
         if (!r.ok)
           throw new Error(dados.error?.status ?? dados.error?.message ?? `GOOGLE_${r.status}`);
         for (const ev of dados.items ?? []) {
+          if (ev.extendedProperties?.private?.origem === 'eddigital') {
+            nossos.push({
+              id: ev.id,
+              cancelado: ev.status === 'cancelled',
+              inicio: ev.start?.dateTime ?? null,
+              fim: ev.end?.dateTime ?? null,
+            });
+          }
           const t = traduzir(ev);
           if (t) eventos.push(t);
         }
@@ -338,7 +356,24 @@ Deno.serve(async (req) => {
         p_new_expires_at: novoVence,
         p_erro: null,
       });
-      resultados.push({ conexao: c.id, eventos: eventos.length, gravado });
+      let conferido: unknown = null;
+      try {
+        conferido = await rpc(supabaseUrl, serviceKey, 'agenda_conferir_nossos', {
+          p_connection_id: c.id,
+          p_window_start: inicio.toISOString(),
+          p_window_end: fim.toISOString(),
+          p_nossos: nossos,
+        });
+      } catch (erro) {
+        console.error('CONFERIR_NOSSOS_FALHOU', c.id, String(erro));
+      }
+      resultados.push({
+        conexao: c.id,
+        eventos: eventos.length,
+        nossos: nossos.length,
+        gravado,
+        conferido,
+      });
     } catch (erro) {
       const motivo = String(erro instanceof Error ? erro.message : erro).slice(0, 200);
       try {
