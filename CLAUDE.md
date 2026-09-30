@@ -31,6 +31,12 @@
 
 - Responder à Duda **sempre em português**, curto, passo a passo, com honestidade brutal.
 - Antes de dizer "funciona", testar e mostrar a prova (o que ficou gravado no banco).
+- **REGRA DA DUDA (30/09/2026): ESGOTAR TODAS AS POSSIBILIDADES ANTES DE QUALQUER RESPOSTA.**
+  Antes de responder e na hora de testar: pensar em todas as lacunas (caminho feliz, erro,
+  borda, concorrência, repetição, cliente real falando do jeito dela, dono mexendo por fora,
+  conexão que cai) e testar cada uma do jeito que o dono/cliente faria de verdade, ponta a
+  ponta (WhatsApp → banco → Google). Só dizer "testado" com todas testadas e a prova de cada uma.
+  Achou falha: corrigir, retestar e só então seguir. Nada de teste raso nem de "deve funcionar".
 - Migração: aplicar no DEV, salvar em `supabase/migrations/<versão>_<nome>.sql` com o md5 igual ao
   aplicado. Função SECURITY DEFINER nova: `revoke ... from public, anon, authenticated` no mesmo arquivo.
 - Deploy de edge function: uma função por execução do workflow e conferir o código no ar depois.
