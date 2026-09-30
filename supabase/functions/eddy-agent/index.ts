@@ -729,6 +729,41 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'definir_modo_da_equipe',
+    description:
+      'Grava se, para a cliente, o salão é UM profissional só (ex.: tudo é "com o William", as assistentes fazem por ele, e a cliente nunca escolhe) ou PROFISSIONAIS SEPARADOS (cada um tem sua cliente e ela pode escolher com quem). Vale na hora, sem publicar. Chame depois que ele responder.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        umSo: { type: 'boolean', description: 'true = um só; false = separados.' },
+        frente: {
+          type: 'string',
+          description:
+            'Só quando umSo: o nome de quem a cliente sempre "marca com", como está na equipe. Vazio = o próprio dono.',
+        },
+      },
+      required: ['umSo'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'definir_titulo_na_agenda',
+    description:
+      'Grava como o agendamento aparece no Google Agenda dele (o título do evento). Use as lacunas {nome} (primeiro nome da cliente), {telefone} (16-99425-8547), {servico}, {valor} (450), {pagamento} ("450 DEU 50 FICOU 400" se pagou sinal, "450" se não), {profissional} (quem faz). Só depois que ele escolher. Mostre a ele os dois exemplos que a ferramenta devolver (com e sem sinal).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        modelo: {
+          type: 'string',
+          description: 'Ex.: "{nome} {telefone} - {servico} ({pagamento})".',
+        },
+        caixaAlta: { type: 'boolean', description: 'true = tudo em letra maiúscula.' },
+      },
+      required: ['modelo', 'caixaAlta'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'responder_cor',
     description:
       'Grava a resposta dele a UMA das perguntasDeCor da pendência CORES (até quantos tons a tinta clareia, teste de mecha, tempo e preço de matização...). É o que a atendente usa para orçar cor. Chame uma vez por resposta, depois que ele confirmar o que você entendeu.',
@@ -1290,6 +1325,18 @@ Deno.serve(async (req: Request) => {
             cadastroAgora +
             '\nSe algo que VOCÊ disse antes nesta conversa contradiz o cadastro acima, o cadastro vale: diga "corrigindo o que eu te falei: ..." e não repita o erro. ' +
             'Quem está "SEM DIA FIXO" não trabalha em nenhum dia da semana por padrão: só nos dias marcados que aparecem ali.' +
+            '\n\nAJUSTES QUE FALTAM (olhe modoDaEquipe e tituloNaAgenda no cadastro). Quando o roteiro acima estiver vazio, ou logo depois de ele conectar a agenda, ' +
+            'faça UMA destas perguntas por vez (nunca as duas juntas, nunca junto com outra pergunta):\n' +
+            '- modoDaEquipe "AINDA NÃO PERGUNTADO": "Pra cliente, é tudo com você (a equipe faz por você e ela nunca escolhe), ou cada profissional tem a sua cliente e ela pode escolher com quem?" -> definir_modo_da_equipe.\n' +
+            '- tituloNaAgenda "AINDA NÃO ESCOLHIDO": pergunte como ele quer ver o agendamento no Google Agenda e mostre estes modelos NUMERADOS, cada um com o exemplo, e diga que pode ser do jeito dele:\n' +
+            '  1) CAROL 16-99425-8547 - LUZES (450 DEU 50 FICOU 400)  [nome, telefone, procedimento e o que pagou de sinal; sem sinal fica (450)]\n' +
+            '  2) CAROL 16-99425-8547 - LUZES\n' +
+            '  3) Carol - Luzes\n' +
+            '  4) Carol 16-99425-8547 - Luzes - R$ 450\n' +
+            '  5) Luzes - Carol (com Duda)  [mostra quem da equipe faz]\n' +
+            '  6) 16-99425-8547 - Carol - Luzes (450 DEU 50 FICOU 400)\n' +
+            '  e se prefere tudo em MAIÚSCULO ou normal. Modelos: 1={nome} {telefone} - {servico} ({pagamento}); 2={nome} {telefone} - {servico}; 3={nome} - {servico}; ' +
+            '4={nome} {telefone} - {servico} - R$ {valor}; 5={servico} - {nome} (com {profissional}); 6={telefone} - {nome} - {servico} ({pagamento}). -> definir_titulo_na_agenda.' +
             '\n\nDETALHES QUE `anotar` ACEITA NESTA ETAPA (a chave entre colchetes é obrigatória em `anotar`, e você nunca inventa uma):\n' +
             (pauta || '(nenhum nesta etapa)') +
             '\n\nAS HABILIDADES QUE ESTE SALÃO TEM (é desta lista que você escolhe em `criar_servico`, escrita exatamente assim; você nunca inventa uma):\n' +
@@ -2481,6 +2528,57 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
+            }
+          } else if (chamada.name === 'definir_modo_da_equipe') {
+            const a = chamada.input as { umSo: boolean; frente?: string };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_modo_da_equipe', {
+                p_tenant_id: tenantId,
+                p_um_so: a.umSo === true,
+                p_frente: a.frente ?? null,
+              })) as { ok?: boolean; reason?: string; frente?: string; equipe?: string[] } | null;
+              if (r?.ok) {
+                anotadas++;
+                texto = a.umSo
+                  ? `Gravado, vale na hora: para a cliente é tudo com ${r.frente}. A atendente oferece o horário de quem estiver livre, sempre como "com ${r.frente}".`
+                  : 'Gravado, vale na hora: profissionais separados. A atendente diz com quem é cada horário e respeita quando a cliente pede alguém.';
+              } else if (r?.reason === 'FRENTE_NAO_ESTA_NA_EQUIPE') {
+                texto = `NAO gravei: esse nome não está na equipe (${(r.equipe ?? []).join(', ')}). Pergunte quem é.`;
+              } else {
+                texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}. Não diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Não diga que anotou.`;
+            }
+          } else if (chamada.name === 'definir_titulo_na_agenda') {
+            const a = chamada.input as { modelo: string; caixaAlta: boolean };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_titulo_agenda', {
+                p_tenant_id: tenantId,
+                p_modelo: a.modelo,
+                p_caixa_alta: a.caixaAlta === true,
+              })) as {
+                ok?: boolean;
+                reason?: string;
+                comSinal?: string;
+                semSinal?: string;
+                agendamentosReescritos?: number;
+              } | null;
+              if (r?.ok) {
+                anotadas++;
+                texto =
+                  `Gravado, vale na hora. Mostre a ele exatamente assim: com sinal pago "${r.comSinal}"; sem sinal "${r.semSinal}".` +
+                  (r.agendamentosReescritos
+                    ? ` Os ${r.agendamentosReescritos} agendamento(s) já marcados vão ser reescritos no Google nesse formato.`
+                    : '');
+              } else if (r?.reason === 'LACUNA_DESCONHECIDA') {
+                texto =
+                  'NAO gravei: use só {nome} {telefone} {servico} {valor} {pagamento} {profissional}.';
+              } else {
+                texto = `NAO gravei: ${r?.reason ?? 'motivo desconhecido'}. Não diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Não diga que anotou.`;
             }
           } else if (chamada.name === 'conectar_agenda') {
             const a = chamada.input as { profissional?: string };
