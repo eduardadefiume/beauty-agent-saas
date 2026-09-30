@@ -1098,6 +1098,7 @@ Deno.serve(async (req: Request) => {
       };
       const sinalDaEtapa = etapa ? SINAL_DA_ETAPA[etapa] : undefined;
       let jaPerguntouAgora = false;
+      let adiado = false;
       if (sinalDaEtapa) {
         const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
         let i = hist.length - 1;
@@ -1123,6 +1124,21 @@ Deno.serve(async (req: Request) => {
             levaAgora.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
           );
         jaPerguntouAgora = perguntou && !sinalDaEtapa.test(levaAgora) && !donoTerminou;
+        // O DONO ADIOU. 30/09: "a parte de cor te mando depois" e, em cada
+        // resposta seguinte, "voltando pro cadastro: quando quiser fechar cor
+        // e mechas...". Adiado fica adiado ate ELE voltar ao assunto (ou a
+        // conversa andar tanto que o adiamento sai do historico).
+        const ADIA =
+          /\b(depois|mais tarde|outra hora|amanh|semana que vem|agora n[aã]o|outro dia|te mando|mando (quando|depois))\b/i;
+        adiado =
+          !sinalDaEtapa.test(levaAgora) &&
+          hist.some(
+            (h) =>
+              h.direction === 'INBOUND' &&
+              sinalDaEtapa.test(h.text ?? '') &&
+              ADIA.test(h.text ?? '')
+          );
+        if (adiado) jaPerguntouAgora = true;
       }
       // MUDANCA DEPOIS DE PUBLICAR. 28/09/2026: o dono mudou o preco da escova
       // com o salao ja publicado e o Eddy disse "Prontinho". Estava gravado,
@@ -1137,7 +1153,9 @@ Deno.serve(async (req: Request) => {
         : '';
       const textoDoRoteiro = roteiro.length
         ? (jaPerguntouAgora
-            ? `PRÓXIMA PERGUNTA (JÁ FEITA HÁ POUCO — NÃO REPITA NESTA RESPOSTA): [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n` +
+            ? (adiado
+                ? `ASSUNTO ADIADO PELO DONO: [${roteiro[0].campo}]. Ele disse que manda depois. NÃO lembre, NÃO cobre e NÃO mencione esse assunto até ele voltar a ele. Se o cadastro precisar de algo, é outro assunto.\n`
+                : `PRÓXIMA PERGUNTA (JÁ FEITA HÁ POUCO — NÃO REPITA NESTA RESPOSTA): [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n`) +
               'Ele está em outro assunto. Resolva só o que ele mandou e, no fim, pergunte se tem mais alguma mudança. ' +
               'Volte a esta pergunta quando ele disser que terminou.\n'
             : `PRÓXIMA PERGUNTA: [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n`) +
@@ -2905,10 +2923,15 @@ Deno.serve(async (req: Request) => {
         const p = palavras(t);
         return p.length > 0 && p.filter((w) => daPergunta.has(w)).length / p.length >= 0.5;
       };
+      // Lembrete reescrito tambem nao sai: com a pergunta ja feita (ou adiada)
+      // e o dono em outro assunto, balao curto que fala do assunto da etapa e
+      // cobranca. A pergunta so volta quando ele puxar o assunto ou terminar.
+      const lembraAEtapa = (t: string) =>
+        jaPerguntouAgora && !!sinalDaEtapa && sinalDaEtapa.test(t) && t.length <= 240;
       const textos = (decisao.messages ?? [])
         .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
         .filter((t) => t.length > 0)
-        .filter((t, _i, todos) => !(repeteARoteiro(t) && todos.length > 1))
+        .filter((t, _i, todos) => !((repeteARoteiro(t) || lembraAEtapa(t)) && todos.length > 1))
         // No maximo 3 baloes, mas sem perder nada: 28/09, caso E14, o 4o
         // balao (os servicos que so a tabela tinha) era cortado calado.
         .reduce<string[]>((acc, t) => {
