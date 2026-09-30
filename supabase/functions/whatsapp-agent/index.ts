@@ -89,7 +89,9 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description:
             'Data de início da busca, no formato AAAA-MM-DD. Use a data de hoje quando a cliente não disser um dia. ' +
             'Quando ela disser um dia da semana ("sábado"), use a PRÓXIMA data desse dia em que o período pedido ainda não passou: ' +
-            'se hoje é sábado à tarde e ela pediu "sábado de manhã", é o sábado da semana que vem (hoje + 7 dias).',
+            'se hoje é sábado à tarde e ela pediu "sábado de manhã", é o sábado da semana que vem (hoje + 7 dias). ' +
+            'REMARCAR é diferente: "passa de quarta pra quinta" conta a partir do horário que ela JÁ TEM (proximosAgendamentos), não de hoje: ' +
+            'quem tem quarta 07/10 e pede quinta quer a quinta 08/10. Na dúvida, escreva a data com dia e mês ao oferecer.',
         },
         dias: {
           type: 'integer',
