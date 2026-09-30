@@ -87,11 +87,7 @@ const MANHA_DE_15 = [
 
 describe('as palavras que identificam um serviço', () => {
   it('descarta conectivo, palavra genérica e verbo de pedido', () => {
-    expect(palavrasDoServico('Mechas morena iluminada')).toEqual([
-      'mechas',
-      'morena',
-      'iluminada',
-    ]);
+    expect(palavrasDoServico('Mechas morena iluminada')).toEqual(['mechas', 'morena', 'iluminada']);
     expect(palavrasDoServico('Mechas loiras — teste no mesmo dia')).toEqual(['mechas', 'loiras']);
     expect(palavrasDoServico('Progressiva com formol')).toEqual(['progressiva', 'formol']);
   });
@@ -191,8 +187,10 @@ describe('afirmar o serviço em vez de perguntar', () => {
   it('PEGA O CASO REAL: "A coloração está R$ 160,00."', () => {
     expect(afirmaServico(['A coloração está R$ 160,00.'], 'Coloração')).toBe(true);
     expect(
-      afirmaServico(['Certo, trocando então para progressiva com formol, fica R$ 200,00.'],
-        'Progressiva com formol')
+      afirmaServico(
+        ['Certo, trocando então para progressiva com formol, fica R$ 200,00.'],
+        'Progressiva com formol'
+      )
     ).toBe(true);
   });
 
@@ -327,7 +325,9 @@ const PEDIDO_EM_DUAS_MENSAGENS = [
 describe('o pedido dela não cabe numa mensagem só', () => {
   it('PEGA O CASO REAL: "iluminado" é a "Mechas morena iluminada" do catálogo', () => {
     expect(mencionaServico('quero um iluminado', 'Mechas morena iluminada')).toBe(true);
-    expect(mencionaServico('quero umas luzes loiras', 'Mechas loiras — teste na semana')).toBe(true);
+    expect(mencionaServico('quero umas luzes loiras', 'Mechas loiras — teste na semana')).toBe(
+      true
+    );
   });
 
   it('a raiz não faz tudo casar com tudo', () => {
@@ -450,7 +450,9 @@ describe('sem foco de agenda, que é o estado normal da conversa', () => {
   it('pergunta de preço de um serviço só não vira perguntação', () => {
     const conversa = [cliente('Bom dia'), cliente('Quanto custa o corte?')];
     expect(servicosQueCabem(conversa, CATALOGO)).toEqual(['Corte']);
-    expect(travaDoProcedimento(['O corte fica R$ 90,00.'], conversa, null, CATALOGO).falta).toBeNull();
+    expect(
+      travaDoProcedimento(['O corte fica R$ 90,00.'], conversa, null, CATALOGO).falta
+    ).toBeNull();
   });
 
   it('ela pedindo DUAS coisas traz as duas famílias, não só a melhor', () => {
@@ -470,7 +472,9 @@ describe('ela pediu indicação, não cardápio', () => {
   const ATE_1623 = [
     cliente('Boa tarde'),
     cliente('Qual o valor da progressiva?'),
-    agente('Aqui tem progressiva com formol e sem formol, o valor é o mesmo nas duas, R$ 200,00. Qual delas você quer fazer?'),
+    agente(
+      'Aqui tem progressiva com formol e sem formol, o valor é o mesmo nas duas, R$ 200,00. Qual delas você quer fazer?'
+    ),
     cliente('Quero fazer luzes qual delas é melhor?'),
     cliente('E qual eu faço primeiro?'),
   ];
@@ -539,7 +543,66 @@ describe('ela pediu indicação, não cardápio', () => {
 
   it('pergunta de preço simples não vira pedido de foto', () => {
     const conversa = [cliente('Bom dia'), cliente('Quanto custa o corte?')];
-    const r = travaDoProcedimento(['Bom dia! O corte fica R$ 90,00.'], conversa, null, CATALOGO, FICHA_VAZIA);
+    const r = travaDoProcedimento(
+      ['Bom dia! O corte fica R$ 90,00.'],
+      conversa,
+      null,
+      CATALOGO,
+      FICHA_VAZIA
+    );
     expect(r.falta).toBeNull();
+  });
+});
+
+// 30/09, DEV (salão do William): quatro perguntas numa mensagem só. Corte e
+// progressiva são DOIS assuntos, não irmãos; e "feminino" já descarta o
+// "Corte masculino".
+describe('várias perguntas numa leva (30/09)', () => {
+  const CATALOGO_W = ['Corte com escova', 'Corte masculino', 'Progressiva'];
+  const LEVA = [
+    cliente(
+      'Oi boa tarde! Queria saber quanto ta o corte feminino, se vcs fazem progressiva, se aceita cartão e se tem horário sabado de manhã'
+    ),
+  ];
+
+  it('"feminino" tira o Corte masculino e corte/progressiva ficam em grupos separados', () => {
+    const cabem = servicosQueCabem(LEVA, CATALOGO_W);
+    expect(cabem).toContain('Corte com escova');
+    expect(cabem).toContain('Progressiva');
+    expect(cabem).not.toContain('Corte masculino');
+  });
+
+  it('dizer o preço de cada um não é decidir no lugar dela', () => {
+    const r = travaDoProcedimento(
+      [
+        'O corte com escova está R$ 110,00. A progressiva está R$ 199,00. Aceitamos pix, débito e crédito.',
+        'Qual o seu nome?',
+      ],
+      LEVA,
+      null,
+      CATALOGO_W
+    );
+    expect(r.falta).not.toBe('IRMAOS');
+  });
+
+  it('"quero só o corte" depois de "corte feminino" não pede feminino ou masculino', () => {
+    const r = travaDoProcedimento(
+      ['Perfeito, Paula! Corte com escova, R$ 110,00. Pra sábado de manhã tenho 9h, pode ser?'],
+      [...LEVA, agente('Qual o seu nome?'), cliente('Sou a Paula, quero só o corte')],
+      null,
+      CATALOGO_W
+    );
+    expect(r.falta).not.toBe('IRMAOS');
+  });
+
+  it('"quanto é o corte?" sem dizer qual continua pedindo a escolha', () => {
+    const r = travaDoProcedimento(
+      ['O corte está R$ 110,00.'],
+      [cliente('Quanto é o corte?')],
+      null,
+      CATALOGO_W
+    );
+    expect(r.falta).toBe('IRMAOS');
+    expect(r.opcoes).toEqual(['Corte com escova', 'Corte masculino']);
   });
 });

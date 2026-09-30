@@ -89,11 +89,48 @@ const DINHEIRO = /R\$\s*[\d.,]+|\b[\d.,]+\s*(reais|real)\b/i;
 // letras chega aqui: "Corte junto com alisamento -- cabelo médio OU longo"
 // casava com qualquer pedido que tivesse um "ou" dentro.
 const IRRELEVANTES = new Set([
-  'de', 'da', 'do', 'com', 'sem', 'para', 'por', 'e', 'a', 'o', 'as', 'os',
-  'no', 'na', 'em', 'um', 'uma', 'teste', 'dia', 'mesmo', 'semana',
-  'quero', 'queria', 'gostaria', 'fazer', 'marcar', 'agendar', 'procedimento',
-  'cabelo', 'adicional', 'junto',
-  'ou', 'nem', 'mas', 'ao', 'aos', 'se', 'que', 'ate', 'sob', 'apos', 'ja',
+  'de',
+  'da',
+  'do',
+  'com',
+  'sem',
+  'para',
+  'por',
+  'e',
+  'a',
+  'o',
+  'as',
+  'os',
+  'no',
+  'na',
+  'em',
+  'um',
+  'uma',
+  'teste',
+  'dia',
+  'mesmo',
+  'semana',
+  'quero',
+  'queria',
+  'gostaria',
+  'fazer',
+  'marcar',
+  'agendar',
+  'procedimento',
+  'cabelo',
+  'adicional',
+  'junto',
+  'ou',
+  'nem',
+  'mas',
+  'ao',
+  'aos',
+  'se',
+  'que',
+  'ate',
+  'sob',
+  'apos',
+  'ja',
 ]);
 
 // O que a cliente diz quando está PEDINDO, e não contando a história dela.
@@ -107,7 +144,8 @@ const INTENCAO =
 // cinco progressivas. Sem esta linha, a conversa de 16/09 inteira ficava fora
 // da conta só porque ela foi educada e perguntou o preço em vez de mandar
 // "quero fazer progressiva".
-const PERGUNTA_DE_PRECO = /\b(valor|valores|pre[çc]o|pre[çc]os|quanto|custa|sai por|fica quanto)\b/i;
+const PERGUNTA_DE_PRECO =
+  /\b(valor|valores|pre[çc]o|pre[çc]os|quanto|custa|sai por|fica quanto)\b/i;
 
 // "qual delas é melhor?", "qual eu faço primeiro?", "o que você indica?" --
 // ela não está pedindo cardápio, está pedindo INDICAÇÃO. E quem indica química
@@ -140,10 +178,7 @@ const NEGACAO =
   /(^|\W)n[ãa]o\s+([ée]|eh|quero|queria|vai ser|era|vou|pode|seria)(?![\p{L}\p{N}])|nada disso|de jeito nenhum|(^|\W)n[ãa]o[\s\p{P}]*$/iu;
 
 function normalizar(texto: string): string {
-  return texto
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase();
+  return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
 /**
@@ -327,6 +362,16 @@ function palavrasQueCasam(pedido: string, nomeDoServico: string): string[] | nul
     if (temOposta && !temEsta) return null;
   }
 
+  // 30/09: "quanto ta o corte feminino" deixava "Corte masculino" na lista e a
+  // trava obrigava a perguntar "feminino ou masculino?" para quem ja tinha
+  // dito. Mesmo par de polaridade do com/sem, so que sem preposicao.
+  for (const [lado, oposto] of [
+    ['feminin', 'masculin'],
+    ['masculin', 'feminin'],
+  ]) {
+    if (nome.includes(oposto) && texto.includes(lado) && !texto.includes(oposto)) return null;
+  }
+
   return palavrasDoServico(nomeDoServico).filter((p) => texto.includes(raiz(p)));
 }
 
@@ -356,6 +401,16 @@ function palavrasQueCasam(pedido: string, nomeDoServico: string): string[] | nul
  * separa "Corte" dos adicionais de corte.
  */
 export function servicosQueCabem(historico: Fala[], catalogo: string[]): string[] {
+  return gruposQueCabem(historico, catalogo).flat().sort();
+}
+
+/**
+ * O mesmo, separado por assunto. 30/09: "corte feminino, progressiva, cartao e
+ * sabado de manha" dava tres nomes numa lista so e a trava de IRMAOS tratava
+ * corte e progressiva como irmaos -- ela perguntou dos DOIS. Irmao e so quem
+ * esta no mesmo grupo.
+ */
+export function gruposQueCabem(historico: Fala[], catalogo: string[]): string[][] {
   const pedido = pedidoRecente(historico);
   if (!pedido) return [];
 
@@ -383,7 +438,8 @@ export function servicosQueCabem(historico: Fala[], catalogo: string[]): string[
   }
 
   const todos = [...grupos.values()];
-  const escolhidos = new Set<string>();
+  const vistos = new Set<string>();
+  const resultado: string[][] = [];
   for (const grupo of todos) {
     const engolido = todos.some(
       (outro) =>
@@ -392,12 +448,17 @@ export function servicosQueCabem(historico: Fala[], catalogo: string[]): string[
         [...grupo.chave].every((p) => outro.chave.has(p))
     );
     if (engolido) continue;
+    const nomes: string[] = [];
     for (const [nome, ponto] of grupo.nomes) {
-      if (ponto === grupo.melhor) escolhidos.add(nome);
+      if (ponto === grupo.melhor && !vistos.has(nome)) {
+        vistos.add(nome);
+        nomes.push(nome);
+      }
     }
+    if (nomes.length > 0) resultado.push(nomes.sort());
   }
 
-  return [...escolhidos].sort();
+  return resultado;
 }
 
 /** A resposta afirma o serviço como fechado, em vez de perguntar. */
@@ -491,8 +552,20 @@ export function perguntaQualServico(textos: string[], opcoes: string[]): boolean
  * É o gesto que a ambiguidade proíbe. Enquanto ela não disser qual, tudo isso é
  * o agente decidindo no lugar dela.
  */
-function fechaAlgumaCoisa(textos: string[], opcoes: string[]): boolean {
-  if (textos.some((t) => DINHEIRO.test(t) || HORARIO.test(t))) return true;
+function fechaAlgumaCoisa(textos: string[], opcoes: string[], outros: string[] = []): boolean {
+  if (textos.some((t) => HORARIO.test(t))) return true;
+  // Valor dito de OUTRO assunto que ela tambem perguntou ("a progressiva esta
+  // R$ 199") nao fecha nada deste grupo.
+  const frases = textos.flatMap((t) => t.split(/(?<=[.!?…])\s+|\n+/));
+  if (
+    frases.some(
+      (f) =>
+        DINHEIRO.test(f) &&
+        (opcoes.some((nome) => mencionaServico(f, nome)) ||
+          !outros.some((nome) => mencionaServico(f, nome)))
+    )
+  )
+    return true;
   return opcoes.some((nome) => afirmaServico(textos, nome));
 }
 
@@ -548,7 +621,11 @@ export function travaDoProcedimento(
 
   // Afirmar um serviço que ela nunca pediu -- ou que ela já disse que não é --
   // é a frase que fecha a decisão no lugar dela.
-  if (nomeDoServico && (escolha === 'NUNCA' || escolha === 'NEGOU') && afirmaServico(textos, nomeDoServico)) {
+  if (
+    nomeDoServico &&
+    (escolha === 'NUNCA' || escolha === 'NEGOU') &&
+    afirmaServico(textos, nomeDoServico)
+  ) {
     return { falta: 'AFIRMOU', opcoes: cabem };
   }
 
@@ -558,10 +635,16 @@ export function travaDoProcedimento(
   // mais de um serviço; enquanto ela não disser qual, a resposta não fecha
   // preço, horário nem atributo. A única saída é PERGUNTAR qual -- e quem
   // pergunta passa.
-  const ambiguo =
-    cabem.length > 1 && (!nomeDoServico || cabem.includes(nomeDoServico));
-  if (ambiguo && !perguntaQualServico(textos, cabem) && fechaAlgumaCoisa(textos, cabem)) {
-    return { falta: 'IRMAOS', opcoes: cabem };
+  const grupos = gruposQueCabem(historico, catalogo);
+  const irmaos =
+    grupos.find((g) => g.length > 1 && (!nomeDoServico || g.includes(nomeDoServico))) ?? [];
+  const outros = cabem.filter((n) => !irmaos.includes(n));
+  if (
+    irmaos.length > 1 &&
+    !perguntaQualServico(textos, irmaos) &&
+    fechaAlgumaCoisa(textos, irmaos, outros)
+  ) {
+    return { falta: 'IRMAOS', opcoes: irmaos };
   }
 
   if (!ofereceHorario(textos)) return vazio;

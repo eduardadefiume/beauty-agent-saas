@@ -414,6 +414,14 @@ function nomesDoCatalogo(estavel: unknown): string[] {
   return [...nomes];
 }
 
+// 30/09: primeira mensagem da cliente e a resposta abriu com "Deixa eu explicar
+// direito: ... nao escolhi nenhum ainda por voce" -- corrigindo um rascunho que
+// a trava segurou e que ela nunca leu.
+const NAO_VIU_O_RASCUNHO =
+  'A resposta que eu segurei NAO chegou nela: nao corrija, nao se desculpe e nao ' +
+  'faca referencia a ela ("deixa eu explicar direito", "na verdade", "nao escolhi por ' +
+  'voce"). Escreva como se fosse a primeira vez.';
+
 /** O que devolver ao modelo quando a trava do procedimento pega a resposta. */
 function recadoDaTrava(
   falta: 'PROCEDIMENTO' | 'PRECO' | 'AFIRMOU' | 'IRMAOS' | 'AVALIAR',
@@ -456,8 +464,9 @@ function recadoDaTrava(
       'que separa depende do CABELO dela -- o tom, a textura, se tem cor, o estado do fio -- ' +
       'listar nao ajuda, porque ela nao tem como escolher. Ai a resposta e pedir a foto do ' +
       'cabelo e o tom que ela quer, e indicar depois de ver.\n' +
-      'E se voce JA tinha afirmado um deles antes nesta conversa, comece reconhecendo: ' +
-      'ela precisa saber que aquilo mudou, senao fica achando que ja estava combinado.'
+      'E se voce JA tinha afirmado um deles numa mensagem que ELA RECEBEU antes, comece ' +
+      'reconhecendo: ela precisa saber que aquilo mudou. ' +
+      NAO_VIU_O_RASCUNHO
     );
   }
 
@@ -468,7 +477,8 @@ function recadoDaTrava(
       '" como se estivesse combinado, e a cliente NUNCA pediu isso (ou ja disse que nao e ' +
       'isso). Quando voce afirma, ela le como decisao tomada. Se voce acha que e esse o ' +
       'procedimento, PERGUNTE -- e se ela nao disse o que quer, a pergunta e essa, sem ' +
-      'nome de servico nenhum junto.'
+      'nome de servico nenhum junto. ' +
+      NAO_VIU_O_RASCUNHO
     );
   }
 
@@ -477,7 +487,8 @@ function recadoDaTrava(
     'Nao vale voce ter escrito o nome antes: o que vale e ela ter pedido, com as palavras ' +
     'dela, ou ter dito sim quando voce perguntou. Antes do horario: pergunte o que ela quer ' +
     'fazer, confirme com o nome do servico e diga o valor. As perguntas sobre o cabelo dela ' +
-    'so fazem sentido depois que voce souber o procedimento.'
+    'so fazem sentido depois que voce souber o procedimento. ' +
+    NAO_VIU_O_RASCUNHO
   );
 }
 
