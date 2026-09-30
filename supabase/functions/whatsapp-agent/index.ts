@@ -1275,7 +1275,12 @@ async function decidir(
               startsAt: new Date(escolhido.startMs).toISOString(),
               endsAt: new Date(escolhido.endMs).toISOString(),
               plan: { steps: escolhido.steps },
-              idempotencyKey: `agente:${ambiente.tenantId}:${escolhido.startMs}:${estado.serviceId}`,
+              // A CONVERSA ENTRA NA CHAVE. 30/09, DEV: Daniela e Elaine aceitaram
+              // sexta 10h no mesmo segundo; sem a conversa na chave, a segunda
+              // recebeu de volta a reserva da primeira e as duas "marcaram" o
+              // mesmo agendamento. A chave protege a MESMA cliente de marcar
+              // duas vezes, nunca junta duas clientes.
+              idempotencyKey: `agente:${ambiente.tenantId}:${ambiente.conversationId}:${escolhido.startMs}:${estado.serviceId}`,
             }
           );
 
