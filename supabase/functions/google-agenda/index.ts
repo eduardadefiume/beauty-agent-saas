@@ -82,6 +82,108 @@ export function traduzir(ev: EventoGoogle) {
   };
 }
 
+// Renova o token quando falta pouco para vencer. Devolve o token bom e, se
+// renovou, o novo e quando vence -- quem chama grava no banco.
+async function tokenValido(
+  c: { accessToken: string | null; refreshToken: string | null; tokenExpiresAt: string | null },
+  clientId: string,
+  clientSecret: string
+): Promise<{ token: string; novoToken: string | null; novoVence: string | null }> {
+  const vence = c.tokenExpiresAt ? Date.parse(c.tokenExpiresAt) : 0;
+  if (c.accessToken && vence - Date.now() >= 5 * 60_000) {
+    return { token: c.accessToken, novoToken: null, novoVence: null };
+  }
+  if (!c.refreshToken) throw new Error('REFRESH_TOKEN_MISSING');
+  const r = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: c.refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+    }),
+  });
+  const dados = (await r.json().catch(() => ({}))) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: string;
+  };
+  if (!r.ok || !dados.access_token) throw new Error(dados.error ?? 'TOKEN_REFRESH_FAILED');
+  return {
+    token: dados.access_token,
+    novoToken: dados.access_token,
+    novoVence: new Date(Date.now() + (dados.expires_in ?? 3600) * 1000).toISOString(),
+  };
+}
+
+type Gravacao = {
+  id: string;
+  deveExistir: boolean;
+  googleEventId: string;
+  jaGravado: boolean;
+  appointmentId: string;
+  conexao: {
+    id: string;
+    calendarId: string;
+    accessToken: string | null;
+    refreshToken: string | null;
+    tokenExpiresAt: string | null;
+  };
+  evento: { titulo: string; inicio: string; fim: string; fuso: string; descricao: string };
+};
+
+// G4: o agendamento vira evento na agenda de quem atende. O id do evento e
+// derivado do agendamento, entao gravar de novo nunca duplica: o Google
+// responde 409 e a gente atualiza o que ja existe.
+async function gravarUma(g: Gravacao, token: string): Promise<boolean> {
+  const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+    g.conexao.calendarId || 'primary'
+  )}/events`;
+  const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+
+  if (!g.deveExistir) {
+    const r = await fetch(`${base}/${encodeURIComponent(g.googleEventId)}?sendUpdates=none`, {
+      method: 'DELETE',
+      headers: auth,
+    });
+    // 404/410: ja nao existia (ou o dono apagou na mao). O que se queria esta feito.
+    if (!r.ok && r.status !== 404 && r.status !== 410) {
+      throw new Error(`GOOGLE_DELETE_${r.status}`);
+    }
+    return false;
+  }
+
+  const corpo = {
+    id: g.googleEventId,
+    summary: g.evento.titulo,
+    description: g.evento.descricao,
+    start: { dateTime: g.evento.inicio, timeZone: g.evento.fuso },
+    end: { dateTime: g.evento.fim, timeZone: g.evento.fuso },
+    status: 'confirmed',
+    extendedProperties: { private: { origem: 'eddigital', agendamento: g.appointmentId } },
+  };
+
+  let r = await fetch(`${base}?sendUpdates=none`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify(corpo),
+  });
+  if (r.status === 409) {
+    // Ja existe (gravado antes, ou apagado e ainda na lixeira): atualiza.
+    r = await fetch(`${base}/${encodeURIComponent(g.googleEventId)}?sendUpdates=none`, {
+      method: 'PUT',
+      headers: auth,
+      body: JSON.stringify(corpo),
+    });
+  }
+  if (!r.ok) {
+    const e = (await r.json().catch(() => ({}))) as { error?: { status?: string } };
+    throw new Error(`GOOGLE_${r.status}_${e.error?.status ?? ''}`);
+  }
+  return true;
+}
+
 Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -119,6 +221,47 @@ Deno.serve(async (req) => {
       chaveValida: dados.error === 'invalid_grant',
       clientIdTermina: clientId.slice(-30),
     });
+  }
+
+  if (corpo.acao === 'gravar') {
+    const fila = ((await rpc(supabaseUrl, serviceKey, 'agenda_gravacoes_pendentes', {
+      p_limite: 20,
+    })) ?? []) as Gravacao[];
+    const tokens = new Map<string, Awaited<ReturnType<typeof tokenValido>>>();
+    const feitos = [];
+    for (const g of fila) {
+      let renovado: Awaited<ReturnType<typeof tokenValido>> | undefined;
+      try {
+        renovado = tokens.get(g.conexao.id);
+        const primeiraVez = !renovado;
+        if (!renovado) {
+          renovado = await tokenValido(g.conexao, clientId, clientSecret);
+          tokens.set(g.conexao.id, renovado);
+        }
+        const existe = await gravarUma(g, renovado.token);
+        await rpc(supabaseUrl, serviceKey, 'agenda_gravacao_feita', {
+          p_id: g.id,
+          p_google_event_id: g.googleEventId,
+          p_existe: existe,
+          p_erro: null,
+          p_new_access_token: primeiraVez ? renovado.novoToken : null,
+          p_new_expires_at: primeiraVez ? renovado.novoVence : null,
+        });
+        feitos.push({ id: g.id, existe });
+      } catch (erro) {
+        const motivo = String(erro instanceof Error ? erro.message : erro).slice(0, 200);
+        await rpc(supabaseUrl, serviceKey, 'agenda_gravacao_feita', {
+          p_id: g.id,
+          p_google_event_id: null,
+          p_existe: false,
+          p_erro: motivo,
+          p_new_access_token: null,
+          p_new_expires_at: null,
+        }).catch(() => {});
+        feitos.push({ id: g.id, erro: motivo });
+      }
+    }
+    return json(200, { ok: true, acao: 'gravar', fila: fila.length, feitos });
   }
 
   const conexoes = ((await rpc(supabaseUrl, serviceKey, 'agenda_conexoes_para_sincronizar', {
