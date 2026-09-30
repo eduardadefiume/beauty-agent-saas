@@ -341,6 +341,11 @@ type AgendamentoDaCliente = {
   horasAte: number;
 };
 
+// "Marcado!", "esta confirmado", "Confirmando: quarta as 14h" (30/09, Carla:
+// dito sem reserva nenhuma)... quando nao e pergunta.
+export const AFIRMA_AGENDAMENTO =
+  /(\bconfirmando\b[^?]*$|\b(confirmei|garanti)\b|est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad|^\s*(marcad|agendad|confirmad|reservad)[oa]s?\b|\b(marquei|agendei|reservei)\b|\bt[áa]\s+(marcad|agendad|confirmad|reservad)|\bfic(a|ou)\s+(marcad|agendad|confirmad|reservad))/i;
+
 // "Cancelei", "desmarquei", "esta cancelado"... sem ter chamado a ferramenta.
 export const AFIRMA_CANCELAMENTO =
   /(\b(cancelei|desmarquei)\b|j[áa]\s+(cancel|desmarc)|(foi|est[áa]|t[áa]|fic(a|ou))\s+(cancelad|desmarcad))/i;
@@ -515,7 +520,11 @@ async function decidir(
   // 3. A cliente respondeu "faz uns 2 anos" no meio de outra frase, ele anotou
   //    metade, a pendencia continuou aberta e a diretriz mandou perguntar de
   //    novo o que ela ja tinha dito.
-  const faltas =
+  // `let`: a ficha muda DENTRO do turno. 30/09: a Carla disse o nome e
+  // aceitou o horario na mesma mensagem; a atendente anotou o nome, mas a
+  // lista lida no comeco do turno ainda dizia "falta o nome", a reserva foi
+  // recusada e ela respondeu "Confirmando: quarta as 14h" sem nada marcado.
+  let faltas =
     (volatil as { client?: { missing?: Array<{ campo: string; perguntaSugerida: string }> } })
       ?.client?.missing ?? [];
   // A FICHA SO TRAVA A AGENDA DE QUIMICA.
@@ -666,6 +675,7 @@ async function decidir(
   let agendou: { quando: string; appointmentId: string } | null = null;
   const cancelou: string[] = [];
   let jaCobreiOCancelamento = false;
+  let jaCobreiOAgendamento = false;
   // A cobranca do proximo passo acontece UMA vez por turno. Duas seria um
   // agente discutindo consigo mesmo, e cada volta custa dinheiro.
   let jaCobreiOProximoPasso = false;
@@ -879,6 +889,41 @@ async function decidir(
               type: 'tool_result',
               tool_use_id: desfecho.id,
               content: recadoDaTrava(prematuro, trava.opcoes, estado.serviceName ?? null),
+            },
+          ],
+        });
+        continue;
+      }
+
+      // "MARCADO" SEM TER MARCADO, DENTRO DO TURNO. A trava do fim do turno
+      // manda para uma pessoa e a cliente fica sem resposta; aqui ela ainda
+      // tem a chance de reservar de verdade ou de dizer o que falta.
+      if (
+        decisao.action === 'REPLY' &&
+        !jaCobreiOAgendamento &&
+        agendou == null &&
+        ambiente.agendamentosDaCliente.length === 0 &&
+        volta < MAX_VOLTAS - 1 &&
+        fala.some((t) => AFIRMA_AGENDAMENTO.test(String(t)))
+      ) {
+        jaCobreiOAgendamento = true;
+        console.error(
+          JSON.stringify({
+            event: 'agendamento_afirmado_sem_reservar',
+            conversationId: ambiente.conversationId,
+          })
+        );
+        mensagens.push({ role: 'assistant', content: resposta.content });
+        mensagens.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: desfecho.id,
+              content:
+                'NAO ENVIEI. Voce escreveu como se o horario estivesse marcado, mas nada foi reservado. ' +
+                'Se ela aceitou um horario que voce ofereceu, chame reservar_horario agora e so confirme depois da resposta. ' +
+                'Se a reserva foi recusada, diga a ela o que falta (sem dizer que marcou). Depois chame atender de novo.',
             },
           ],
         });
@@ -1314,11 +1359,17 @@ async function decidir(
           )) as {
             ok?: boolean;
             ignorados?: string[];
-            aindaFalta?: Array<{ perguntaSugerida: string }>;
+            aindaFalta?: Array<{ campo: string; perguntaSugerida: string }>;
           };
 
           if (gravado?.ok) {
             const falta = gravado.aindaFalta ?? [];
+            // A ficha nova vale ja para a reserva deste mesmo turno.
+            faltas = falta as Array<{ campo: string; perguntaSugerida: string }>;
+            const nomeNovo = (chamada.input as { nome?: unknown })?.nome;
+            if (typeof nomeNovo === 'string' && nomeNovo.trim().length > 0) {
+              ambiente.clienteNome = nomeNovo.trim();
+            }
             texto =
               'Anotado na ficha.' +
               (gravado.ignorados?.length
@@ -1556,8 +1607,6 @@ Deno.serve(async (req) => {
       // horario que ninguem sabe que existe e o pior desfecho do produto.
       // 24/09/2026: "Marcado, Marina! Sábado às 10h de escova." passou -- a
       // lista so conhecia a forma com verbo ("está marcado", "foi marcado").
-      const AFIRMA_AGENDAMENTO =
-        /(est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad|^\s*(marcad|agendad|confirmad|reservad)[oa]s?\b|\b(marquei|agendei|reservei)\b|\bt[áa]\s+(marcad|agendad|confirmad|reservad)|\bfic(a|ou)\s+(marcad|agendad|confirmad|reservad))/i;
       const mentiuAgendamento =
         // Quem ja tem horario pode ouvir "seu corte de quarta esta confirmado":
         // e verdade, esta na lista dela. A trava vale para quem nao tem nenhum.
