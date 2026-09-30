@@ -128,3 +128,24 @@ describe('a cliente voltou num ponto já tratado', () => {
     expect(voltasDaCliente([agente('Oi!')])).toEqual([]);
   });
 });
+
+// 30/09, DEV: a 1a mensagem dela tinha "ou" e virou "você já tinha tratado".
+describe('primeira mensagem não é volta', () => {
+  it('pergunta com "ou" sem nada nosso antes não é correção', () => {
+    const historico = [
+      cliente(
+        'Oii, meu cabelo é bem fino e fica oleoso rápido. Se eu fizer progressiva fica bom ou vai ficar murcho demais?'
+      ),
+    ];
+    expect(voltasDaCliente(historico)).toEqual([]);
+  });
+
+  it('a mesma pergunta depois de uma fala nossa continua sendo volta', () => {
+    const historico = [
+      cliente('Oi'),
+      agente('Oi! Qual o seu nome?'),
+      cliente('Se eu fizer progressiva fica bom ou vai ficar murcho?'),
+    ];
+    expect(voltasDaCliente(historico).map((v) => v.tipo)).toEqual(['PEDIU_ENTRE_DOIS']);
+  });
+});

@@ -56,10 +56,41 @@ const CONTEUDO_MINIMO = 4;
 const PARECIDO = 0.7;
 
 const VAZIAS = new Set([
-  'para', 'pelo', 'pela', 'esse', 'essa', 'isso', 'aqui', 'ainda', 'tambem',
-  'entao', 'porque', 'quando', 'como', 'voce', 'vocie', 'seu', 'sua', 'dele',
-  'dela', 'mais', 'menos', 'muito', 'pouco', 'sobre', 'depois', 'antes',
-  'estou', 'esta', 'sera', 'pode', 'posso', 'tenho', 'quer', 'aquela', 'aquele',
+  'para',
+  'pelo',
+  'pela',
+  'esse',
+  'essa',
+  'isso',
+  'aqui',
+  'ainda',
+  'tambem',
+  'entao',
+  'porque',
+  'quando',
+  'como',
+  'voce',
+  'vocie',
+  'seu',
+  'sua',
+  'dele',
+  'dela',
+  'mais',
+  'menos',
+  'muito',
+  'pouco',
+  'sobre',
+  'depois',
+  'antes',
+  'estou',
+  'esta',
+  'sera',
+  'pode',
+  'posso',
+  'tenho',
+  'quer',
+  'aquela',
+  'aquele',
 ]);
 
 function normalizar(texto: string): string {
@@ -176,6 +207,10 @@ function ultimaLeva(historico: Fala[]): string[] {
 export function voltasDaCliente(historico: Fala[]): Volta[] {
   const leva = ultimaLeva(historico);
   if (leva.length === 0) return [];
+  // 30/09: 1a mensagem ("se eu fizer progressiva fica bom ou vai ficar
+  // murcho?") virou "voce ja tinha tratado" e a resposta abriu com "deixa eu
+  // te explicar melhor". Sem fala nossa antes, nao ha para onde ela voltar.
+  if (!historico.some((f) => f.direction === 'OUTBOUND')) return [];
 
   const anteriores = historico
     .filter((f) => f.direction === 'INBOUND')
@@ -196,9 +231,7 @@ export function voltasDaCliente(historico: Fala[]): Volta[] {
 
     const nova = normalizar(texto);
     if (nova.length < CURTA_DEMAIS) continue;
-    const igual = anteriores.find((velha) =>
-      frases(velha).some((f) => mesmaFrase(nova, f))
-    );
+    const igual = anteriores.find((velha) => frases(velha).some((f) => mesmaFrase(nova, f)));
     if (igual) voltas.push({ tipo: 'REPETIU_PERGUNTA', trecho: texto, antes: igual });
   }
   return voltas;
