@@ -346,6 +346,11 @@ type AgendamentoDaCliente = {
 export const AFIRMA_AGENDAMENTO =
   /(\bconfirmando\b[^?]*$|\b(confirmei|garanti)\b|est[áa]\s+(confirmad|marcad|agendad|reservad)|j[áa]\s+est[áa]\s+(confirmad|marcad)|foi\s+(confirmad|marcad|agendad|reservad)|deixei\s+(marcad|reservad)|agendamento\s+confirmad|^\s*(marcad|agendad|confirmad|reservad)[oa]s?\b|\b(marquei|agendei|reservei)\b|\bt[áa]\s+(marcad|agendad|confirmad|reservad)|\bfic(a|ou)\s+(marcad|agendad|confirmad|reservad))/i;
 
+// Balao que so confirma ("Isso, Carla! Marcado.", "Perfeito, ficou certinho"):
+// sai quando o salao tem a confirmacao dele, que ja diz a mesma coisa.
+export const SO_CONFIRMA =
+  /\b(marcad[oa]|agendad[oa]|confirmad[oa]|reservad[oa]|certinho|combinado)\b/i;
+
 // "Cancelei", "desmarquei", "esta cancelado"... sem ter chamado a ferramenta.
 export const AFIRMA_CANCELAMENTO =
   /(\b(cancelei|desmarquei)\b|j[áa]\s+(cancel|desmarc)|(foi|est[áa]|t[áa]|fic(a|ou))\s+(cancelad|desmarcad))/i;
@@ -1734,7 +1739,12 @@ Deno.serve(async (req) => {
               // So o balao que e SO a confirmacao: curto e sem pergunta. Um
               // balao que confirma e responde outra coisa fica inteiro.
               const sobra = textos.filter(
-                (t) => !(AFIRMA_AGENDAMENTO.test(t) && t.length <= 160 && !t.includes('?'))
+                (t) =>
+                  !(
+                    (AFIRMA_AGENDAMENTO.test(t) || SO_CONFIRMA.test(t)) &&
+                    t.length <= 160 &&
+                    !t.includes('?')
+                  )
               );
               textos.splice(0, textos.length, ...sobra);
             }
