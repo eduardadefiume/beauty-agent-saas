@@ -48,3 +48,35 @@ describe('o horário que ela viu (30/09)', () => {
     expect(horarioApareceuNaConversa([cliente('meio dia dá?')], SAB_12H)).toBe(true);
   });
 });
+
+describe('faixa não é escolha (30/09)', () => {
+  // Sabado 10/10/2026 15:00 em Sao Paulo = 18:00 UTC.
+  const SAB_15H = Date.UTC(2026, 9, 10, 18, 0);
+  it('caso real: "dia 10 depois das 15h" + "Rê, já falei rs"', () => {
+    const conversa = [
+      cliente('Oi, sou a Rê. Queria corte com escova dia 10 depois das 15h'),
+      agente('Oi, Rê! Tudo bem?'),
+      agente('O corte com escova fica R$ 110,00.'),
+      agente('Qual o seu nome?'),
+      cliente('Rê, já falei rs'),
+    ];
+    expect(horarioApareceuNaConversa(conversa, SAB_15H)).toBe(false);
+  });
+  it('outras faixas', () => {
+    for (const t of ['a partir das 15h', 'antes das 15h', 'após as 15', 'entre 14h e 16h']) {
+      expect(horarioApareceuNaConversa([cliente(t)], SAB_15H)).toBe(false);
+    }
+  });
+  it('mas "pode ser 15h" e "tenho 15h" continuam valendo', () => {
+    expect(horarioApareceuNaConversa([cliente('pode ser 15h?')], SAB_15H)).toBe(true);
+    expect(horarioApareceuNaConversa([agente('Tenho sábado às 15h, pode ser?')], SAB_15H)).toBe(
+      true
+    );
+    expect(
+      horarioApareceuNaConversa(
+        [cliente('depois das 14h'), agente('Tenho sábado às 15h, pode ser?')],
+        SAB_15H
+      )
+    ).toBe(true);
+  });
+});

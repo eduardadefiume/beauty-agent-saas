@@ -36,5 +36,13 @@ export function horarioApareceuNaConversa(conversa: Fala[], startMs: number): bo
         ]
       : [new RegExp(`(^|[^\\d])${hora}\\s*[:h]\\s*${mm}(?!\\d)`, 'i')];
   if (h === 12 && m === 0) padroes.push(/meio[\s-]?dia/i);
-  return conversa.some((f) => padroes.some((p) => p.test(String(f.text ?? ''))));
+  // "depois das 15h", "a partir das 9", "antes das 12h", "entre 14h e 16h":
+  // faixa, nao escolha. 30/09: "dia 10 depois das 15h" + "Re, ja falei" virou
+  // 15h marcado.
+  const semFaixas = (t: string) =>
+    t.replace(
+      /\b(depois|a\s+partir|ap[óo]s|antes|at[ée]|entre)\s+(d?[ao]s?\s+|de\s+)?\d{1,2}\s*(h|hs|horas?|:\d{2})?\s*\d{0,2}(\s*e\s*\d{1,2}\s*(h|hs|horas?|:\d{2})?\s*\d{0,2})?/gi,
+      ' '
+    );
+  return conversa.some((f) => padroes.some((p) => p.test(semFaixas(String(f.text ?? '')))));
 }
