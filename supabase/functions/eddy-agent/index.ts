@@ -2540,8 +2540,8 @@ Deno.serve(async (req: Request) => {
               if (r?.ok) {
                 anotadas++;
                 texto = a.umSo
-                  ? `Gravado, vale na hora: para a cliente é tudo com ${r.frente}. A atendente oferece o horário de quem estiver livre, sempre como "com ${r.frente}".`
-                  : 'Gravado, vale na hora: profissionais separados. A atendente diz com quem é cada horário e respeita quando a cliente pede alguém.';
+                  ? `Gravado e JÁ VALE (isto não passa por publicar: não ofereça publicar por causa disto): para a cliente é tudo com ${r.frente}. A atendente oferece o horário de quem estiver livre, sempre como "com ${r.frente}".`
+                  : 'Gravado e JÁ VALE (isto não passa por publicar: não ofereça publicar por causa disto): profissionais separados. A atendente diz com quem é cada horário e respeita quando a cliente pede alguém.';
               } else if (r?.reason === 'FRENTE_NAO_ESTA_NA_EQUIPE') {
                 texto = `NAO gravei: esse nome não está na equipe (${(r.equipe ?? []).join(', ')}). Pergunte quem é.`;
               } else {
@@ -2567,7 +2567,7 @@ Deno.serve(async (req: Request) => {
               if (r?.ok) {
                 anotadas++;
                 texto =
-                  `Gravado, vale na hora. Mostre a ele exatamente assim: com sinal pago "${r.comSinal}"; sem sinal "${r.semSinal}".` +
+                  `Gravado e JÁ VALE (isto não passa por publicar: não ofereça publicar por causa disto). Mostre a ele exatamente assim: com sinal pago "${r.comSinal}"; sem sinal "${r.semSinal}".` +
                   (r.agendamentosReescritos
                     ? ` Os ${r.agendamentosReescritos} agendamento(s) já marcados vão ser reescritos no Google nesse formato.`
                     : '');
