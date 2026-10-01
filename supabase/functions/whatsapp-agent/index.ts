@@ -755,6 +755,16 @@ async function decidir(
   // devolvido", a atendente repetiu e a trava de preço bloqueou o R$ 100 -- ela
   // ficou sem resposta. Valor que veio do banco não nasceu no modelo.
   const textosDasFerramentas: string[] = [];
+  // Os valores de sinal que o dono cadastrou também: "e o meu sinal?" num
+  // turno sem ferramenta tem que poder ouvir "R$ 100".
+  try {
+    const resumo = await rpc(ambiente.supabaseUrl, ambiente.serviceKey, 'sinal_resumo', {
+      p_tenant_id: ambiente.tenantId,
+    });
+    textosDasFerramentas.push(JSON.stringify(resumo ?? {}));
+  } catch {
+    // sem o resumo, só fica mais rigorosa
+  }
   try {
     const c = (await rpc(
       ambiente.supabaseUrl,
