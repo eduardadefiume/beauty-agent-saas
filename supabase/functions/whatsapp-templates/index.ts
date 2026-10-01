@@ -50,6 +50,26 @@ export const MODELOS: Modelo[] = [
       'Pergunta: {{3}} (código {{4}}). Responda esta mensagem que eu passo a resposta para ela.',
     exemplo: ['Studio Rogério Hair', 'Paula', 'Gestante pode fazer hidratação?', '#4448'],
   },
+  // 01/10: o sinal. O lembrete sai ~6h antes do prazo e o aviso de vencido
+  // depois dele -- quase sempre fora das 24h da última mensagem da cliente.
+  // Lacunas na ordem de app.sinal_rotina: nome, valor, o que, prazo, chave.
+  {
+    codigo: 'LEMBRETE_DO_SINAL',
+    nome: 'lembrete_do_sinal',
+    texto:
+      'Olá, {{1}}! Passando para lembrar do sinal de R$ {{2}} do seu horário ({{3}}). ' +
+      'Ele vence {{4}}. Chave Pix: {{5}}. Sem o sinal o horário não fica garantido; ' +
+      'se já pagou, é só mandar o comprovante aqui.',
+    exemplo: ['Marina', '100', 'Luzes, terça 01/12 às 9h', 'amanhã às 13h14', '16 99999-0000'],
+  },
+  {
+    codigo: 'SINAL_VENCEU',
+    nome: 'sinal_venceu',
+    texto:
+      'Olá, {{1}}! O prazo do sinal do seu horário ({{2}}) venceu e, como combinado, o ' +
+      'horário foi liberado. Se ainda quiser fazer, responda esta mensagem que eu vejo outro horário para você.',
+    exemplo: ['Marina', 'Luzes, terça 01/12 às 9h'],
+  },
 ];
 
 function json(status: number, corpo: unknown): Response {
