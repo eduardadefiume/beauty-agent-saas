@@ -37,6 +37,21 @@
   conexão que cai) e testar cada uma do jeito que o dono/cliente faria de verdade, ponta a
   ponta (WhatsApp → banco → Google). Só dizer "testado" com todas testadas e a prova de cada uma.
   Achou falha: corrigir, retestar e só então seguir. Nada de teste raso nem de "deve funcionar".
+- **REFORÇO DA DUDA (01/10/2026): ESGOTAR TODAS AS POSSIBILIDADES SEMPRE, EM TODO TESTE**, para o
+  erro não se repetir e para prever o problema antes de ele acontecer. Método obrigatório:
+  1. Antes de mexer, escrever a **matriz de casos** do que vai mudar: cada jeito real de a
+     cliente/dono dizer a mesma coisa (gíria, erro de digitação, tudo numa frase, em partes,
+     áudio, foto errada, mudou de ideia, voltou depois, respondeu outra coisa), cada borda
+     (data, hora, mês, valor, vazio, repetido, duas pessoas ao mesmo tempo) e cada falha
+     (conexão, prazo vencido, ferramenta que recusa).
+  2. Toda regra que o código aplica ganha **teste automático com todos os casos da matriz**
+     (vitest em `apps/web/app/*.test.ts`) — e o teste tem que falhar sem o conserto.
+  3. Toda função de banco nova: rodar **todos os casos** da matriz numa consulta e conferir.
+  4. Ao vivo pelo WhatsApp simulado: no mínimo o caminho feliz + os 3 casos mais prováveis de
+     dar errado + o caso que já deu errado antes. Prova = o que ficou gravado (banco/Google).
+  5. Todo deslize de conversa visto (mesmo pequeno) entra na lista e é corrigido com teste,
+     não "anotado para depois".
+  6. Depois de cada conserto, procurar o **mesmo tipo de erro em outros lugares** do produto.
 - Migração: aplicar no DEV, salvar em `supabase/migrations/<versão>_<nome>.sql` com o md5 igual ao
   aplicado. Função SECURITY DEFINER nova: `revoke ... from public, anon, authenticated` no mesmo arquivo.
 - Deploy de edge function: uma função por execução do workflow e conferir o código no ar depois.
