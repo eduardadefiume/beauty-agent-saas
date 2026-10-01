@@ -13,6 +13,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 // LICAO: conserto que mora num modulo compartilhado so vale para quem importa.
 // Corrigir um agente e declarar o bug morto e contar metade.
 import { camposCorrompidos, semEscapes } from '../whatsapp-agent/resposta-limpa.ts';
+import { respostaAoSinal } from './sinal-do-dono.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -804,6 +805,23 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'confirmar_sinal',
+    description:
+      'Registra o que o dono disse sobre o Pix do sinal de uma cliente (lista em SINAIS ESPERANDO VOCÊ). pagou=true quando ele disser que caiu/recebeu/pagou: o horário dela é confirmado, vai para o Google e ela recebe a confirmação. pagou=false quando ele disser que não caiu: ela é avisada para conferir. Também vale quando ele diz sozinho "a Fulana pagou". NUNCA chame sem ele ter dito. Responda a ele com o texto que a ferramenta devolver.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        referencia: {
+          type: 'string',
+          description: 'O código (ex.: S1234) ou o nome da cliente. Vazio se só tem um esperando.',
+        },
+        pagou: { type: 'boolean' },
+      },
+      required: ['pagou'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'resolver_mexida_no_google',
     description:
       'Faz o que o dono decidiu sobre um horário de cliente que ele apagou ou mudou no Google (lista em HORÁRIOS QUE O DONO MEXEU NO GOOGLE). DESMARCAR: desmarca e manda à cliente uma mensagem educada pedindo desculpas. MUDAR (só quando ele moveu): passa a cliente para o novo horário e avisa ela. VOLTAR: foi sem querer; o evento volta ao Google como era e a cliente não fica sabendo de nada. Só chame depois que ele decidir.',
@@ -1131,6 +1149,63 @@ Deno.serve(async (req: Request) => {
       }
 
       const tenantId = contexto.dono.tenantId;
+
+      // O SINAL ESPERANDO O DONO (ver sinal-do-dono.ts). "sim"/"não" curto logo
+      // depois do aviso do comprovante confirma direto, sem o modelo.
+      let sinaisEsperando: Array<Record<string, unknown>> = [];
+      try {
+        sinaisEsperando =
+          ((await rpc(supabaseUrl, serviceKey, 'sinal_pendentes_do_dono', {
+            p_tenant_id: tenantId,
+          })) as Array<Record<string, unknown>>) ?? [];
+      } catch (erro) {
+        console.error(JSON.stringify({ event: 'sinal_pendentes_falhou', erro: String(erro) }));
+      }
+      {
+        const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
+        let i = hist.length - 1;
+        while (i >= 0 && hist[i].direction === 'INBOUND') i--;
+        const leva = hist
+          .slice(i + 1)
+          .map((h) => h.text ?? '')
+          .join(' ');
+        const ultimaDoEddy = i >= 0 ? (hist[i].text ?? '') : '';
+        const atalho = respostaAoSinal(leva, ultimaDoEddy, sinaisEsperando.length);
+        if (atalho) {
+          const r = (await rpc(supabaseUrl, serviceKey, 'sinal_dono_respondeu', {
+            p_tenant_id: tenantId,
+            p_referencia: atalho.referencia,
+            p_pagou: atalho.pagou,
+          })) as { ok?: boolean; texto?: string; esperando?: Array<Record<string, unknown>> };
+          const lista = (r?.esperando ?? [])
+            .map((e) => `#${e.codigo} ${e.cliente} — ${e.oQue} (${e.valor})`)
+            .join('\n');
+          const texto =
+            (r?.texto ?? 'Não consegui registrar agora.') +
+            (r?.ok === false && lista ? '\n' + lista + '\nMe responde com o código.' : '');
+          await rpc(supabaseUrl, serviceKey, 'enqueue_outbound_message', {
+            p_tenant_id: item.tenant_id,
+            p_conversation_id: item.conversation_id,
+            p_body_text: texto,
+            p_actor: 'AGENT',
+            p_idempotency_key: `eddy:${item.last_inbound_message_id}:0`,
+          });
+          await rpc(supabaseUrl, serviceKey, 'mark_agent_decision', {
+            p_tenant_id: item.tenant_id,
+            p_message_id: item.last_inbound_message_id,
+            p_decision: 'REPLY',
+            p_reason: `Sinal: dono respondeu ${atalho.pagou ? 'que caiu' : 'que não caiu'} (atalho, sem modelo).`,
+          });
+          respondidas++;
+          resultados.push({
+            conversationId: item.conversation_id,
+            action: 'REPLY',
+            messages: [texto],
+            sinal: r,
+          });
+          continue;
+        }
+      }
       const pendencias = (await rpc(supabaseUrl, serviceKey, 'onboarding_pendencies', {
         p_tenant_id: tenantId,
       })) as Pendencia[];
@@ -1522,6 +1597,11 @@ Deno.serve(async (req: Request) => {
             fotosERegua +
             mexidasAbertas +
             blocoDoSinal +
+            (sinaisEsperando.length > 0
+              ? '\n\nSINAIS ESPERANDO VOCÊ (comprovante de cliente que o dono ainda não conferiu): ' +
+                JSON.stringify(sinaisEsperando) +
+                '\nQuando ele disser que caiu ou que não caiu, chame confirmar_sinal. Nunca confirme sem ele dizer.'
+              : '') +
             perguntasAbertas +
             blocoDaLeva,
         },
@@ -2766,6 +2846,20 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Não deu para gravar agora (${String(erro).slice(0, 120)}). Não diga que anotou.`;
+            }
+          } else if (chamada.name === 'confirmar_sinal') {
+            const a = chamada.input as { referencia?: string; pagou: boolean };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'sinal_dono_respondeu', {
+                p_tenant_id: tenantId,
+                p_referencia: a.referencia ?? '',
+                p_pagou: !!a.pagou,
+              })) as { ok?: boolean; texto?: string; esperando?: unknown };
+              texto = r?.ok
+                ? `Feito. Diga a ele: ${r.texto}`
+                : `Não registrei: ${r?.texto ?? 'motivo desconhecido'} Esperando: ${JSON.stringify(r?.esperando ?? [])}. Pergunte qual.`;
+            } catch (erro) {
+              texto = `Não deu para registrar agora (${String(erro).slice(0, 120)}). Não diga que confirmou.`;
             }
           } else if (chamada.name === 'ver_agenda') {
             const a = chamada.input as { de: string; ate: string };
