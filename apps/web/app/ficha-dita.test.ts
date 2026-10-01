@@ -120,10 +120,27 @@ describe('o que ela QUER não é o que ela TEM (falhou ao vivo em 01/10)', () =>
     ['quero luzes mas tenho progressiva', { temQuimica: true, quimicaQual: 'progressiva' }],
     ['nunca fiz progressiva, quero fazer', {}],
     ['sem química, só quero luzes', { temQuimica: false }],
+    [
+      'oii me chamo Bruna, queria retocar minhas mechas, fiz em junho. nunca pintei',
+      {
+        temQuimica: true,
+        quimicaQual: 'mechas',
+        quimicaHaQuantoTempo: 'em junho',
+        temColoracao: false,
+      },
+    ],
+    [
+      'quero fazer luzes, fiz progressiva ano passado',
+      { temQuimica: true, quimicaQual: 'progressiva' },
+    ],
+    ['quero luzes. fiz em agosto', {}],
     ['quero retocar minhas luzes', { temQuimica: true, quimicaQual: 'luzes' }],
     ['quero marcar mechas em janeiro', {}],
     ['fiz mechas em janeiro', { temQuimica: true, quimicaQual: 'mechas' }],
-    ['tenho progressiva há 1 ano e meio', { temQuimica: true, quimicaHaQuantoTempo: 'ha 1 ano e meio' }],
+    [
+      'tenho progressiva há 1 ano e meio',
+      { temQuimica: true, quimicaHaQuantoTempo: 'ha 1 ano e meio' },
+    ],
   ])('%s', (fala, esperado) => {
     const f = fichaDita([fala]);
     for (const [k, v] of Object.entries(esperado))

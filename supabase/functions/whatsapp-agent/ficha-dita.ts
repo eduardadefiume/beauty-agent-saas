@@ -76,6 +76,7 @@ export function fichaDita(falasDela: string[], perguntaAnterior = ''): FatosDaFi
     const inteira = sem(String(fala ?? ''));
     if (inteira.trim() === '') continue;
     let anteriorNaFala: string[] = [];
+    let anteriorEraHistorico = false;
     for (const pedaco of inteira.split(CORTE_DE_TRECHO)) {
       const t = ` ${pedaco ?? ''} `;
       if (t.trim() === '') continue;
@@ -91,14 +92,18 @@ export function fichaDita(falasDela: string[], perguntaAnterior = ''): FatosDaFi
       const eHistorico =
         naoNegadas.length > 0 &&
         (VERBO_DE_HISTORICO.test(t) || RENOVA.test(t) || (!!quando && !DESEJO.test(t)));
-      // "quero progressiva de novo, fiz uma faz 4 meses": o "uma" é a de antes.
+      // "quero progressiva de novo, fiz uma faz 4 meses" / "retocar minhas
+      // mechas, fiz em junho" (01/10, ao vivo): o trecho fala da de antes.
       const retomaAnterior =
         naoNegadas.length === 0 &&
         quais.length === 0 &&
         anteriorNaFala.length > 0 &&
         VERBO_DE_HISTORICO.test(t) &&
-        /\b(uma|um|ela|essa|esse|isso)\b/.test(t);
-      if (naoNegadas.length > 0) anteriorNaFala = naoNegadas;
+        (/\b(uma|um|ela|essa|esse|isso)\b/.test(t) || (!!quando && anteriorEraHistorico));
+      if (naoNegadas.length > 0) {
+        anteriorNaFala = naoNegadas;
+        anteriorEraHistorico = eHistorico;
+      }
       if (eHistorico || retomaAnterior) {
         historico.push(...(eHistorico ? naoNegadas : anteriorNaFala));
         if (quando) fatos.quimicaHaQuantoTempo = limparTempo(quando[0]);
