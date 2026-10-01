@@ -35,6 +35,7 @@ import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
 import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto } from './ficha-dita.ts';
+import { semConfirmarAntesDoDono } from './sinal-comprovante.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
   condicaoComercialIgnorada,
@@ -731,6 +732,38 @@ async function decidir(
   // O porquê está em nao-insista.ts.
   const avisoDaVolta = avisoDeVolta(voltasDaCliente(falasDaConversa(volatil)));
 
+  // O COMPROVANTE DO SINAL (ver sinal-comprovante.ts e app.sinal_comprovante_da_conversa).
+  // O banco reconhece o comprovante (foto ou "paguei"), avisa o dono e devolve
+  // a frase que ela tem que ouvir. Aqui só entra no turno.
+  let comprovanteDoTurno: string | null = null;
+  try {
+    const c = (await rpc(
+      ambiente.supabaseUrl,
+      ambiente.serviceKey,
+      'sinal_comprovante_da_conversa',
+      { p_conversation_id: ambiente.conversationId }
+    )) as { novo?: boolean; textoParaCliente?: string; codigo?: string };
+    if (c?.novo && c.textoParaCliente) {
+      comprovanteDoTurno = c.textoParaCliente;
+      console.log(
+        JSON.stringify({
+          event: 'sinal_comprovante_recebido',
+          conversationId: ambiente.conversationId,
+          codigo: c.codigo,
+        })
+      );
+    }
+  } catch (erro) {
+    console.error(JSON.stringify({ event: 'sinal_comprovante_falhou', erro: String(erro) }));
+  }
+  const avisoDoSinal = comprovanteDoTurno
+    ? '\n\nSINAL: ela mandou o comprovante (ou disse que pagou). O sistema JÁ avisou o dono, que vai ' +
+      'conferir o Pix. Diga a ela, com estas palavras: "' +
+      comprovanteDoTurno +
+      '". NÃO diga que o horário está confirmado, marcado ou garantido: só fica confirmado quando o ' +
+      'dono conferir, e quem avisa é o sistema. Se ela perguntou outra coisa junto, responda também.'
+    : '';
+
   const mensagens: Anthropic.MessageParam[] = [
     {
       role: 'user',
@@ -738,6 +771,7 @@ async function decidir(
         'Esta conversa (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
         JSON.stringify(volatil) +
         (avisoDaVolta ? '\n\n' + avisoDaVolta : '') +
+        avisoDoSinal +
         diretrizDoTurno,
     },
   ];
@@ -880,6 +914,13 @@ async function decidir(
       if (Array.isArray(decisao.messages)) {
         decisao.messages = decisao.messages.map((m) =>
           typeof m === 'string' ? quemMandaAFoto(m) : m
+        );
+      }
+      // Comprovante neste turno: nada de "confirmado" antes do dono (sinal-comprovante.ts).
+      if (comprovanteDoTurno && decisao.action === 'REPLY') {
+        decisao.messages = semConfirmarAntesDoDono(
+          Array.isArray(decisao.messages) ? decisao.messages.map(String) : [],
+          comprovanteDoTurno
         );
       }
 
@@ -1533,13 +1574,30 @@ async function decidir(
             texto = `NÃO cancelou (${r.error}). Não diga que cancelou; diga que vai pedir para o salão cancelar e use ASK_OWNER.`;
           } else {
             cancelou.push(alvo.appointmentId);
+            // Pagou sinal? A regra do dono diz se devolve; o dono já foi
+            // avisado pelo banco (app.sinal_ao_cancelar). Aqui só a frase dela.
+            let sobreOSinal = '';
+            try {
+              const s = (await rpc(
+                ambiente.supabaseUrl,
+                ambiente.serviceKey,
+                'sinal_do_cancelamento',
+                { p_appointment_id: alvo.appointmentId }
+              )) as { temSinalPago?: boolean; texto?: string };
+              if (s?.temSinalPago && s.texto) sobreOSinal = ' SINAL: ' + s.texto;
+            } catch (erro) {
+              console.error(
+                JSON.stringify({ event: 'sinal_do_cancelamento_falhou', erro: String(erro) })
+              );
+            }
             texto =
               `Cancelado de verdade: ${alvo.servico}, ${alvo.diaDaSemana} ${alvo.quando}` +
               (alvo.com ? ` com ${alvo.com}` : '') +
               '. Agora pode confirmar para ela.' +
-              (alvo.horasAte < 24
+              (alvo.horasAte < 24 && !sobreOSinal
                 ? ' Faltavam menos de 24h: seja gentil, sem cobrar nada, e avise que o salão foi avisado.'
-                : '');
+                : '') +
+              sobreOSinal;
           }
         }
       } else if (chamada.name === 'anotar_na_ficha') {
