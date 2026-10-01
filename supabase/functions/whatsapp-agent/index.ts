@@ -591,25 +591,26 @@ async function decidir(
   // modelo ja anotou com mais detalhe. "quimicaQual" tambem vai quando a
   // pendencia e o formol: "luzes" na ficha tira a pergunta de formol.
   const pendente = (campo: string) => faltas.some((f) => f.campo === campo);
-  if (
-    pendente('TEM_QUIMICA') ||
-    pendente('QUANDO_A_QUIMICA') ||
-    pendente('QUIMICA_COM_FORMOL') ||
-    pendente('TEM_COLORACAO')
-  ) {
-    const fatos: Record<string, unknown> = {};
+  // Tudo o que ela disse com todas as letras na conversa, pendente ou não:
+  // serve também para o modelo não desmentir isso (ver anotar_na_ficha).
+  const fatosDitos: Record<string, unknown> = {};
+  {
     let ultimaPergunta = '';
     for (const f of falasDaConversa(volatil)) {
       if (f.direction !== 'INBOUND') {
         ultimaPergunta = String(f.text ?? '');
         continue;
       }
-      const lido = fichaDita([String(f.text ?? '')], ultimaPergunta);
-      if (lido.temQuimica !== undefined) fatos.temQuimica = lido.temQuimica;
-      if (lido.quimicaQual) fatos.quimicaQual = lido.quimicaQual;
-      if (lido.quimicaHaQuantoTempo) fatos.quimicaHaQuantoTempo = lido.quimicaHaQuantoTempo;
-      if (lido.temColoracao !== undefined) fatos.temColoracao = lido.temColoracao;
+      Object.assign(fatosDitos, fichaDita([String(f.text ?? '')], ultimaPergunta));
     }
+  }
+  if (
+    pendente('TEM_QUIMICA') ||
+    pendente('QUANDO_A_QUIMICA') ||
+    pendente('QUIMICA_COM_FORMOL') ||
+    pendente('TEM_COLORACAO')
+  ) {
+    const fatos: Record<string, unknown> = { ...fatosDitos };
     if (!pendente('TEM_QUIMICA')) delete fatos.temQuimica;
     if (!pendente('TEM_QUIMICA') && !pendente('QUIMICA_COM_FORMOL')) delete fatos.quimicaQual;
     if (!pendente('QUANDO_A_QUIMICA') && !(pendente('TEM_QUIMICA') && fatos.temQuimica === true))
@@ -1542,6 +1543,36 @@ async function decidir(
           }
         }
       } else if (chamada.name === 'anotar_na_ficha') {
+        // O MODELO NAO DESMENTE A CLIENTE. 01/10, ao vivo: a Luana disse "ja
+        // fiz luzes ano passado, nao tenho coloracao nem progressiva", o codigo
+        // anotou "tem quimica: luzes" e o modelo regravou "nao tem quimica" --
+        // leu o "nem progressiva" como "sem quimica". O que ela disse com todas
+        // as letras ganha da interpretacao do modelo.
+        const entrada = (chamada.input ?? {}) as Record<string, unknown>;
+        for (const campo of ['temQuimica', 'temColoracao']) {
+          if (
+            typeof fatosDitos[campo] === 'boolean' &&
+            typeof entrada[campo] === 'boolean' &&
+            entrada[campo] !== fatosDitos[campo]
+          ) {
+            console.log(
+              JSON.stringify({
+                event: 'modelo_desmentiu_a_cliente',
+                conversationId: ambiente.conversationId,
+                campo,
+                modelo: entrada[campo],
+                cliente: fatosDitos[campo],
+              })
+            );
+            delete entrada[campo];
+            if (campo === 'temQuimica') {
+              delete entrada.quimicaQual;
+              delete entrada.quimicaHaQuantoTempo;
+              delete entrada.quimicaQuando;
+            }
+          }
+        }
+        chamada.input = entrada;
         // Falhar aqui nao derruba o turno: a cliente esperando resposta importa
         // mais que um campo que pode ser perguntado de novo depois.
         try {

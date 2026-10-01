@@ -47,49 +47,91 @@ const AFIRMA_COR = /\b(pinto|tinjo|pintei|tingi)\b|\b(tenho|fiz|faco) (coloracao
 const QUANDO =
   /\b(ano passado|mes passado|semana passada|ontem|anteontem|(esse|este) ano|faz [^.,!?;]{1,30}|ha [^.,!?;]{1,25}|(uns |umas )?(\d+|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte|meio)( e meio)? (anos?|meses|mes|semanas?|dias?)( e meio)?|em (janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)[^.,!?;]{0,20})(?=[\s.,!?;]|$)/;
 
+// 01/10, ao vivo: "quero fazer progressiva, nunca fiz química" virou
+// "tem progressiva". O nome da química sozinho não diz nada: "quero luzes" é o
+// que ela QUER, "fiz luzes" é o que ela TEM. Cada trecho da frase é lido à
+// parte e só conta como histórico com verbo de passado/posse ("fiz", "tenho")
+// ou com tempo junto ("as luzes do ano passado").
+const VERBO_DE_HISTORICO =
+  /\b(fiz|fez|fazia|faco|tenho|tinha|passei|usei|uso|coloquei|apliquei|retoquei)\b/;
+// "Fazer de novo", "retocar": quer de novo o que já tem.
+const RENOVA = /\b(de novo|outra vez|retocar|retoque|refazer|manutencao)\b/;
+// Tempo junto do pedido é data futura ("mechas em dezembro"), não histórico.
+const DESEJO = /\b(quero|queria|gostaria|pretendo|marcar|agendar|quanto|valor|preco)\b/;
+// Corta a frase em trechos. " e " só corta antes de outro verbo, para não
+// partir "um ano e meio".
+const CORTE_DE_TRECHO =
+  /[.,;!?\n]|\s(?:e|mas|so que|porem)\s(?=(?:eu\s)?(?:quero|queria|gostaria|pinto|tinjo|tenho|fiz|nao|nunca|ja|uso|faco|tambem|agora|pretendo)\b)/;
+
 export function fichaDita(falasDela: string[], perguntaAnterior = ''): FatosDaFicha {
   const fatos: FatosDaFicha = {};
   const anterior = sem(perguntaAnterior);
+  const respondeTempo =
+    /quanto tempo|quando foi|faz quanto/.test(anterior) && /quimica/.test(anterior);
+  const historico: string[] = [];
+  let negou = false;
+  let afirmouGenerico = false;
+
   for (const fala of falasDela) {
-    const t = sem(String(fala ?? ''));
-    if (t.trim() === '') continue;
+    const inteira = sem(String(fala ?? ''));
+    if (inteira.trim() === '') continue;
+    let anteriorNaFala: string[] = [];
+    for (const pedaco of inteira.split(CORTE_DE_TRECHO)) {
+      const t = ` ${pedaco ?? ''} `;
+      if (t.trim() === '') continue;
+      const quais = QUIMICAS.filter(([re]) => re.test(t)).map(([, nome]) => nome);
+      // "não tenho coloração NEM progressiva": negada, não conta.
+      const naoNegadas = quais.filter(
+        (nome) =>
+          !new RegExp(
+            `\\b(nem|sem|nunca fiz|nao fiz|nao tenho|nunca) (a |as |o )?${sem(nome).trim()}`
+          ).test(t)
+      );
+      const quando = t.match(QUANDO);
+      const eHistorico =
+        naoNegadas.length > 0 &&
+        (VERBO_DE_HISTORICO.test(t) || RENOVA.test(t) || (!!quando && !DESEJO.test(t)));
+      // "quero progressiva de novo, fiz uma faz 4 meses": o "uma" é a de antes.
+      const retomaAnterior =
+        naoNegadas.length === 0 &&
+        quais.length === 0 &&
+        anteriorNaFala.length > 0 &&
+        VERBO_DE_HISTORICO.test(t) &&
+        /\b(uma|um|ela|essa|esse|isso)\b/.test(t);
+      if (naoNegadas.length > 0) anteriorNaFala = naoNegadas;
+      if (eHistorico || retomaAnterior) {
+        historico.push(...(eHistorico ? naoNegadas : anteriorNaFala));
+        if (quando) fatos.quimicaHaQuantoTempo = limparTempo(quando[0]);
+      } else if (respondeTempo && quando && quais.length === 0) {
+        fatos.quimicaHaQuantoTempo = limparTempo(quando[0]);
+      }
+      if (NEGA_QUIMICA.test(t)) negou = true;
+      else if (AFIRMA_QUIMICA_GENERICA.test(t)) afirmouGenerico = true;
 
-    const quais = QUIMICAS.filter(([re]) => re.test(t)).map(([, nome]) => nome);
-    // "não tenho coloração NEM progressiva" nega a progressiva que aparece no texto.
-    const quaisAfirmadas = quais.filter(
-      (nome) => !new RegExp(`\\b(nem|sem|nunca fiz|nao fiz|nao tenho) ${sem(nome).trim()}`).test(t)
-    );
-
-    if (NEGA_QUIMICA.test(t) && quaisAfirmadas.length === 0) {
-      fatos.temQuimica = false;
-    } else if (quaisAfirmadas.length > 0) {
-      fatos.temQuimica = true;
-      fatos.quimicaQual = [
-        ...new Set([...(fatos.quimicaQual?.split(', ') ?? []), ...quaisAfirmadas]),
-      ]
-        .filter(Boolean)
-        .join(', ');
-    } else if (AFIRMA_QUIMICA_GENERICA.test(t)) {
-      fatos.temQuimica = true;
+      if (NEGA_COR.test(t)) fatos.temColoracao = false;
+      else if (AFIRMA_COR.test(t)) fatos.temColoracao = true;
     }
+  }
 
-    // O tempo só vale se a frase fala da química, ou se a pergunta anterior era o tempo dela.
-    const falaDeQuimica = quaisAfirmadas.length > 0 || /\bquimica\b/.test(t);
-    const respondeTempo =
-      /quanto tempo|quando foi|faz quanto/.test(anterior) && /quimica/.test(anterior);
-    if (falaDeQuimica || respondeTempo) {
-      const m = t.match(QUANDO);
-      // "faz 6 meses e quero marcar dia 5": o tempo acaba onde começa o pedido.
-      if (m)
-        fatos.quimicaHaQuantoTempo = m[0]
-          .replace(/\s(mas|quero|queria|pra|para|porque|so que|e quero|e queria|e agora|e ai)\s.*$/, '')
-          .trim();
-    }
-
-    if (NEGA_COR.test(t)) fatos.temColoracao = false;
-    else if (AFIRMA_COR.test(t)) fatos.temColoracao = true;
+  if (historico.length > 0) {
+    fatos.temQuimica = true;
+    fatos.quimicaQual = [...new Set(historico)].join(', ');
+  } else if (negou) {
+    fatos.temQuimica = false;
+    delete fatos.quimicaHaQuantoTempo;
+  } else if (afirmouGenerico) {
+    fatos.temQuimica = true;
+  } else if (!respondeTempo) {
+    delete fatos.quimicaHaQuantoTempo;
   }
   return fatos;
+}
+
+// "faz 6 meses e quero marcar dia 5": o tempo acaba onde começa o pedido.
+function limparTempo(t: string): string {
+  return t
+    .replace(/\s(mas|quero|queria|pra|para|porque|so que|e quero|e queria|e agora|e ai)\s.*$/, '')
+    .trim();
 }
 
 // Formol é pergunta de alisamento. Luzes, mechas e descoloração não levam.
