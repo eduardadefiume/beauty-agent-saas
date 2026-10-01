@@ -20,3 +20,17 @@ export function semConfirmarAntesDoDono(bolhas: string[], textoCerto: string): s
   const jaDisse = limpas.some((b) => /receb/i.test(b) && ESPERA.test(b));
   return jaDisse ? limpas : [textoCerto, ...limpas];
 }
+
+// CRÉDITO DE SINAL. Ela pagou um sinal depois do prazo; a reserva nova é paga
+// com ele no banco (app.sinal_credito_usa) e já nasce confirmada. A resposta
+// da agenda ainda diz PENDING_SIGNAL (foi escrita antes do gatilho), então
+// quem decide se vai cartão de sinal é o crédito, não o status.
+export type CreditoDaReserva = { usado?: boolean; jeito?: string; confirmado?: boolean };
+
+export function reservaPedeSinal(
+  statusDaAgenda: string | undefined,
+  credito: CreditoDaReserva
+): boolean {
+  const pagaComCredito = !!credito.usado && credito.jeito === 'USADO' && !!credito.confirmado;
+  return statusDaAgenda === 'PENDING_SIGNAL' && !pagaComCredito;
+}

@@ -35,7 +35,7 @@ import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
 import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
-import { semConfirmarAntesDoDono } from './sinal-comprovante.ts';
+import { reservaPedeSinal, semConfirmarAntesDoDono } from './sinal-comprovante.ts';
 import { eleaCitouOAgendamento, pediuOutroServico } from './servico-pedido.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
@@ -142,6 +142,26 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   },
   // 30/09/2026: "Ja cancelei aqui" sem ter cancelado nada. A atendente nao
   // via os horarios da cliente nem tinha como desmarcar.
+  {
+    name: 'devolver_sinal_pago',
+    description:
+      'Pede ao salão para DEVOLVER o sinal que ela já pagou e que está como crédito (veja CRÉDITO DE SINAL no contexto). ' +
+      'Use só em dois casos: ela pediu o dinheiro de volta, ou você consultou a agenda e nenhum horário serve para ela (ela recusou as opções). ' +
+      'O dono é avisado para devolver no Pix. Enquanto esta ferramenta não responder, NÃO diga que vai ser devolvido.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        motivo: {
+          type: 'string',
+          description:
+            'Em poucas palavras: "pediu o dinheiro de volta" ou "não achou horário que sirva".',
+        },
+      },
+      required: ['motivo'],
+      additionalProperties: false,
+    },
+  },
   {
     name: 'cancelar_agendamento',
     description:
@@ -793,8 +813,25 @@ async function decidir(
     const lista = (await rpc(ambiente.supabaseUrl, ambiente.serviceKey, 'sinal_da_cliente', {
       p_conversation_id: ambiente.conversationId,
     })) as unknown[];
+    const creditos = (await rpc(
+      ambiente.supabaseUrl,
+      ambiente.serviceKey,
+      'sinal_credito_da_conversa',
+      {
+        p_conversation_id: ambiente.conversationId,
+      }
+    )) as unknown[];
+    if (Array.isArray(creditos) && creditos.length > 0) {
+      sinalDaCliente +=
+        '\n\nCRÉDITO DE SINAL DESTA CLIENTE: ' +
+        JSON.stringify(creditos) +
+        '\nEla já pagou esse sinal. Quando ela marcar de novo, o sistema usa o crédito sozinho e o horário ' +
+        'já sai confirmado: NÃO peça outro sinal. Se nenhum horário servir para ela, ou ela pedir o dinheiro, ' +
+        'use devolver_sinal_pago.';
+      textosDasFerramentas.push(JSON.stringify(creditos));
+    }
     if (Array.isArray(lista) && lista.length > 0) {
-      sinalDaCliente =
+      sinalDaCliente +=
         '\n\nSINAL DESTA CLIENTE (o que o sistema sabe, do mais novo para o mais velho): ' +
         JSON.stringify(lista) +
         '\nSe ela perguntar do sinal, responda com isto. Não invente prazo nem devolução.';
@@ -1598,7 +1635,30 @@ async function decidir(
               texto = `A reserva não foi confirmada: ${confirmacao.error}. Não diga que está marcado.`;
             } else {
               const dados = confirmacao.data as { appointmentId?: string; status?: string };
-              const comSinal = dados.status === 'PENDING_SIGNAL';
+              // CRÉDITO DE SINAL (app.sinal_credito_usa): se ela tinha pago um
+              // sinal depois do prazo, a reserva nova já nasce confirmada.
+              let credito: {
+                usado?: boolean;
+                jeito?: string;
+                valor?: string;
+                confirmado?: boolean;
+              } = {};
+              try {
+                credito = ((await rpc(
+                  ambiente.supabaseUrl,
+                  ambiente.serviceKey,
+                  'sinal_credito_do_agendamento',
+                  { p_appointment_id: dados.appointmentId }
+                )) ?? {}) as typeof credito;
+              } catch (erro) {
+                console.error(
+                  JSON.stringify({ event: 'sinal_credito_falhou', erro: String(erro) })
+                );
+              }
+              const pagoComCredito =
+                !!credito.usado && credito.jeito === 'USADO' && !!credito.confirmado;
+              const comSinal = reservaPedeSinal(dados.status, credito);
+              if (credito.usado && credito.valor) textosDasFerramentas.push(credito.valor);
               agendou = {
                 quando: horarioLocal(escolhido.startMs),
                 appointmentId: dados.appointmentId ?? '',
@@ -1623,9 +1683,30 @@ async function decidir(
                   'Logo depois da sua mensagem eu envio um cartão com o valor, o prazo e a chave Pix. ' +
                   'Na sua mensagem diga só, em uma frase, que segurou o horário para ela e que vai mandar como confirmar. ' +
                   'NÃO escreva valor, prazo nem chave Pix, e NÃO diga "marcado", "confirmado" ou "agendado".'
-                : `Marcado com sucesso para ${horarioLocal(escolhido.startMs)}. Agora sim, confirme para a cliente.`;
+                : `Marcado com sucesso para ${horarioLocal(escolhido.startMs)}. Agora sim, confirme para a cliente.` +
+                  (pagoComCredito
+                    ? ` O sinal deste horário foi pago com o crédito de ${credito.valor} que ela já tinha (o Pix que caiu depois do prazo): diga isso a ela.`
+                    : credito.usado && credito.jeito === 'ABATIDO_NO_DIA'
+                      ? ` Ela tem ${credito.valor} de sinal pago antes: esse valor vai ser abatido no dia. Diga isso a ela.`
+                      : '');
             }
           }
+        }
+      } else if (chamada.name === 'devolver_sinal_pago') {
+        const args = chamada.input as { motivo?: string };
+        try {
+          const r = (await rpc(
+            ambiente.supabaseUrl,
+            ambiente.serviceKey,
+            'sinal_devolver_credito_da_conversa',
+            { p_conversation_id: ambiente.conversationId, p_motivo: args.motivo ?? '' }
+          )) as { ok?: boolean; texto?: string; valor?: string };
+          texto = r?.ok
+            ? `Feito. ${r.texto} Diga isso a ela, com gentileza.`
+            : (r?.texto ?? 'Ela não tem sinal para devolver. Não prometa devolução.');
+          if (r?.valor) textosDasFerramentas.push(r.valor);
+        } catch (erro) {
+          texto = `Não consegui pedir a devolução agora (${String(erro).slice(0, 100)}). Não diga que vai ser devolvido; use ASK_OWNER.`;
         }
       } else if (chamada.name === 'cancelar_agendamento') {
         const args = chamada.input as { numero: number };

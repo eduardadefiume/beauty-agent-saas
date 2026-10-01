@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { semConfirmarAntesDoDono } from '../../../supabase/functions/whatsapp-agent/sinal-comprovante';
+import {
+  reservaPedeSinal,
+  semConfirmarAntesDoDono,
+} from '../../../supabase/functions/whatsapp-agent/sinal-comprovante';
 
 const CERTO =
   'Recebi seu comprovante, obrigada! 💛 Já passei pro salão conferir e te aviso assim que confirmarem.';
@@ -30,5 +33,17 @@ describe('o comprovante não confirma antes do dono (01/10)', () => {
       CERTO,
       'Sobre a escova, fica R$ 80.',
     ]);
+  });
+});
+
+describe('crédito de sinal confirma a reserva nova (01/10)', () => {
+  it.each([
+    ['PENDING_SIGNAL', {}, true],
+    ['PENDING_SIGNAL', { usado: true, jeito: 'USADO', confirmado: true }, false],
+    ['PENDING_SIGNAL', { usado: true, jeito: 'USADO', confirmado: false }, true],
+    ['CONFIRMED', { usado: true, jeito: 'ABATIDO_NO_DIA', confirmado: true }, false],
+    ['CONFIRMED', {}, false],
+  ])('%s %j -> cartão de sinal: %s', (status, credito, esperado) => {
+    expect(reservaPedeSinal(status as string, credito)).toBe(esperado);
   });
 });
