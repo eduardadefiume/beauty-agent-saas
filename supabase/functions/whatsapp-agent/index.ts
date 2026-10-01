@@ -526,7 +526,7 @@ async function decidir(
   decisao: Decisao | null;
   usage: Uso;
   motivoFalha?: string;
-  agendou?: { quando: string; appointmentId: string } | null;
+  agendou?: { quando: string; appointmentId: string; comSinal?: boolean } | null;
   cancelou?: string[];
 }> {
   // A DIRETRIZ DO TURNO, colada depois do JSON da conversa: e a ultima coisa
@@ -730,7 +730,7 @@ async function decidir(
     cache_read_input_tokens: 0,
     voltas: 0,
   };
-  let agendou: { quando: string; appointmentId: string } | null = null;
+  let agendou: { quando: string; appointmentId: string; comSinal?: boolean } | null = null;
   const cancelou: string[] = [];
   let jaCobreiOCancelamento = false;
   let jaCobreiOAgendamento = false;
@@ -1416,10 +1416,12 @@ async function decidir(
             if (!confirmacao.ok) {
               texto = `A reserva não foi confirmada: ${confirmacao.error}. Não diga que está marcado.`;
             } else {
-              const dados = confirmacao.data as { appointmentId?: string };
+              const dados = confirmacao.data as { appointmentId?: string; status?: string };
+              const comSinal = dados.status === 'PENDING_SIGNAL';
               agendou = {
                 quando: horarioLocal(escolhido.startMs),
                 appointmentId: dados.appointmentId ?? '',
+                comSinal,
               };
               // Marcou: o foco morre. Se ela voltar amanha para marcar outra
               // coisa, comeca do zero em vez de arrastar os candidatos de um
@@ -1435,7 +1437,12 @@ async function decidir(
                 console.error('FOCO_LIMPEZA_FALHOU', ambiente.conversationId, String(erro));
               }
               estado.candidatos = [];
-              texto = `Marcado com sucesso para ${horarioLocal(escolhido.startMs)}. Agora sim, confirme para a cliente.`;
+              texto = comSinal
+                ? `RESERVADO COM SINAL para ${horarioLocal(escolhido.startMs)}: o horário está SEGURADO para ela, mas só fica confirmado quando ela pagar o sinal. ` +
+                  'Logo depois da sua mensagem eu envio um cartão com o valor, o prazo e a chave Pix. ' +
+                  'Na sua mensagem diga só, em uma frase, que segurou o horário para ela e que vai mandar como confirmar. ' +
+                  'NÃO escreva valor, prazo nem chave Pix, e NÃO diga "marcado", "confirmado" ou "agendado".'
+                : `Marcado com sucesso para ${horarioLocal(escolhido.startMs)}. Agora sim, confirme para a cliente.`;
             }
           }
         }
@@ -1855,7 +1862,13 @@ Deno.serve(async (req) => {
         // o mesmo. Quando o salao tem a dele, a dele e a oficial: o balao dela
         // que so afirma o agendamento nao sai. O resto (resposta a outra
         // pergunta, por exemplo) sai normal.
-        if (agendou?.appointmentId) {
+        if (agendou?.appointmentId && agendou.comSinal) {
+          // "Marcado!" antes de pagar e mentira: o cartao diz o que falta.
+          const sobra = textos.filter(
+            (t) => !(AFIRMA_AGENDAMENTO.test(t) || SO_CONFIRMA.test(t)) || t.includes('?')
+          );
+          textos.splice(0, textos.length, ...sobra);
+        } else if (agendou?.appointmentId) {
           try {
             const temFinalizacao = (await rpc(supabaseUrl, serviceKey, 'agente_tem_finalizacao', {
               p_appointment_id: agendou.appointmentId,
@@ -1897,7 +1910,18 @@ Deno.serve(async (req) => {
         // A FINALIZACAO DO SALAO SAI DEPOIS DO "MARCADO" DELA. Texto e arte
         // sao do dono, preenchidos no banco, e nao passam pelo modelo. Falhar
         // aqui nao desfaz o agendamento: a cliente ja ouviu que esta marcado.
-        if (agendou?.appointmentId) {
+        // COM SINAL: no lugar da finalizacao vai o cartao do sinal (valor,
+        // prazo, Pix). A finalizacao do dono sai quando o sinal for pago.
+        if (agendou?.appointmentId && agendou.comSinal) {
+          try {
+            await rpc(supabaseUrl, serviceKey, 'enviar_cartao_do_sinal', {
+              p_conversation_id: item.conversation_id,
+              p_appointment_id: agendou.appointmentId,
+            });
+          } catch (erro) {
+            console.error('CARTAO_DO_SINAL_FALHOU', agendou.appointmentId, String(erro));
+          }
+        } else if (agendou?.appointmentId) {
           try {
             await rpc(supabaseUrl, serviceKey, 'enviar_finalizacao_do_agendamento', {
               p_conversation_id: item.conversation_id,
