@@ -790,7 +790,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     name: 'ver_agenda',
     description:
       'Mostra a agenda do salão num período: cada atendimento (dia, hora, cliente, telefone, serviço, com quem, valor, se está confirmado ou esperando sinal), o total, o valor previsto, quantos foram desmarcados e quantas MARCAÇÕES foram FEITAS no período. ' +
-      'Use sempre que ele perguntar da agenda, de clientes marcadas, movimento, faturamento previsto. "Essa semana" = segunda a domingo da semana de HOJE; "hoje", "amanhã", "sábado", "mês que vem" contam a partir de HOJE. ' +
+      'Use sempre que ele perguntar da agenda, de clientes marcadas, movimento, faturamento previsto. Se valorPrevistoEMinimo vier true, o previsto é o MÍNIMO (tem serviço "a partir de"): diga "no mínimo R$ X", nunca um valor fechado. "Essa semana" = segunda a domingo da semana de HOJE; "hoje", "amanhã", "sábado", "mês que vem" contam a partir de HOJE. ' +
       '"Quantas marcaram essa semana" pode ser quem VEM na semana (totalAtendimentos) ou quem MARCOU na semana (marcacoesFeitasNoPeriodo): se os dois números forem diferentes, diga os dois numa frase. ' +
       'Responda curto: o número primeiro; a lista só se ele pedir ou se forem até 6.',
     input_schema: {

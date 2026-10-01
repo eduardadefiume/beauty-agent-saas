@@ -34,6 +34,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
 import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
+import { fichaDita, quemMandaAFoto } from './ficha-dita.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
   condicaoComercialIgnorada,
@@ -585,6 +586,64 @@ async function decidir(
       }
     }
   }
+  // O QUE ELA JA CONTOU DO CABELO (ver ficha-dita.ts). Mesmo caminho do nome:
+  // so manda o campo que a ficha ainda diz que falta, para nao apagar o que o
+  // modelo ja anotou com mais detalhe. "quimicaQual" tambem vai quando a
+  // pendencia e o formol: "luzes" na ficha tira a pergunta de formol.
+  const pendente = (campo: string) => faltas.some((f) => f.campo === campo);
+  if (
+    pendente('TEM_QUIMICA') ||
+    pendente('QUANDO_A_QUIMICA') ||
+    pendente('QUIMICA_COM_FORMOL') ||
+    pendente('TEM_COLORACAO')
+  ) {
+    const fatos: Record<string, unknown> = {};
+    let ultimaPergunta = '';
+    for (const f of falasDaConversa(volatil)) {
+      if (f.direction !== 'INBOUND') {
+        ultimaPergunta = String(f.text ?? '');
+        continue;
+      }
+      const lido = fichaDita([String(f.text ?? '')], ultimaPergunta);
+      if (lido.temQuimica !== undefined) fatos.temQuimica = lido.temQuimica;
+      if (lido.quimicaQual) fatos.quimicaQual = lido.quimicaQual;
+      if (lido.quimicaHaQuantoTempo) fatos.quimicaHaQuantoTempo = lido.quimicaHaQuantoTempo;
+      if (lido.temColoracao !== undefined) fatos.temColoracao = lido.temColoracao;
+    }
+    if (!pendente('TEM_QUIMICA')) delete fatos.temQuimica;
+    if (!pendente('TEM_QUIMICA') && !pendente('QUIMICA_COM_FORMOL')) delete fatos.quimicaQual;
+    if (!pendente('QUANDO_A_QUIMICA') && !(pendente('TEM_QUIMICA') && fatos.temQuimica === true))
+      delete fatos.quimicaHaQuantoTempo;
+    if (fatos.temQuimica === false) {
+      delete fatos.quimicaQual;
+      delete fatos.quimicaHaQuantoTempo;
+    }
+    if (!pendente('TEM_COLORACAO')) delete fatos.temColoracao;
+    if (Object.keys(fatos).length > 0) {
+      try {
+        const gravado = (await rpc(
+          ambiente.supabaseUrl,
+          ambiente.serviceKey,
+          'record_client_facts_for_conversation',
+          { p_conversation_id: ambiente.conversationId, p_facts: fatos }
+        )) as { ok?: boolean; aindaFalta?: Array<{ campo: string; perguntaSugerida: string }> };
+        if (gravado?.ok) {
+          faltas = gravado.aindaFalta ?? faltas;
+          const cliente = (volatil as { client?: Record<string, unknown> })?.client;
+          if (cliente) cliente.missing = faltas;
+          console.log(
+            JSON.stringify({
+              event: 'ficha_anotada_pelo_codigo',
+              conversationId: ambiente.conversationId,
+              fatos,
+            })
+          );
+        }
+      } catch (erro) {
+        console.error(JSON.stringify({ event: 'ficha_dita_falhou', erro: String(erro) }));
+      }
+    }
+  }
   // A FICHA SO TRAVA A AGENDA DE QUIMICA.
   //
   // 24/09/2026, Studio Rogerio: a Marina aceitou escova sabado 10h e a ficha
@@ -816,6 +875,12 @@ async function decidir(
     const desfecho = chamadas.find((c) => c.name === 'atender');
     if (desfecho) {
       const decisao = desfecho.input as Decisao;
+      // "Ja te mando uma foto do tom?" -- quem manda a foto e ela (ficha-dita.ts).
+      if (Array.isArray(decisao.messages)) {
+        decisao.messages = decisao.messages.map((m) =>
+          typeof m === 'string' ? quemMandaAFoto(m) : m
+        );
+      }
 
       // A CONVERSA NAO MORRE SEM PROXIMO PASSO.
       //
