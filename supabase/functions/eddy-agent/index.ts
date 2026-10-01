@@ -731,6 +731,43 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'configurar_sinal',
+    description:
+      'Grava o que o DONO respondeu sobre o sinal (só os campos que ele respondeu agora). Vale na hora, sem publicar. ' +
+      'Período: valeDe/valeAte (AAAA-MM-DD); "sempre" = os dois vazios (""). Prazo: prazoHoras (padrão 24) e, se ele quiser mais tempo quando a cliente marca num mês para o outro (ex.: novembro para dezembro), prazoMesAnteriorHoras; "não" = "". ' +
+      'Pix: pixChave e pixTitular (nome que aparece no Pix). Devolução: devolve true/false e devolveAteHoras (com quantas horas de antecedência ela tem que avisar). ' +
+      'ativo true SÓ quando ele disser para ligar (e só depois de ter valor e Pix).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ativo: { type: 'boolean' },
+        valeDe: { type: 'string' },
+        valeAte: { type: 'string' },
+        prazoHoras: { type: 'integer' },
+        prazoMesAnteriorHoras: { type: ['integer', 'string'] },
+        pixChave: { type: 'string' },
+        pixTitular: { type: 'string' },
+        devolve: { type: 'boolean' },
+        devolveAteHoras: { type: 'integer' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'definir_sinal_do_servico',
+    description:
+      'Grava o valor do sinal de UM procedimento, como o dono disse (valor fixo em reais). Chame uma vez por procedimento. valorReais 0 = esse não cobra sinal. Vale na hora.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        servico: { type: 'string', description: 'Nome do procedimento como está no cadastro.' },
+        valorReais: { type: 'number', description: 'Ex.: 100 para R$ 100.' },
+      },
+      required: ['servico', 'valorReais'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'ver_agenda',
     description:
       'Mostra a agenda do salão num período: cada atendimento (dia, hora, cliente, telefone, serviço, com quem, valor, se está confirmado ou esperando sinal), o total, o valor previsto, quantos foram desmarcados e quantas MARCAÇÕES foram FEITAS no período. ' +
@@ -1222,6 +1259,45 @@ Deno.serve(async (req: Request) => {
         // sem a lista, o Eddy so nao ve; nada se perde
       }
 
+      // O SINAL: o que o dono ja decidiu e a proxima pergunta. 01/10, Duda:
+      // "essas perguntas voce tem que fazer ao dono" -- o dono responde, nao nos.
+      let blocoDoSinal = '';
+      try {
+        const sr = (await rpc(supabaseUrl, serviceKey, 'sinal_resumo', {
+          p_tenant_id: tenantId,
+        })) as {
+          ativo?: boolean;
+          falta?: string[];
+        } | null;
+        if (sr) {
+          const PERGUNTA: Record<string, string> = {
+            VALORES:
+              '"Em quais procedimentos você quer cobrar sinal, e quanto em cada? Ex.: luzes R$ 100, progressiva R$ 50, corte não cobra." -> definir_sinal_do_servico (uma chamada por procedimento)',
+            PERIODO:
+              '"O sinal vale sempre, ou só num período? Ex.: só em dezembro." -> configurar_sinal (sempre = valeDe "" e valeAte "")',
+            PRAZO:
+              '"Depois de marcar, quanto tempo a cliente tem pra pagar o sinal? O normal é 24h. E se ela marcar com antecedência, tipo em novembro pra dezembro, quer dar mais tempo (ex.: 48h)?" -> configurar_sinal (prazoHoras e prazoMesAnteriorHoras). ' +
+              'Diga também, numa linha, que o prazo nunca passa de 2h antes do horário e que, se não pagar no prazo, o horário é liberado e a cliente é avisada.',
+            PIX: '"Qual a chave Pix que a cliente vai usar pra pagar o sinal, e em nome de quem aparece?" -> configurar_sinal (pixChave, pixTitular)',
+            DEVOLUCAO:
+              '"Se a cliente pagar o sinal e depois desmarcar, você devolve? Se sim, com quantas horas de antecedência ela tem que avisar?" -> configurar_sinal (devolve, devolveAteHoras)',
+            LIGAR:
+              'mostre o resumo do sinal em poucas linhas e pergunte "Posso ligar o sinal?" -> configurar_sinal ativo true',
+          };
+          const proxima = (sr.falta ?? [])[0];
+          blocoDoSinal =
+            '\n\nSINAL PARA AGENDAR (o que o dono já decidiu; quem decide é ELE, nunca você): ' +
+            JSON.stringify(sr) +
+            (proxima
+              ? '\nSe ele quer cobrar sinal (escolheu pedir sinal, ou falou de sinal agora), e o roteiro e os ajustes acima não têm pergunta antes, a próxima pergunta é: ' +
+                PERGUNTA[proxima] +
+                '. Uma pergunta por vez. Se ele já respondeu outra coisa do sinal, grave e siga na ordem.'
+              : '');
+        }
+      } catch {
+        // sem o resumo o Eddy so nao conduz o sinal neste turno
+      }
+
       // AS PERGUNTAS DA ATENDENTE QUE ESPERAM O DONO. So entram quando ha
       // alguma: nao custam token no dia a dia.
       let perguntasAbertas = '';
@@ -1419,6 +1495,7 @@ Deno.serve(async (req: Request) => {
               '(nenhuma habilidade com gente ativa — não dá para criar serviço agora)') +
             fotosERegua +
             mexidasAbertas +
+            blocoDoSinal +
             perguntasAbertas +
             blocoDaLeva,
         },
@@ -2604,6 +2681,60 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
+            }
+          } else if (chamada.name === 'configurar_sinal') {
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal', {
+                p_tenant_id: tenantId,
+                p_campos: chamada.input ?? {},
+              })) as { ok?: boolean; reason?: string; sinal?: { falta?: string[] } } | null;
+              if (r?.ok) {
+                anotadas++;
+                texto =
+                  'Gravado e JÁ VALE (não passa por publicar). Como ficou: ' +
+                  JSON.stringify(r.sinal) +
+                  ((r.sinal?.falta ?? []).length
+                    ? ` Próxima pergunta do sinal: ${(r.sinal?.falta ?? [])[0]}.`
+                    : ' O sinal está completo e ligado.');
+              } else if (r?.reason === 'FALTA_VALOR_OU_PIX') {
+                texto =
+                  'NÃO liguei: falta o valor de pelo menos um procedimento ou a chave Pix. Pergunte o que falta.';
+              } else {
+                texto = `NÃO gravei: ${r?.reason ?? 'motivo desconhecido'}. Não diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Não deu para gravar agora (${String(erro).slice(0, 120)}). Não diga que anotou.`;
+            }
+          } else if (chamada.name === 'definir_sinal_do_servico') {
+            const a = chamada.input as { servico: string; valorReais: number };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal_valor', {
+                p_tenant_id: tenantId,
+                p_servico: a.servico,
+                p_valor_centavos: Math.round(Number(a.valorReais ?? 0) * 100),
+              })) as {
+                ok?: boolean;
+                reason?: string;
+                servico?: string;
+                valor?: string;
+                cobra?: boolean;
+                preco?: string;
+                servicos?: string[];
+              } | null;
+              if (r?.ok) {
+                anotadas++;
+                texto = r.cobra
+                  ? `Gravado: sinal de ${r.valor} em ${r.servico}. Vale na hora.`
+                  : `Gravado: ${r.servico} não cobra sinal.`;
+              } else if (r?.reason === 'SERVICO_NAO_EXISTE') {
+                texto = `NÃO gravei: não tem "${a.servico}" no cadastro. Os procedimentos são: ${(r.servicos ?? []).join(', ')}. Pergunte qual é.`;
+              } else if (r?.reason === 'SINAL_MAIOR_QUE_O_PRECO') {
+                texto = `NÃO gravei: o sinal ficaria maior que o preço (${r.preco}). Confira com ele.`;
+              } else {
+                texto = `NÃO gravei: ${r?.reason ?? 'motivo desconhecido'}. Não diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Não deu para gravar agora (${String(erro).slice(0, 120)}). Não diga que anotou.`;
             }
           } else if (chamada.name === 'ver_agenda') {
             const a = chamada.input as { de: string; ate: string };
