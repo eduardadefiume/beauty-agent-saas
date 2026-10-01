@@ -785,6 +785,24 @@ async function decidir(
   } catch (erro) {
     console.error(JSON.stringify({ event: 'sinal_comprovante_falhou', erro: String(erro) }));
   }
+  // O QUE ACONTECEU COM O SINAL DELA (app.sinal_da_cliente): pago, esperando,
+  // desmarcado com devolução... 01/10: a Marina perguntou "e o sinal que eu
+  // paguei?" depois de desmarcar e a atendente não sabia de nada.
+  let sinalDaCliente = '';
+  try {
+    const lista = (await rpc(ambiente.supabaseUrl, ambiente.serviceKey, 'sinal_da_cliente', {
+      p_conversation_id: ambiente.conversationId,
+    })) as unknown[];
+    if (Array.isArray(lista) && lista.length > 0) {
+      sinalDaCliente =
+        '\n\nSINAL DESTA CLIENTE (o que o sistema sabe, do mais novo para o mais velho): ' +
+        JSON.stringify(lista) +
+        '\nSe ela perguntar do sinal, responda com isto. Não invente prazo nem devolução.';
+      textosDasFerramentas.push(JSON.stringify(lista));
+    }
+  } catch (erro) {
+    console.error(JSON.stringify({ event: 'sinal_da_cliente_falhou', erro: String(erro) }));
+  }
   const avisoDoSinal = comprovanteDoTurno
     ? '\n\nSINAL: ela mandou o comprovante (ou disse que pagou). O sistema JÁ avisou o dono, que vai ' +
       'conferir o Pix. Diga a ela, com estas palavras: "' +
@@ -800,6 +818,7 @@ async function decidir(
         'Esta conversa (JSON). A última mensagem do histórico é a que está esperando resposta.\n\n' +
         JSON.stringify(volatil) +
         (avisoDaVolta ? '\n\n' + avisoDaVolta : '') +
+        sinalDaCliente +
         avisoDoSinal +
         diretrizDoTurno,
     },
