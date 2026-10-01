@@ -499,7 +499,10 @@ const FERRAMENTAS: Anthropic.Tool[] = [
   {
     name: 'criar_habilidade',
     description:
-      'Cria uma habilidade da equipe (corte, coloração, mechas...) e liga a quem a faz. Use quando o serviço que ele citou exige uma habilidade que ainda não existe. A equipe tem que existir antes: sem ninguém cadastrado, esta ferramenta recusa e te devolve a pergunta certa.',
+      'Cria uma habilidade da equipe (corte, coloração, mechas...) e liga a quem a faz. ' +
+      'TAMBÉM serve para dizer quem faz uma habilidade que JÁ EXISTE: "o William também faz cor e mechas" -> nome "Cor e mechas" (exatamente como está em AS HABILIDADES QUE ESTE SALÃO TEM) e quemFaz ["William"]. Não cria duplicada, só liga a pessoa. ' +
+      'Nunca diga que isso "precisa da nossa equipe": é você que faz. Depois, como todo cadastro, vai para o rascunho e vale para as clientes quando publicar. ' +
+      'A equipe tem que existir antes: sem ninguém cadastrado, esta ferramenta recusa e te devolve a pergunta certa.',
     input_schema: {
       type: 'object',
       properties: {
