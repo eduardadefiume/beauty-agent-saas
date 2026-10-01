@@ -100,9 +100,9 @@ describe('tirar a marcação em vez de apagar o campo', () => {
 // mais bytes que caracteres; quando batem, não sobrou acento nenhum.
 describe('o escape do JSON escrito como letra', () => {
   it('PEGA O CASO REAL: devolve os acentos que se perderam', () => {
-    expect(semEscapes('Luzes \\u00e9 uma fam\\u00edlia tamb\\u00e9m, e ilumina s\\u00f3 no contorno.')).toBe(
-      'Luzes é uma família também, e ilumina só no contorno.'
-    );
+    expect(
+      semEscapes('Luzes \\u00e9 uma fam\\u00edlia tamb\\u00e9m, e ilumina s\\u00f3 no contorno.')
+    ).toBe('Luzes é uma família também, e ilumina só no contorno.');
   });
 
   it('e reconhece que o texto está sujo', () => {
@@ -157,5 +157,23 @@ describe('estrutura do JSON vazando no texto', () => {
     const normal =
       'Progressiva com formol a partir de R$ 200 (2h30), Violet a partir de R$ 270 (2h50).';
     expect(temJsonVazado(normal)).toBe(false);
+  });
+});
+
+describe('caractere de controle no lugar do acento (01/10, Luana)', () => {
+  it.each([
+    ['Luana, pra esse loiro mel o primeiro passo \ter o teste de mecha'],
+    ['hidrata\tt\tao e reconstru\tt\tao'],
+    ['N\tao tem mais o hor\tar das 9h'],
+    ['texto com \u0007 sino'],
+  ])('%j volta para o modelo', (m) => {
+    expect(camposCorrompidos({ messages: [m] })).toContain('messages');
+  });
+  it.each([
+    ['Não tem mais o horário das 9h, já te passo outro.'],
+    ['linha 1\nlinha 2'],
+    ['C:\\temp'],
+  ])('%j passa', (m) => {
+    expect(camposCorrompidos({ messages: [m] })).toEqual([]);
   });
 });

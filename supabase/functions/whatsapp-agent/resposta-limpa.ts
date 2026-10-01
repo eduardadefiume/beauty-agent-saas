@@ -73,6 +73,22 @@ export function temJsonVazado(texto: unknown): boolean {
   return typeof texto === 'string' && JSON_VAZADO.test(texto);
 }
 
+// CARACTERE DE CONTROLE NO LUGAR DO ACENTO.
+//
+// 01/10, DEV, a Luana leu: "o primeiro passo <TAB>er o teste", "hidrata<TAB>t
+// <TAB>ao", "N<TAB>ao tem mais o hor<TAB>ar". Os bytes mostram 0x09 (TAB) onde
+// estavam "é", "ção", "ã", "á". Aconteceu no turno em que a trava da reserva
+// devolveu a resposta para o modelo reescrever -- a mesma situação do "\u00e9"
+// de 25/09, com outro sintoma. Diferente do escape, aqui não dá para
+// decodificar: o acento se perdeu. TAB ou outro caractere de controle numa
+// mensagem de WhatsApp nunca é intenção; a resposta inteira volta.
+const CONTROLE = /[\u0000-\u0008\u0009\u000B\u000C\u000E-\u001F\u007F]/;
+
+/** O texto tem caractere de controle (TAB e companhia) onde deveria haver letra. */
+export function temControle(texto: unknown): boolean {
+  return typeof texto === 'string' && CONTROLE.test(texto);
+}
+
 type CamposDaDecisao = {
   messages?: unknown;
   ownerQuestion?: unknown;
@@ -90,7 +106,8 @@ export function camposCorrompidos(decisao: CamposDaDecisao | null | undefined): 
   const sujos: string[] = [];
 
   const mensagens = Array.isArray(decisao.messages) ? decisao.messages : [];
-  if (mensagens.some((m) => temMarcacao(m) || temJsonVazado(m))) sujos.push('messages');
+  if (mensagens.some((m) => temMarcacao(m) || temJsonVazado(m) || temControle(m)))
+    sujos.push('messages');
 
   for (const campo of ['ownerQuestion', 'contextSummary', 'reason'] as const) {
     if (temMarcacao(decisao[campo]) || temJsonVazado(decisao[campo])) sujos.push(campo);
