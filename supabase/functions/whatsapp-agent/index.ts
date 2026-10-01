@@ -34,7 +34,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
 import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
-import { fichaDita, quemMandaAFoto } from './ficha-dita.ts';
+import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
 import { semConfirmarAntesDoDono } from './sinal-comprovante.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
@@ -609,9 +609,15 @@ async function decidir(
     pendente('TEM_QUIMICA') ||
     pendente('QUANDO_A_QUIMICA') ||
     pendente('QUIMICA_COM_FORMOL') ||
-    pendente('TEM_COLORACAO')
+    pendente('TEM_COLORACAO') ||
+    pendente('TOM_QUE_QUER')
   ) {
     const fatos: Record<string, unknown> = { ...fatosDitos };
+    if (pendente('TOM_QUE_QUER')) {
+      const historico = (volatil as { history?: unknown })?.history;
+      const tom = tomDaFoto(Array.isArray(historico) ? historico : []);
+      if (tom) fatos.tomQueQuer = tom;
+    }
     if (!pendente('TEM_QUIMICA')) delete fatos.temQuimica;
     if (!pendente('TEM_QUIMICA') && !pendente('QUIMICA_COM_FORMOL')) delete fatos.quimicaQual;
     if (!pendente('QUANDO_A_QUIMICA') && !(pendente('TEM_QUIMICA') && fatos.temQuimica === true))

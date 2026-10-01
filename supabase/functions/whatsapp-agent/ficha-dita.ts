@@ -163,3 +163,38 @@ export function quemMandaAFoto(texto: string): string {
       `${inicio}Me manda ${artigo.toLowerCase()} ${foto.toLowerCase()}`
   );
 }
+
+// A FOTO DO TOM QUE ELA QUER.
+//
+// 01/10, ao vivo: a Luana mandou a foto com "quero esse loiro mel" logo depois
+// de "me manda uma foto do tom que você quer alcançar?". O modelo respondeu
+// "amei a referência" e não anotou; a ficha ficou dizendo que faltava o tom,
+// o horário travou e, quando ela aceitou o horário, ouviu "me confirma, aquela
+// foto é o tom que você quer?". Foto que responde o pedido do tom, ou foto com
+// legenda de desejo, É o tom. Foto do cabelo dela ("meu cabelo hoje") não é.
+type FalaComMidia = { direction?: unknown; text?: unknown; mediaKind?: unknown };
+
+const PEDIU_O_TOM =
+  /tom que (voc[eê] )?(quer|deseja)|cor que (voc[eê] )?(quer|deseja)|refer[eê]ncia|quer alcan[cç]ar|foto do (tom|resultado)/i;
+const LEGENDA_DE_DESEJO =
+  /\b(quero|queria|gostaria|sonho|amo|amei)\b.*\b(esse|essa|assim|isso|igual|desse|dessa|deste|desta)\b|\b(esse|essa|este|esta) (tom|cor|loiro|ruivo|castanho|mel|morena|luzes|mechas|resultado)\b|refer[eê]ncia|inspira[cç]/i;
+const E_O_CABELO_DELA = /\b(meu cabelo|como (ele )?est[aá]|hoje|atual|agora)\b/i;
+
+export function tomDaFoto(historico: FalaComMidia[]): string | null {
+  let ultimaDoAgente = '';
+  let tom: string | null = null;
+  for (const f of historico) {
+    const texto = String(f?.text ?? '').trim();
+    if (f?.direction !== 'INBOUND') {
+      if (texto) ultimaDoAgente = texto;
+      continue;
+    }
+    const foto = /IMAGE/i.test(String(f?.mediaKind ?? ''));
+    if (!foto) continue;
+    if (E_O_CABELO_DELA.test(texto) && !LEGENDA_DE_DESEJO.test(texto)) continue;
+    if (LEGENDA_DE_DESEJO.test(texto) || PEDIU_O_TOM.test(ultimaDoAgente)) {
+      tom = texto ? `foto de referência: "${texto}"` : 'foto de referência';
+    }
+  }
+  return tom;
+}

@@ -4,6 +4,7 @@ import {
   fichaDita,
   quemMandaAFoto,
   quimicaPodeTerFormol,
+  tomDaFoto,
 } from '../../../supabase/functions/whatsapp-agent/ficha-dita';
 
 describe('o que ela já contou do cabelo (01/10)', () => {
@@ -191,5 +192,58 @@ describe('o tempo acaba onde começa o pedido', () => {
     ['fiz selante há 3 meses mas tá caindo', 'ha 3 meses'],
   ])('%s', (fala, tempo) => {
     expect(fichaDita([fala]).quimicaHaQuantoTempo).toBe(tempo);
+  });
+});
+
+describe('a foto do tom que ela quer (01/10, Luana)', () => {
+  const IMG = 'WHATSAPP_MESSAGE_IMAGE';
+  it('caso real: foto com "quero esse loiro mel" depois do pedido do tom', () => {
+    expect(
+      tomDaFoto([
+        { direction: 'OUTBOUND', text: 'Agora me manda uma foto do tom que você quer alcançar?' },
+        { direction: 'INBOUND', text: 'quero esse loiro mel', mediaKind: IMG },
+      ])
+    ).toBe('foto de referência: "quero esse loiro mel"');
+  });
+  it('foto sem legenda logo depois do pedido do tom', () => {
+    expect(
+      tomDaFoto([
+        { direction: 'OUTBOUND', text: 'Me manda uma foto do tom que você quer?' },
+        { direction: 'INBOUND', text: '', mediaKind: IMG },
+      ])
+    ).toBe('foto de referência');
+  });
+  it('legenda de desejo mesmo sem pedido', () => {
+    expect(tomDaFoto([{ direction: 'INBOUND', text: 'queria ficar assim', mediaKind: IMG }])).toBe(
+      'foto de referência: "queria ficar assim"'
+    );
+  });
+  it.each([
+    [
+      [
+        { direction: 'OUTBOUND', text: 'Manda uma foto do seu cabelo hoje?' },
+        { direction: 'INBOUND', text: 'meu cabelo hoje', mediaKind: IMG },
+      ],
+    ],
+    [
+      [
+        { direction: 'OUTBOUND', text: 'Manda uma foto do seu cabelo hoje?' },
+        { direction: 'INBOUND', text: '', mediaKind: IMG },
+      ],
+    ],
+    [
+      [
+        { direction: 'OUTBOUND', text: 'Me manda uma foto do tom que você quer?' },
+        { direction: 'INBOUND', text: 'quero esse loiro mel' },
+      ],
+    ],
+    [
+      [
+        { direction: 'OUTBOUND', text: 'Me manda uma foto do tom que você quer?' },
+        { direction: 'INBOUND', text: 'olha como tá meu cabelo agora', mediaKind: IMG },
+      ],
+    ],
+  ])('não é o tom: %j', (hist) => {
+    expect(tomDaFoto(hist)).toBeNull();
   });
 });
