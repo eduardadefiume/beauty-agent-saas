@@ -82,6 +82,10 @@ jobs:
           baixar "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/Woman_with_long_wavy_brown_hair_from_behind.jpg/960px-Woman_with_long_wavy_brown_hair_from_behind.jpg" /tmp/castanho-ondulado.jpg
           # Tabela de precos desenhada para o caso E14 (foto da tabela).
           subir "$W/tabela-de-precos.jpg" docs/testes/imagens/tabela-de-precos-william.jpg image/jpeg
+          # Comprovantes de Pix desenhados para o teste do sinal (01/10): um com o
+          # valor certo (R$ 100) e um com o valor errado (R$ 50). Nao sao reais.
+          subir "$W/comprovante-pix-100.jpg" docs/testes/imagens/comprovante-pix-100.jpg image/jpeg
+          subir "$W/comprovante-pix-50.jpg" docs/testes/imagens/comprovante-pix-50.jpg image/jpeg
           for f in preto castanho-claro castanho-ondulado; do
             file /tmp/$f.jpg | grep -q JPEG || { echo "$f nao e JPEG"; exit 1; }
             subir "$W/$f.jpg" /tmp/$f.jpg image/jpeg
