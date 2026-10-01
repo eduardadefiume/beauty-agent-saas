@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   centavosDoTexto,
+  comLastroDoTurno,
   comPrecoEscrito,
   reaisEscritos,
   precosDoNegocio,
@@ -228,5 +229,25 @@ describe('preco escrito para o modelo copiar', () => {
       {}
     );
     expect(precosSemLastro(['Fica R$ 450,00 com muito volume.'], conhecidos)).toEqual([]);
+  });
+});
+
+describe('o que o sistema disse no turno também é lastro (01/10, Marina)', () => {
+  it('sinal devolvido dito pela ferramenta passa', () => {
+    const conhecidos = comLastroDoTurno(new Set([42000]), [
+      'Cancelado de verdade. SINAL: Ela tinha pago sinal de R$ 100 e avisou com 60 dias: o sinal VAI SER DEVOLVIDO.',
+    ]);
+    expect(
+      precosSemLastro(['Seu sinal de R$ 100 vai ser devolvido no Pix 💛'], conhecidos)
+    ).toEqual([]);
+  });
+  it('sem o texto do sistema, continua barrado', () => {
+    expect(
+      precosSemLastro(['Seu sinal de R$ 100 vai ser devolvido'], new Set([42000])).length
+    ).toBe(1);
+  });
+  it('valor inventado continua barrado mesmo com texto do sistema', () => {
+    const conhecidos = comLastroDoTurno(new Set([42000]), ['sinal de R$ 100']);
+    expect(precosSemLastro(['fica R$ 350 no total'], conhecidos).length).toBe(1);
   });
 });

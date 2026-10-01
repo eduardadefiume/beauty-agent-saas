@@ -197,3 +197,15 @@ export function comPrecoEscrito(estavel: unknown): unknown {
     }),
   };
 }
+
+/**
+ * Soma ao lastro os valores que o próprio sistema disse neste turno (texto das
+ * ferramentas, frase do comprovante). 01/10: "o sinal de R$ 100 vai ser
+ * devolvido" veio do banco e a trava bloqueou o R$ 100.
+ */
+export function comLastroDoTurno(conhecidos: Set<number>, textosDoSistema: string[]): Set<number> {
+  for (const t of textosDoSistema) {
+    for (const v of valoresEmCentavos(t)) conhecidos.add(v.centavos);
+  }
+  return conhecidos;
+}

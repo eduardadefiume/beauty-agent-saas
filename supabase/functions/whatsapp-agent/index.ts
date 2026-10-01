@@ -43,7 +43,12 @@ import {
   respostaSemProximoPasso,
   ultimaLevaDaCliente,
 } from './fecha-a-conversa.ts';
-import { comPrecoEscrito, precosDoNegocio, precosSemLastro } from './preco-com-lastro.ts';
+import {
+  comPrecoEscrito,
+  precosDoNegocio,
+  precosSemLastro,
+  comLastroDoTurno,
+} from './preco-com-lastro.ts';
 import { camposCorrompidos, semEscapes, semMarcacao } from './resposta-limpa.ts';
 
 // Sonnet 5 e nao Opus 5: com o cache ligado, a diferenca de qualidade nesta
@@ -531,6 +536,8 @@ async function decidir(
   motivoFalha?: string;
   agendou?: { quando: string; appointmentId: string; comSinal?: boolean } | null;
   cancelou?: string[];
+  // Valores que o próprio sistema disse neste turno (ferramentas, comprovante).
+  lastroDoTurno?: string[];
 }> {
   // A DIRETRIZ DO TURNO, colada depois do JSON da conversa: e a ultima coisa
   // que o modelo le antes de decidir. Nasceu de tres erros seguidos.
@@ -743,6 +750,11 @@ async function decidir(
   // O banco reconhece o comprovante (foto ou "paguei"), avisa o dono e devolve
   // a frase que ela tem que ouvir. Aqui só entra no turno.
   let comprovanteDoTurno: string | null = null;
+  // O QUE O PRÓPRIO SISTEMA DISSE NESTE TURNO TAMBÉM É LASTRO. 01/10: a Marina
+  // desmarcou com sinal pago, a ferramenta devolveu "sinal de R$ 100 vai ser
+  // devolvido", a atendente repetiu e a trava de preço bloqueou o R$ 100 -- ela
+  // ficou sem resposta. Valor que veio do banco não nasceu no modelo.
+  const textosDasFerramentas: string[] = [];
   try {
     const c = (await rpc(
       ambiente.supabaseUrl,
@@ -1285,7 +1297,13 @@ async function decidir(
         continue;
       }
 
-      return { decisao, usage, agendou, cancelou };
+      return {
+        decisao,
+        usage,
+        agendou,
+        cancelou,
+        lastroDoTurno: [...textosDasFerramentas, comprovanteDoTurno ?? ''],
+      };
     }
 
     mensagens.push({ role: 'assistant', content: resposta.content });
@@ -1700,12 +1718,20 @@ async function decidir(
       }
 
       resultados.push({ type: 'tool_result', tool_use_id: chamada.id, content: texto });
+      textosDasFerramentas.push(texto);
     }
 
     mensagens.push({ role: 'user', content: resultados });
   }
 
-  return { decisao: null, usage, motivoFalha: 'MAX_VOLTAS_ATINGIDO', agendou, cancelou };
+  return {
+    decisao: null,
+    usage,
+    motivoFalha: 'MAX_VOLTAS_ATINGIDO',
+    agendou,
+    cancelou,
+    lastroDoTurno: [...textosDasFerramentas, comprovanteDoTurno ?? ''],
+  };
 }
 
 Deno.serve(async (req) => {
@@ -1851,7 +1877,7 @@ Deno.serve(async (req) => {
         })),
       };
 
-      const { decisao, usage, motivoFalha, agendou, cancelou } = await decidir(
+      const { decisao, usage, motivoFalha, agendou, cancelou, lastroDoTurno } = await decidir(
         anthropic,
         regras,
         comPrecoEscrito(contexto.stable),
@@ -1947,7 +1973,13 @@ Deno.serve(async (req) => {
       // errado e mais caro, porque a cliente cobra ele na cadeira.
       const soltos =
         decisao.action === 'REPLY'
-          ? precosSemLastro(textos, precosDoNegocio(contexto.stable, contexto.volatile))
+          ? precosSemLastro(
+              textos,
+              comLastroDoTurno(
+                precosDoNegocio(contexto.stable, contexto.volatile),
+                lastroDoTurno ?? []
+              )
+            )
           : [];
 
       // ULTIMA LINHA CONTRA A CHAMADA QUEBRADA.
