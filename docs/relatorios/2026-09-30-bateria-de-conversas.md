@@ -65,9 +65,18 @@ valores (luzes/morena R$ 100, progressiva/coloração R$ 50, corte e escova sem 
 | Luzes 01/12 9h marcado em 01/10                                                                                                     | PENDING_SIGNAL, R$ 100, prazo 03/10 13h14 (48h), fora do Google, cartão com Pix                                                             |
 | Luzes "sem horário em dezembro inteiro"                                                                                             | causa: William sem a habilidade "Cor e mechas" no DEV; Eddy dizia que "precisava da equipe" — consertado (2ed99e3), dono liga pelo WhatsApp |
 
-Deslizes de conversa vistos (não bloqueiam): "Já te mando uma foto desse tom" (era "me manda");
-pergunta de novo o que ela já disse ("faz quanto tempo", "já fez química"); pergunta de formol para luzes;
-cartão diz "Valor: R$ 420" para serviço "a partir de".
+Deslizes de conversa (01/10) — consertados e retestados ao vivo:
 
+| Deslize                             | Conserto                                                                                                                                             | Prova                                                              |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| "Já te mando uma foto desse tom"    | `quemMandaAFoto` reescreve antes de enviar (6 casos)                                                                                                 | e379523                                                            |
+| Pergunta de novo o que ela já disse | `fichaDita` anota química/tempo/coloração antes do modelo (46 casos); `periodo_para_data` entende "ano passado", "em junho", "ano e meio" (34 casos) | Luana, Gabi, Bruna: nenhuma pergunta repetida; ficha gravada certa |
+| Formol para luzes                   | `client_profile_missing` só pergunta formol para alisamento (21 tipos conferidos)                                                                    | Luana: falta só foto e tom                                         |
+| Cartão "R$ 420" para "a partir de"  | cartão, título do Google ("A PARTIR DE 420 DEU 100", sem "ficou"), agenda do Eddy e rótulo                                                           | cartão da Marina conferido                                         |
+
+Achados no reteste (também consertados): "quero progressiva, nunca fiz química" virava "tem progressiva";
+o modelo regravava "não tem química" por cima do que ela disse; "sem química" deixava tipo/data velhos na ficha.
+
+Comportamento por regra (não é defeito): sem foto do cabelo, não passa horário de química (regra da Duda de 25/09).
 Falta: comprovante -> dono confirma -> CONFIRMED + Google + finalização; lembrete antes do prazo;
 prazo vencido -> libera e avisa; desmarcar com devolução.
