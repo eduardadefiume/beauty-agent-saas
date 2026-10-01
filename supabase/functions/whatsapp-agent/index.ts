@@ -36,6 +36,7 @@ import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
 import { semConfirmarAntesDoDono } from './sinal-comprovante.ts';
+import { pediuOutroServico } from './servico-pedido.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
   condicaoComercialIgnorada,
@@ -1467,6 +1468,26 @@ async function decidir(
             '. Pergunte a primeira delas agora. NÃO diga que está marcado.';
         } else if (!escolhido || !estado.configurationVersionId || !estado.serviceId) {
           texto = 'Essa opção não existe. Consulte os horários antes de reservar.';
+        } else if (pediuOutroServico(levaDaCliente, estado.serviceName, catalogoDeNomes)) {
+          // Ela nomeou outro serviço (ver servico-pedido.ts).
+          const pedido = pediuOutroServico(levaDaCliente, estado.serviceName, catalogoDeNomes);
+          console.error(
+            JSON.stringify({
+              event: 'reserva_bloqueada_servico_que_ela_nao_pediu',
+              conversationId: ambiente.conversationId,
+              pediu: pedido,
+              iaMarcar: estado.serviceName,
+            })
+          );
+          texto =
+            'NÃO reservei: ela pediu ' +
+            pedido +
+            ', com essas palavras, e você ia marcar ' +
+            (estado.serviceName ?? 'outro serviço') +
+            '. Consulte os horários de ' +
+            pedido +
+            ' e ofereça. Se você acha que precisa de outro serviço antes (teste, avaliação), ' +
+            'diga isso a ela com clareza e deixe ela decidir. NÃO diga que está marcado.';
         } else if (!horarioApareceuNaConversa(conversa, escolhido.startMs)) {
           console.error(
             JSON.stringify({
