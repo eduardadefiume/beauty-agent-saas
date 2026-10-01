@@ -17,7 +17,11 @@ export function semConfirmarAntesDoDono(bolhas: string[], textoCerto: string): s
     const t = String(b ?? '');
     return !(CONFIRMA.test(t) && !ESPERA.test(t));
   });
-  const jaDisse = limpas.some((b) => /receb/i.test(b) && ESPERA.test(b));
+  // 01/10: o modelo partiu a frase em dois balões ("Recebi..." / "...vai
+  // conferir") e a frase certa entrou de novo na frente: saiu duplicada.
+  // Vale a resposta inteira, não um balão só.
+  const tudo = limpas.join(' ');
+  const jaDisse = /receb/i.test(tudo) && ESPERA.test(tudo);
   return jaDisse ? limpas : [textoCerto, ...limpas];
 }
 

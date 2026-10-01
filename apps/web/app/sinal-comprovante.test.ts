@@ -47,3 +47,13 @@ describe('crédito de sinal confirma a reserva nova (01/10)', () => {
     expect(reservaPedeSinal(status as string, credito)).toBe(esperado);
   });
 });
+
+describe('não duplica a frase do comprovante (01/10, Luana)', () => {
+  it('modelo partiu a frase em dois balões', () => {
+    const bolhas = [
+      'Recebi seu comprovante, obrigada! Como o prazo do sinal tinha vencido, aquele horário foi liberado.',
+      'Já passei pro salão conferir o seu Pix e, assim que confirmarem, te ajudo a garantir um horário de novo 💛',
+    ];
+    expect(semConfirmarAntesDoDono(bolhas, 'FRASE CERTA')).toEqual(bolhas);
+  });
+});
