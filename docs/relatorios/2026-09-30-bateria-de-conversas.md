@@ -50,3 +50,24 @@ Cada linha: o que a cliente/dono fez, o que aconteceu, a prova e o conserto.
 
 Não testado: transcrição de áudio de verdade (o simulador entrega o texto pronto; só com número real).
 Reteste da desculpa: não reproduzível naturalmente depois das travas; mudança é um filtro de texto.
+
+## Sinal (01/10) — o dono configura, a cliente recebe o cartão
+
+Configuração feita pelo William-robô no WhatsApp do Eddy, uma pergunta por vez:
+valores (luzes/morena R$ 100, progressiva/coloração R$ 50, corte e escova sem sinal), só em dezembro,
+48h se marcar no mês anterior / 24h no próprio mês, Pix 16 99999-0000 (William Ferreira), devolve com 48h, ligado.
+
+| Caso                                                                                                                                | Resultado                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Eddy larga o sinal no meio para perguntar de cor                                                                                    | FALHOU, consertado (3e9e9c0) — reteste OK                                                                                                   |
+| Conta do prazo (9 casos: nov->dez 48h, dez->dez 24h, corta 2h antes, em cima da hora sem sinal, fora do período, serviço sem sinal) | OK no banco                                                                                                                                 |
+| Corte em dezembro (sem sinal)                                                                                                       | CONFIRMED, NOT_REQUIRED, finalização normal                                                                                                 |
+| Luzes 01/12 9h marcado em 01/10                                                                                                     | PENDING_SIGNAL, R$ 100, prazo 03/10 13h14 (48h), fora do Google, cartão com Pix                                                             |
+| Luzes "sem horário em dezembro inteiro"                                                                                             | causa: William sem a habilidade "Cor e mechas" no DEV; Eddy dizia que "precisava da equipe" — consertado (2ed99e3), dono liga pelo WhatsApp |
+
+Deslizes de conversa vistos (não bloqueiam): "Já te mando uma foto desse tom" (era "me manda");
+pergunta de novo o que ela já disse ("faz quanto tempo", "já fez química"); pergunta de formol para luzes;
+cartão diz "Valor: R$ 420" para serviço "a partir de".
+
+Falta: comprovante -> dono confirma -> CONFIRMED + Google + finalização; lembrete antes do prazo;
+prazo vencido -> libera e avisa; desmarcar com devolução.
