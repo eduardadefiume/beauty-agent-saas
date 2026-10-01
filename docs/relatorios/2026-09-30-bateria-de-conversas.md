@@ -78,5 +78,29 @@ Achados no reteste (também consertados): "quero progressiva, nunca fiz química
 o modelo regravava "não tem química" por cima do que ela disse; "sem química" deixava tipo/data velhos na ficha.
 
 Comportamento por regra (não é defeito): sem foto do cabelo, não passa horário de química (regra da Duda de 25/09).
-Falta: comprovante -> dono confirma -> CONFIRMED + Google + finalização; lembrete antes do prazo;
-prazo vencido -> libera e avisa; desmarcar com devolução.
+
+## Sinal depois do cartão (01/10) — ao vivo no DEV
+
+| Passo                            | Prova                                                                                                                                                                                               |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Marina manda foto do comprovante | leitura "R$ 100,00"; William recebe "💰 Comprovante de sinal (#S1480)... Caiu? sim ou não"; Marina ouve "o salão vai conferir" (nunca "confirmado")                                                 |
+| William: "caiu sim"              | atalho sem modelo: CONFIRMED/CONFIRMED; Marina recebe "✅ Sinal recebido" + finalização; Google: "MARINA ... LUZES (A PARTIR DE 420 DEU 100)", descrição "a partir de R$ 420 / o resto no dia"      |
+| Marina desmarca com 60 dias      | William recebe "💸 Devolver sinal... R$ 100 no Pix dela"; depois ela pergunta do sinal e ouve "vai ser devolvido"                                                                                   |
+| Lembrete e prazo vencido         | relógio simulado (transação desfeita): lembrete 1x às 20h30 da véspera, nunca de madrugada; vencido libera agenda e avisa das 8h às 21h; comprovante antes do prazo segura o horário e cobra o dono |
+| Matrizes no banco                | 20/20 "é pagamento?", 6/6 valor lido, 7/7 hora do lembrete, 21/21 formol, comprovante/dono/desmarcar em transação desfeita                                                                          |
+
+Falhas achadas no teste e consertadas (cada uma com teste automático):
+
+- marcou **Teste de mecha** quando ela disse "as luzes dia 3 às 9h" -> trava `pediuOutroServico`;
+- **TAB no lugar do acento** chegou à cliente ("passo \ter o teste") -> trava de texto corrompido;
+- **resposta bloqueada** ao desmarcar: o R$ 100 do sinal não contava como valor conhecido -> lastro do turno + valores de sinal;
+- atendente não sabia do sinal desmarcado -> `sinal_da_cliente` em todo turno;
+- **cancelou o teste de mecha sem ela pedir** -> só desmarca o que ela citou;
+- foto do tom não anotada (Luana ouviu "me confirma a foto?") -> `tomDaFoto`;
+- "não tem química" deixava "progressiva" na ficha; "quero luzes" virava "tem luzes"; modelo desmentia a cliente.
+
+Em aberto (decisão da Duda / produção):
+
+- **Teste de mecha nas luzes**: o cadastro diz que Luzes não exige teste, mas as regras de ofício mandam a atendente levar para o teste, e ela inventou "luzes na sequência, mesmo dia". Qual é a regra?
+- **Modelos da Meta**: lembrete e aviso de vencido caem fora da janela de 24h no WhatsApp real. Precisam de modelos aprovados (LEMBRETE_DO_SINAL, SINAL_VENCEU); sem eles, o envio falha e fica registrado (`sinal_avisos.falhou`).
+- Pagou depois do prazo: o crédito é avisado, mas ainda não é abatido sozinho na nova reserva (o dono diz "a Marina já pagou").
