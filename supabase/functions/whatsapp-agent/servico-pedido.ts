@@ -48,3 +48,26 @@ export function pediuOutroServico(
   if (ditos.some((d) => sem(d) === sem(servicoQueVaiMarcar))) return null;
   return ditos[0];
 }
+
+// ELA NÃO PEDIU PARA DESMARCAR ISSO.
+//
+// 01/10, DEV: a Marina desmarcou as luzes; no turno seguinte perguntou do
+// sinal, e a atendente "já cancelei também o teste de mecha de quarta". Ela
+// nunca falou do teste. Pode até fazer sentido, mas quem decide é ela.
+// Desmarca só o que ela citou -- pelo serviço ou pela data -- nas falas dela.
+
+/** true quando as falas dela citam este agendamento (serviço ou dia DD/MM). */
+export function eleaCitouOAgendamento(
+  falasDela: string[],
+  servico: string,
+  quandoDDMM: string
+): boolean {
+  // sem() troca a barra por espaço: "07/10" chega aqui como "07 10".
+  const t = sem(falasDela.join(' '));
+  if (t.includes(sem(servico))) return true;
+  const m = quandoDDMM.match(/^(\d{2})\/(\d{2})/);
+  if (!m) return false;
+  const dia = String(Number(m[1]));
+  const mes = String(Number(m[2]));
+  return new RegExp(`\\b0?${dia}\\s+0?${mes}\\b|\\bdia\\s+0?${dia}\\b`).test(t);
+}

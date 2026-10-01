@@ -36,7 +36,7 @@ import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
 import { semConfirmarAntesDoDono } from './sinal-comprovante.ts';
-import { pediuOutroServico } from './servico-pedido.ts';
+import { eleaCitouOAgendamento, pediuOutroServico } from './servico-pedido.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
   condicaoComercialIgnorada,
@@ -1637,6 +1637,21 @@ async function decidir(
               : `Não existe o número ${args.numero} na lista. Nada foi cancelado. Confira proximosAgendamentos.`;
         } else if (cancelou.includes(alvo.appointmentId)) {
           texto = `Esse horário (${alvo.servico}, ${alvo.diaDaSemana} ${alvo.quando}) já foi cancelado neste turno.`;
+        } else if (
+          !eleaCitouOAgendamento(
+            falasDaConversa(volatil)
+              .filter((f) => f.direction === 'INBOUND')
+              .slice(-6)
+              .map((f) => String(f.text ?? '')),
+            alvo.servico,
+            alvo.quando
+          )
+        ) {
+          // Ela não pediu para desmarcar ESTE (ver servico-pedido.ts).
+          texto =
+            `NÃO cancelei: ela não falou de ${alvo.servico} (${alvo.diaDaSemana} ${alvo.quando}). ` +
+            'Quem decide é ela. Se faz sentido desmarcar também, PERGUNTE se ela quer. ' +
+            'NÃO diga que cancelou.';
         } else {
           const r = await agenda(ambiente.supabaseUrl, ambiente.serviceKey, ambiente.workerToken, {
             action: 'cancelAppointment',
