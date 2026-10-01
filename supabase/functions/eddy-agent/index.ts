@@ -47,6 +47,22 @@ const CACHE_TTL = '1h' as const;
 // Lote grande e o normal de quem configura por audio.
 // O que o dono costuma pedir e o Eddy ainda nao faz. Dito com clareza e com
 // a alternativa, para ele nao prometer nem se calar.
+// As perguntas do sinal, na ordem de app.sinal_resumo().falta.
+const PERGUNTA_DO_SINAL: Record<string, string> = {
+  VALORES:
+    '"Em quais procedimentos você quer cobrar sinal, e quanto em cada? Ex.: luzes R$ 100, progressiva R$ 50, corte não cobra." -> definir_sinal_do_servico (uma chamada por procedimento)',
+  PERIODO:
+    '"O sinal vale sempre, ou só num período? Ex.: só em dezembro." -> configurar_sinal (sempre = valeDe "" e valeAte "")',
+  PRAZO:
+    '"Depois de marcar, quanto tempo a cliente tem pra pagar o sinal? O normal é 24h. E se ela marcar com antecedência, tipo em novembro pra dezembro, quer dar mais tempo (ex.: 48h)?" -> configurar_sinal (prazoHoras e prazoMesAnteriorHoras). ' +
+    'Diga também, numa linha, que o prazo nunca passa de 2h antes do horário e que, se não pagar no prazo, o horário é liberado e a cliente é avisada.',
+  PIX: '"Qual a chave Pix que a cliente vai usar pra pagar o sinal, e em nome de quem aparece?" -> configurar_sinal (pixChave, pixTitular)',
+  DEVOLUCAO:
+    '"Se a cliente pagar o sinal e depois desmarcar, você devolve? Se sim, com quantas horas de antecedência ela tem que avisar?" -> configurar_sinal (devolve, devolveAteHoras)',
+  LIGAR:
+    'mostre o resumo do sinal em poucas linhas e pergunte "Posso ligar o sinal?" -> configurar_sinal ativo true',
+};
+
 const O_QUE_AINDA_NAO_FACO =
   'A AGENDA DO SALÃO você VÊ: quem vem, quantas marcaram, quanto vai entrar, quem está esperando sinal -- use `ver_agenda`. ' +
   'Nunca diga que não tem acesso à agenda. ' +
@@ -1204,6 +1220,33 @@ Deno.serve(async (req: Request) => {
           );
         if (adiado) jaPerguntouAgora = true;
       }
+      // O SINAL: o que o dono ja decidiu e a proxima pergunta. 01/10, Duda:
+      // "essas perguntas voce tem que fazer ao dono" -- o dono responde, nao nos.
+      // Lido ANTES do roteiro: 01/10, o dono respondeu os valores do sinal e o
+      // Eddy largou o sinal no meio para perguntar de cor e mechas.
+      let sinalResumo: {
+        ativo?: boolean;
+        falta?: string[];
+        valores?: Record<string, string>;
+      } | null = null;
+      try {
+        sinalResumo = (await rpc(supabaseUrl, serviceKey, 'sinal_resumo', {
+          p_tenant_id: tenantId,
+        })) as typeof sinalResumo;
+      } catch {
+        // sem o resumo o Eddy so nao conduz o sinal neste turno
+      }
+      const histDoDono = ((contexto.history ?? []) as Array<{ direction?: string; text?: string }>)
+        .filter((h) => h.direction === 'INBOUND')
+        .slice(-4)
+        .map((h) => h.text ?? '')
+        .join(' ');
+      const sinalEmAndamento =
+        !!sinalResumo &&
+        (sinalResumo.falta ?? []).length > 0 &&
+        (Object.keys(sinalResumo.valores ?? {}).length > 0 || /\bsina(l|is)\b/i.test(histDoDono));
+      if (sinalEmAndamento) jaPerguntouAgora = true;
+
       // MUDANCA DEPOIS DE PUBLICAR. 28/09/2026: o dono mudou o preco da escova
       // com o salao ja publicado e o Eddy disse "Prontinho". Estava gravado,
       // mas no rascunho: a atendente seguia cobrando o preco antigo e o dono
@@ -1217,9 +1260,11 @@ Deno.serve(async (req: Request) => {
         : '';
       const textoDoRoteiro = roteiro.length
         ? (jaPerguntouAgora
-            ? (adiado
-                ? `ASSUNTO ADIADO PELO DONO: [${roteiro[0].campo}]. Ele disse que manda depois. NÃO lembre, NÃO cobre e NÃO mencione esse assunto até ele voltar a ele. Se o cadastro precisar de algo, é outro assunto.\n`
-                : `PRÓXIMA PERGUNTA (JÁ FEITA HÁ POUCO — NÃO REPITA NESTA RESPOSTA): [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n`) +
+            ? (sinalEmAndamento
+                ? `PAUSADO: [${roteiro[0].campo}]. Ele está configurando o SINAL agora: NÃO fale deste assunto nesta resposta.\n`
+                : adiado
+                  ? `ASSUNTO ADIADO PELO DONO: [${roteiro[0].campo}]. Ele disse que manda depois. NÃO lembre, NÃO cobre e NÃO mencione esse assunto até ele voltar a ele. Se o cadastro precisar de algo, é outro assunto.\n`
+                  : `PRÓXIMA PERGUNTA (JÁ FEITA HÁ POUCO — NÃO REPITA NESTA RESPOSTA): [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n`) +
               'Ele está em outro assunto. Resolva só o que ele mandou e, no fim, pergunte se tem mais alguma mudança. ' +
               'Volte a esta pergunta quando ele disser que terminou.\n'
             : `PRÓXIMA PERGUNTA: [${roteiro[0].campo}] ${roteiro[0].perguntaSugerida}\n`) +
@@ -1259,43 +1304,21 @@ Deno.serve(async (req: Request) => {
         // sem a lista, o Eddy so nao ve; nada se perde
       }
 
-      // O SINAL: o que o dono ja decidiu e a proxima pergunta. 01/10, Duda:
-      // "essas perguntas voce tem que fazer ao dono" -- o dono responde, nao nos.
       let blocoDoSinal = '';
-      try {
-        const sr = (await rpc(supabaseUrl, serviceKey, 'sinal_resumo', {
-          p_tenant_id: tenantId,
-        })) as {
-          ativo?: boolean;
-          falta?: string[];
-        } | null;
-        if (sr) {
-          const PERGUNTA: Record<string, string> = {
-            VALORES:
-              '"Em quais procedimentos você quer cobrar sinal, e quanto em cada? Ex.: luzes R$ 100, progressiva R$ 50, corte não cobra." -> definir_sinal_do_servico (uma chamada por procedimento)',
-            PERIODO:
-              '"O sinal vale sempre, ou só num período? Ex.: só em dezembro." -> configurar_sinal (sempre = valeDe "" e valeAte "")',
-            PRAZO:
-              '"Depois de marcar, quanto tempo a cliente tem pra pagar o sinal? O normal é 24h. E se ela marcar com antecedência, tipo em novembro pra dezembro, quer dar mais tempo (ex.: 48h)?" -> configurar_sinal (prazoHoras e prazoMesAnteriorHoras). ' +
-              'Diga também, numa linha, que o prazo nunca passa de 2h antes do horário e que, se não pagar no prazo, o horário é liberado e a cliente é avisada.',
-            PIX: '"Qual a chave Pix que a cliente vai usar pra pagar o sinal, e em nome de quem aparece?" -> configurar_sinal (pixChave, pixTitular)',
-            DEVOLUCAO:
-              '"Se a cliente pagar o sinal e depois desmarcar, você devolve? Se sim, com quantas horas de antecedência ela tem que avisar?" -> configurar_sinal (devolve, devolveAteHoras)',
-            LIGAR:
-              'mostre o resumo do sinal em poucas linhas e pergunte "Posso ligar o sinal?" -> configurar_sinal ativo true',
-          };
-          const proxima = (sr.falta ?? [])[0];
-          blocoDoSinal =
-            '\n\nSINAL PARA AGENDAR (o que o dono já decidiu; quem decide é ELE, nunca você): ' +
-            JSON.stringify(sr) +
-            (proxima
-              ? '\nSe ele quer cobrar sinal (escolheu pedir sinal, ou falou de sinal agora), e o roteiro e os ajustes acima não têm pergunta antes, a próxima pergunta é: ' +
-                PERGUNTA[proxima] +
-                '. Uma pergunta por vez. Se ele já respondeu outra coisa do sinal, grave e siga na ordem.'
-              : '');
-        }
-      } catch {
-        // sem o resumo o Eddy so nao conduz o sinal neste turno
+      if (sinalResumo) {
+        const proxima = (sinalResumo.falta ?? [])[0];
+        blocoDoSinal =
+          '\n\nSINAL PARA AGENDAR (o que o dono já decidiu; quem decide é ELE, nunca você): ' +
+          JSON.stringify(sinalResumo) +
+          (proxima
+            ? sinalEmAndamento
+              ? '\nELE ESTÁ CONFIGURANDO O SINAL AGORA. Depois de gravar o que ele respondeu, a próxima pergunta é: ' +
+                PERGUNTA_DO_SINAL[proxima] +
+                '. Ela vem ANTES de qualquer outra pergunta do cadastro. Uma pergunta por vez.'
+              : '\nSe ele quer cobrar sinal (escolheu pedir sinal, ou falou de sinal agora), a próxima pergunta é: ' +
+                PERGUNTA_DO_SINAL[proxima] +
+                '. Uma pergunta por vez.'
+            : '');
       }
 
       // AS PERGUNTAS DA ATENDENTE QUE ESPERAM O DONO. So entram quando ha
@@ -2694,7 +2717,7 @@ Deno.serve(async (req: Request) => {
                   'Gravado e JÁ VALE (não passa por publicar). Como ficou: ' +
                   JSON.stringify(r.sinal) +
                   ((r.sinal?.falta ?? []).length
-                    ? ` Próxima pergunta do sinal: ${(r.sinal?.falta ?? [])[0]}.`
+                    ? ` Próxima pergunta do sinal (faça agora, antes de qualquer outro assunto): ${PERGUNTA_DO_SINAL[(r.sinal?.falta ?? [])[0]] ?? (r.sinal?.falta ?? [])[0]}.`
                     : ' O sinal está completo e ligado.');
               } else if (r?.reason === 'FALTA_VALOR_OU_PIX') {
                 texto =
@@ -2720,12 +2743,17 @@ Deno.serve(async (req: Request) => {
                 cobra?: boolean;
                 preco?: string;
                 servicos?: string[];
+                sinal?: { falta?: string[] };
               } | null;
               if (r?.ok) {
                 anotadas++;
-                texto = r.cobra
-                  ? `Gravado: sinal de ${r.valor} em ${r.servico}. Vale na hora.`
-                  : `Gravado: ${r.servico} não cobra sinal.`;
+                texto =
+                  (r.cobra
+                    ? `Gravado: sinal de ${r.valor} em ${r.servico}. Vale na hora.`
+                    : `Gravado: ${r.servico} não cobra sinal.`) +
+                  ' Quando gravar todos que ele disse, a próxima pergunta do sinal (antes de qualquer outro assunto) é: ' +
+                  (PERGUNTA_DO_SINAL[(r.sinal?.falta ?? []).find((f) => f !== 'VALORES') ?? ''] ??
+                    'nenhuma, o sinal está completo');
               } else if (r?.reason === 'SERVICO_NAO_EXISTE') {
                 texto = `NÃO gravei: não tem "${a.servico}" no cadastro. Os procedimentos são: ${(r.servicos ?? []).join(', ')}. Pergunte qual é.`;
               } else if (r?.reason === 'SINAL_MAIOR_QUE_O_PRECO') {
