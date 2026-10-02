@@ -16,7 +16,8 @@ import { camposCorrompidos, semEscapes } from '../whatsapp-agent/resposta-limpa.
 import { respostaAoSinal } from './sinal-do-dono.ts';
 import { devolucaoDita } from './devolucao-dita.ts';
 import { valorDaQuimicaDito } from './sinal-quimica-dito.ts';
-import { umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.ts';
+import { temPergunta, umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.ts';
+import { comProximoPasso } from './proximo-passo.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -3430,13 +3431,50 @@ Deno.serve(async (req: Request) => {
       // cobranca. A pergunta so volta quando ele puxar o assunto ou terminar.
       const lembraAEtapa = (t: string) =>
         jaPerguntouAgora && !!sinalDaEtapa && sinalDaEtapa.test(t) && t.length <= 240;
-      // Uma pergunta por vez (ver uma-pergunta.ts): garantido no código.
-      const textos = umaPerguntaPorVez(
+      // Uma pergunta por vez (ver uma-pergunta.ts): garantido no código. E
+      // nunca termina sem próximo passo quando o cadastro tem pendência
+      // (ver proximo-passo.ts).
+      const levaDoDono = (() => {
+        const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
+        let i = hist.length - 1;
+        while (i >= 0 && hist[i].direction === 'INBOUND') i--;
+        return hist
+          .slice(i + 1)
+          .map((h) => h.text ?? '')
+          .join(' . ');
+      })();
+      const umaSo = umaPerguntaPorVez(
         (decisao.messages ?? [])
           .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
           .filter((t) => t.length > 0)
           .filter((t, _i, todos) => !((repeteARoteiro(t) || lembraAEtapa(t)) && todos.length > 1))
-      )
+      );
+      // O roteiro lido no começo do turno pode ter ficado velho: se ele acabou
+      // de responder a pendência, ela não volta. Relê do banco só quando a
+      // resposta ficou sem pergunta.
+      let proximaDoRoteiro = '';
+      if (
+        decisao.action === 'REPLY' &&
+        !adiado &&
+        !sinalEmAndamento &&
+        roteiro.length > 0 &&
+        !umaSo.some((t) => temPergunta(t))
+      ) {
+        try {
+          const agora = (await rpc(supabaseUrl, serviceKey, 'build_owner_context', {
+            p_conversation_id: item.conversation_id,
+            p_history_limit: 1,
+          })) as { negocio?: { falta?: Array<{ perguntaSugerida?: string }> } } | null;
+          proximaDoRoteiro = agora?.negocio?.falta?.[0]?.perguntaSugerida ?? '';
+        } catch {
+          proximaDoRoteiro = '';
+        }
+      }
+      const textos = comProximoPasso(umaSo, {
+        proxima: proximaDoRoteiro,
+        leva: levaDoDono,
+        bloqueado: adiado || sinalEmAndamento,
+      })
         // No maximo 3 baloes, mas sem perder nada: 28/09, caso E14, o 4o
         // balao (os servicos que so a tabela tinha) era cortado calado.
         .reduce<string[]>((acc, t) => {
