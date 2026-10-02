@@ -36,7 +36,12 @@ import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
 import { reservaPedeSinal, semConfirmarAntesDoDono } from './sinal-comprovante.ts';
-import { eleaCitouOAgendamento, pediuOutroServico } from './servico-pedido.ts';
+import {
+  eleaCitouOAgendamento,
+  pediuOutroServico,
+  testeSemPedir,
+  type ModoDoTeste,
+} from './servico-pedido.ts';
 import { avisoDeVolta, frasesRepetidas, voltasDaCliente } from './nao-insista.ts';
 import {
   condicaoComercialIgnorada,
@@ -809,6 +814,41 @@ async function decidir(
   // desmarcado com devolução... 01/10: a Marina perguntou "e o sinal que eu
   // paguei?" depois de desmarcar e a atendente não sabia de nada.
   let sinalDaCliente = '';
+  // O TESTE DE MECHA DESTE SALÃO (app.teste_mecha_resumo). Regra da Duda,
+  // 01/10: padrão global = teste no começo do procedimento, no mesmo dia,
+  // dentro do tempo dele; marca-se o PROCEDIMENTO. Cada salão pode mudar.
+  let modoDoTeste: ModoDoTeste = 'MESMO_DIA';
+  let blocoDoTeste = '';
+  try {
+    const t = (await rpc(ambiente.supabaseUrl, ambiente.serviceKey, 'teste_mecha_resumo', {
+      p_tenant_id: ambiente.tenantId,
+    })) as {
+      modo?: ModoDoTeste;
+      diasAntes?: number | null;
+      jeitoDeFalar?: string | null;
+      servicoDoTeste?: string | null;
+      valorDoTeste?: string | null;
+    };
+    modoDoTeste = t?.modo ?? 'MESMO_DIA';
+    const teste = t?.servicoDoTeste ?? 'teste de mecha';
+    const valor = t?.valorDoTeste ? ` (${t.valorDoTeste})` : '';
+    blocoDoTeste =
+      '\n\nTESTE DE MECHA NESTE SALÃO: ' +
+      (modoDoTeste === 'SEM_TESTE'
+        ? 'este salão NÃO faz teste de mecha. Não ofereça teste; vá direto ao procedimento.'
+        : modoDoTeste === 'ANTES'
+          ? `o teste é marcado à parte, pelo menos ${t?.diasAntes ?? '?'} dia(s) antes do procedimento. ` +
+            'Para luzes, mechas, descoloração e química: ofereça os dois horários (teste primeiro).'
+          : 'o teste é feito no COMEÇO do procedimento, no mesmo dia, e já está dentro do tempo dele. ' +
+            'Quando ela falar de luzes, mechas, descoloração ou química: pergunte se ela quer só o teste ' +
+            'ou já marcar o procedimento. Se for o procedimento, ou se ela não souber se o cabelo aguenta, ' +
+            'explique que o teste mostra isso e que, passando, o procedimento segue na hora, no mesmo dia. ' +
+            'Diga o valor do que ela vai marcar e siga até fechar. MARQUE O PROCEDIMENTO (o horário dele já ' +
+            `inclui o teste). Só marque ${teste}${valor} sozinho se ela quiser só o teste.`) +
+      (t?.jeitoDeFalar ? ` Jeito do salão falar disso: ${t.jeitoDeFalar}` : '');
+  } catch (erro) {
+    console.error(JSON.stringify({ event: 'teste_mecha_resumo_falhou', erro: String(erro) }));
+  }
   try {
     const lista = (await rpc(ambiente.supabaseUrl, ambiente.serviceKey, 'sinal_da_cliente', {
       p_conversation_id: ambiente.conversationId,
@@ -856,6 +896,7 @@ async function decidir(
         JSON.stringify(volatil) +
         (avisoDaVolta ? '\n\n' + avisoDaVolta : '') +
         sinalDaCliente +
+        blocoDoTeste +
         avisoDoSinal +
         diretrizDoTurno,
     },
@@ -1552,6 +1593,32 @@ async function decidir(
             '. Pergunte a primeira delas agora. NÃO diga que está marcado.';
         } else if (!escolhido || !estado.configurationVersionId || !estado.serviceId) {
           texto = 'Essa opção não existe. Consulte os horários antes de reservar.';
+        } else if (
+          testeSemPedir(
+            falasDaConversa(volatil)
+              .filter((f) => f.direction === 'INBOUND')
+              .slice(-6)
+              .map((f) => String(f.text ?? '')),
+            estado.serviceName,
+            modoDoTeste,
+            catalogoDeNomes
+          )
+        ) {
+          // Regra do teste de mecha do salão (ver servico-pedido.ts).
+          console.error(
+            JSON.stringify({
+              event: 'reserva_bloqueada_teste_sem_pedir',
+              conversationId: ambiente.conversationId,
+              modo: modoDoTeste,
+            })
+          );
+          texto =
+            modoDoTeste === 'SEM_TESTE'
+              ? 'NÃO reservei: este salão não faz teste de mecha. Marque o procedimento que ela quer. NÃO diga que está marcado.'
+              : 'NÃO reservei o teste de mecha sozinho: neste salão o teste é feito no começo do procedimento, ' +
+                'no mesmo dia, dentro do tempo dele, e ela não pediu só o teste. Consulte e marque o PROCEDIMENTO ' +
+                'que ela quer. Se não ficou claro, pergunte se ela quer só o teste ou já o procedimento. ' +
+                'NÃO diga que está marcado.';
         } else if (pediuOutroServico(levaDaCliente, estado.serviceName, catalogoDeNomes)) {
           // Ela nomeou outro serviço (ver servico-pedido.ts).
           const pedido = pediuOutroServico(levaDaCliente, estado.serviceName, catalogoDeNomes);

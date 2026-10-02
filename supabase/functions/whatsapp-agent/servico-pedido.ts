@@ -22,11 +22,21 @@ function nomeados(fala: string, catalogo: string[]): string[] {
   let t = sem(fala);
   const achados: string[] = [];
   for (const nome of [...catalogo].sort((a, b) => b.length - a.length)) {
-    const n = sem(nome);
-    if (n.trim().length < 3) continue;
-    if (t.includes(n)) {
+    const n = sem(nome).trim();
+    if (n.length < 3) continue;
+    // "teste de mechas" e "teste de mecha", "as mecha" e "mechas": cada
+    // palavra vale no singular e no plural.
+    const padrao = new RegExp(
+      ' ' +
+        n
+          .split(' ')
+          .map((w) => w.replace(/s$/, '') + 's?')
+          .join(' ') +
+        ' '
+    );
+    if (padrao.test(t)) {
       achados.push(nome);
-      t = t.replace(n, ' ');
+      t = t.replace(padrao, ' ');
     }
   }
   return achados;
@@ -64,10 +74,50 @@ export function eleaCitouOAgendamento(
 ): boolean {
   // sem() troca a barra por espaço: "07/10" chega aqui como "07 10".
   const t = sem(falasDela.join(' '));
-  if (t.includes(sem(servico))) return true;
+  if (nomeados(falasDela.join(' '), [servico]).length > 0) return true;
   const m = quandoDDMM.match(/^(\d{2})\/(\d{2})/);
   if (!m) return false;
   const dia = String(Number(m[1]));
   const mes = String(Number(m[2]));
   return new RegExp(`\\b0?${dia}\\s+0?${mes}\\b|\\bdia\\s+0?${dia}\\b`).test(t);
+}
+
+// O TESTE DE MECHA SOZINHO, SÓ SE ELA PEDIU.
+//
+// Regra da Duda (01/10): no padrão global o teste é feito no começo do
+// procedimento, no mesmo dia, dentro do tempo dele. O que se marca é o
+// PROCEDIMENTO. O teste sozinho só quando ela quer só o teste. Cada salão
+// escolhe o seu modo (app.teste_mecha_config):
+//   MESMO_DIA  -> teste sozinho só se ela pediu só o teste
+//   ANTES      -> o teste à parte é o normal: não trava
+//   SEM_TESTE  -> o salão não faz teste: nunca marca teste
+export type ModoDoTeste = 'MESMO_DIA' | 'ANTES' | 'SEM_TESTE';
+
+const E_TESTE = /\btest(e|inho)s?\b.*\bme(ch|x)as?\b|\btest(e|inho)\b/;
+const SO_O_TESTE =
+  /\b(so|somente|apenas|soh)\b[^.!?]{0,20}\btest(e|inho)|\btest(e|inho)\b[^.!?]{0,30}\b(primeiro|antes|por enquanto|sozinho|depois (eu )?(decido|vejo|marco))\b/;
+const NEGA_SO_O_TESTE = /\bnao\b[^.!?]{0,15}\b(so|somente|apenas)\b[^.!?]{0,10}\btest/;
+
+/** true quando marcar o teste sozinho vai contra a regra do salão. */
+export function testeSemPedir(
+  falasDela: string[],
+  servicoQueVaiMarcar: string | null | undefined,
+  modo: ModoDoTeste,
+  procedimentos: string[]
+): boolean {
+  if (!servicoQueVaiMarcar || !E_TESTE.test(sem(servicoQueVaiMarcar))) return false;
+  if (modo === 'SEM_TESTE') return true;
+  if (modo === 'ANTES') return false;
+  const t = sem(falasDela.join(' . '));
+  if (NEGA_SO_O_TESTE.test(t)) return true;
+  if (SO_O_TESTE.test(t)) return false;
+  // Citou um procedimento: o que se marca é ele (o teste vai junto).
+  // "teste de mechas" não é o serviço "Mechas": tira a expressão do teste antes.
+  const semOTeste = ` ${t.replace(/\btest(e|inho)s?( de| da| das| do)? me(ch|x)as?\b/g, ' ')} `;
+  const citouProcedimento = procedimentos.some(
+    (p) => !E_TESTE.test(sem(p)) && semOTeste.includes(sem(p))
+  );
+  if (citouProcedimento) return true;
+  // Falou de teste sem procedimento nenhum ("marca o teste de mecha"): é o teste.
+  return !E_TESTE.test(t);
 }
