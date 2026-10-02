@@ -17,7 +17,7 @@ import { respostaAoSinal } from './sinal-do-dono.ts';
 import { devolucaoDita } from './devolucao-dita.ts';
 import { valorDaQuimicaDito } from './sinal-quimica-dito.ts';
 import { temPergunta, umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.ts';
-import { comProximoPasso, semRefrao } from './proximo-passo.ts';
+import { comProximoPasso, padraoDaCor, semRefrao } from './proximo-passo.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -924,6 +924,27 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'aceitar_padrao_da_cor',
+    description:
+      'Grava DE UMA VEZ todas as perguntasDeCor que faltam com o padrão (sugestao de cada uma), menos as exceções que ele disser. Use quando ele aceitar o padrão da cor ("pode ser", "isso mesmo", "faço assim") ou aceitar com mudanças ("pode, mas a matização eu cobro 50" -> excecoes [{chave:"REAIS_MATIZACAO", valor:50}]). ' +
+      'Unidades: NIVEIS número de tons; MINUTOS minutos; REAIS reais (0 = incluso); SIM_NAO 1/0.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        excecoes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { chave: { type: 'string' }, valor: { type: 'number' } },
+            required: ['chave', 'valor'],
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'definir_adicional_do_tom',
     description:
       'Grava quanto um TOM/COR custa a mais (e, se ele disser, quanto tempo leva a mais) sobre o preço do procedimento. Ex.: "o platinado eu cobro mais cem" -> tom "platinado", reais 100. "O resto é o preço normal" -> não precisa chamar para os outros. ' +
@@ -1727,6 +1748,27 @@ Deno.serve(async (req: Request) => {
             }) +
             '\n\nO ROTEIRO DO CADASTRO (a primeira é a sua próxima pergunta; se ele já respondeu outra coisa, grave e volte a ela):\n' +
             textoDoRoteiro +
+            // O padrão da cor numa mensagem só (proximo-passo.ts).
+            (roteiro[0]?.campo === 'CORES'
+              ? (() => {
+                  const padrao = padraoDaCor(
+                    (
+                      roteiro[0] as {
+                        perguntasDeCor?: Array<{
+                          chave?: string;
+                          sugestao?: number;
+                          pergunta?: string;
+                        }>;
+                      }
+                    ).perguntasDeCor ?? []
+                  );
+                  return padrao
+                    ? '\nCOR: depois que ele contar como trabalha com cor (foto ou áudio), NÃO faça as perguntasDeCor uma a uma: mande exatamente este padrão e, quando ele aceitar (ou aceitar com mudanças), chame aceitar_padrao_da_cor. Nunca suponha um valor que ele não confirmou. Padrão: ' +
+                        padrao +
+                        '\n'
+                    : '';
+                })()
+              : '') +
             avisoDePublicado +
             '\n\nO CADASTRO COMO ESTÁ AGORA (lido do banco neste turno; é daqui que você confirma qualquer coisa; dias: 0=domingo … 6=sábado):\n' +
             cadastroAgora +
@@ -2952,6 +2994,56 @@ Deno.serve(async (req: Request) => {
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
             }
+          } else if (chamada.name === 'aceitar_padrao_da_cor') {
+            const a = (chamada.input ?? {}) as {
+              excecoes?: Array<{ chave: string; valor: number }>;
+            };
+            try {
+              const ctx = (await rpc(supabaseUrl, serviceKey, 'build_owner_context', {
+                p_conversation_id: item.conversation_id,
+                p_history_limit: 1,
+              })) as {
+                negocio?: {
+                  falta?: Array<{
+                    campo?: string;
+                    perguntasDeCor?: Array<{ chave?: string; sugestao?: number }>;
+                  }>;
+                };
+              } | null;
+              const cores = (ctx?.negocio?.falta ?? []).find((f) => f.campo === 'CORES');
+              const pendentes = cores?.perguntasDeCor ?? [];
+              const excecao = new Map((a.excecoes ?? []).map((e) => [e.chave, Number(e.valor)]));
+              const desconhecidas = [...excecao.keys()].filter(
+                (k) => !pendentes.some((p) => p.chave === k)
+              );
+              let gravadas = 0;
+              const falhas: string[] = [];
+              for (const p of pendentes) {
+                if (!p.chave || typeof p.sugestao !== 'number') continue;
+                const valor = excecao.has(p.chave) ? (excecao.get(p.chave) as number) : p.sugestao;
+                const r = (await rpc(supabaseUrl, serviceKey, 'eddy_responder_cor', {
+                  p_tenant_id: tenantId,
+                  p_chave: p.chave,
+                  p_valor: valor,
+                  p_conversation_id: item.conversation_id,
+                })) as { ok?: boolean; reason?: string } | null;
+                if (r?.ok) gravadas++;
+                else falhas.push(`${p.chave}: ${r?.reason ?? '?'}`);
+              }
+              if (gravadas > 0) anotadas++;
+              texto =
+                (gravadas > 0
+                  ? `Gravadas ${gravadas} respostas de cor (padrão + exceções). `
+                  : 'Nada gravado. ') +
+                (falhas.length
+                  ? `Falharam: ${falhas.join('; ')}. Não diga que gravou essas. `
+                  : '') +
+                (desconhecidas.length
+                  ? `Estas exceções não são perguntas pendentes e NÃO foram gravadas: ${desconhecidas.join(', ')}. `
+                  : '');
+            } catch (erro) {
+              texto = `Não deu para gravar agora (${String(erro).slice(0, 120)}). Não diga que anotou.`;
+            }
           } else if (chamada.name === 'definir_adicional_do_tom') {
             const a = chamada.input as { tom: string; reais: number; minutos?: number };
             try {
@@ -3516,14 +3608,18 @@ Deno.serve(async (req: Request) => {
             negocio?: {
               falta?: Array<{
                 perguntaSugerida?: string;
-                perguntasDeCor?: Array<{ pergunta?: string }>;
+                perguntasDeCor?: Array<{
+                  chave?: string;
+                  unidade?: string;
+                  sugestao?: number;
+                  pergunta?: string;
+                }>;
               }>;
             };
           } | null;
           proximaDoRoteiro = agora?.negocio?.falta?.[0]?.perguntaSugerida ?? '';
-          subPerguntas = (agora?.negocio?.falta?.[0]?.perguntasDeCor ?? [])
-            .map((q) => q.pergunta ?? '')
-            .filter(Boolean);
+          const padrao = padraoDaCor(agora?.negocio?.falta?.[0]?.perguntasDeCor ?? []);
+          subPerguntas = padrao ? [padrao] : [];
         } catch {
           proximaDoRoteiro = '';
         }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { comProximoPasso, semRefrao } from '../../../supabase/functions/eddy-agent/proximo-passo';
+import {
+  comProximoPasso,
+  padraoDaCor,
+  semRefrao,
+} from '../../../supabase/functions/eddy-agent/proximo-passo';
 
 const COR =
   'Agora, cor e mechas: prefere me mandar fotos de trabalhos seus ou um áudio explicando como você trabalha com cor?';
@@ -105,5 +109,44 @@ describe('o filtro de refrão nunca apaga a resposta inteira (02/10, deslize 10)
       'Anotei.',
       'Tem alguma regra?',
     ]);
+  });
+});
+
+describe('o padrão da cor numa mensagem só (02/10)', () => {
+  const todas = [
+    { chave: 'CLAREIA_SEM_DESCOLORIR', unidade: 'NIVEIS', sugestao: 2 },
+    { chave: 'TESTE_A_PARTIR_DE', unidade: 'NIVEIS', sugestao: 3 },
+    { chave: 'MINUTOS_POR_NIVEL', unidade: 'MINUTOS', sugestao: 30 },
+    { chave: 'REAIS_POR_NIVEL', unidade: 'REAIS', sugestao: 0 },
+    { chave: 'MINUTOS_PRE_PIGMENTACAO', unidade: 'MINUTOS', sugestao: 40 },
+    { chave: 'REAIS_PRE_PIGMENTACAO', unidade: 'REAIS', sugestao: 0 },
+    { chave: 'MINUTOS_MATIZACAO', unidade: 'MINUTOS', sugestao: 30 },
+    { chave: 'REAIS_MATIZACAO', unidade: 'REAIS', sugestao: 0 },
+    { chave: 'QUIMICA_EXIGE_TESTE', unidade: 'SIM_NAO', sugestao: 1 },
+  ];
+  it('as 9, com uma pergunta só no fim', () => {
+    const t = padraoDaCor(todas);
+    expect(t).toContain('clareia até 2 níveis');
+    expect(t).toContain('matização inclusa');
+    expect(t).toContain('sempre faz teste');
+    expect(t.match(/\?/g)?.length).toBe(1);
+  });
+  it('só as que faltam', () => {
+    const t = padraoDaCor(todas.slice(6));
+    expect(t).not.toContain('clareia');
+    expect(t).toContain('matização leva 30 min');
+  });
+  it('valor cobrado aparece em reais', () => {
+    expect(padraoDaCor([{ chave: 'REAIS_MATIZACAO', unidade: 'REAIS', sugestao: 50 }])).toContain(
+      'matização R$ 50'
+    );
+  });
+  it('chave nova desconhecida usa a pergunta', () => {
+    expect(
+      padraoDaCor([{ chave: 'NOVA', pergunta: 'Quantos minutos de pausa?', sugestao: 15 }])
+    ).toContain('Quantos minutos de pausa: 15');
+  });
+  it('nada pendente: vazio', () => {
+    expect(padraoDaCor([])).toBe('');
   });
 });

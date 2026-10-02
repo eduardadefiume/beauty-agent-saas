@@ -64,3 +64,43 @@ export function semRefrao(mensagens: string[], ehRefrao: (t: string) => boolean)
   const sobra = mensagens.filter((t) => !ehRefrao(t));
   return sobra.length > 0 ? sobra : mensagens;
 }
+
+// O PADRÃO DA COR NUMA MENSAGEM SÓ.
+//
+// 02/10, DEV: depois do áudio de cor, faltavam 9 perguntas técnicas (níveis,
+// minutos, matização...), uma por vez -- e o Eddy já começou supondo "além do
+// nível 2". Dono de salão responde "faço o normal". Mostra o padrão inteiro,
+// e "pode ser" grava as 9 (aceitar_padrao_da_cor).
+type PerguntaDeCor = { chave?: string; unidade?: string; sugestao?: number; pergunta?: string };
+
+const ROTULO: Record<string, (v: number) => string> = {
+  CLAREIA_SEM_DESCOLORIR: (v) => `a coloração clareia até ${v} níveis sem descolorir`,
+  TESTE_A_PARTIR_DE: (v) => `teste de mecha a partir de ${v} níveis de clareamento`,
+  MINUTOS_POR_NIVEL: (v) => `${v} min a mais por nível clareado`,
+  REAIS_POR_NIVEL: (v) =>
+    v > 0 ? `R$ ${v} a mais por nível clareado` : 'sem cobrar a mais por nível clareado',
+  MINUTOS_PRE_PIGMENTACAO: (v) => `pré-pigmentação leva ${v} min`,
+  REAIS_PRE_PIGMENTACAO: (v) => (v > 0 ? `pré-pigmentação R$ ${v}` : 'pré-pigmentação inclusa'),
+  MINUTOS_MATIZACAO: (v) => `matização leva ${v} min`,
+  REAIS_MATIZACAO: (v) => (v > 0 ? `matização R$ ${v}` : 'matização inclusa'),
+  QUIMICA_EXIGE_TESTE: (v) =>
+    v
+      ? 'cabelo com química antiga sempre faz teste antes de cor'
+      : 'química antiga não obriga teste',
+};
+
+export function padraoDaCor(perguntas: PerguntaDeCor[]): string {
+  const itens = (perguntas ?? [])
+    .filter((p) => p && typeof p.sugestao === 'number')
+    .map((p) =>
+      ROTULO[p.chave ?? '']
+        ? ROTULO[p.chave ?? ''](p.sugestao as number)
+        : `${(p.pergunta ?? '').replace(/\?$/, '')}: ${p.sugestao}`
+    );
+  if (itens.length === 0) return '';
+  return (
+    'Pro resto da cor eu uso o padrão da maioria dos salões: ' +
+    itens.join('; ') +
+    '. Pode ser assim, ou quer mudar algum?'
+  );
+}
