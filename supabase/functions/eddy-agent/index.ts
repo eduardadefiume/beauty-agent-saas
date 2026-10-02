@@ -17,7 +17,7 @@ import { respostaAoSinal } from './sinal-do-dono.ts';
 import { devolucaoDita } from './devolucao-dita.ts';
 import { valorDaQuimicaDito } from './sinal-quimica-dito.ts';
 import { temPergunta, umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.ts';
-import { comProximoPasso } from './proximo-passo.ts';
+import { comProximoPasso, semRefrao } from './proximo-passo.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -1295,8 +1295,7 @@ Deno.serve(async (req: Request) => {
       // perguntou nas duas ultimas rodadas e o dono esta em outro assunto,
       // a pergunta espera o dono terminar.
       const SINAL_DA_ETAPA: Record<string, RegExp> = {
-        // 02/10: "foto depois te mando" é adiar a cor (as fotos são de tom).
-        CORES: /\bcor(es)?\b|mechas|colora|\bfotos?\b/i,
+        CORES: /\bcor(es)?\b|mechas|colora/i,
         REGRAS: /\bregra/i,
         LEMBRETE: /lembr/i,
         MENSAGEM_DE_CONFIRMACAO: /confirma(ção|cao)|recebe para fechar/i,
@@ -1346,7 +1345,10 @@ Deno.serve(async (req: Request) => {
           hist.some(
             (h) =>
               h.direction === 'INBOUND' &&
-              sinalDaEtapa.test(h.text ?? '') &&
+              // 02/10: "foto depois te mando" é adiar a cor (as fotos são de
+              // tom). Só aqui: no filtro de refrão, "fotos" apagava respostas.
+              (sinalDaEtapa.test(h.text ?? '') ||
+                (etapa === 'CORES' && /\bfotos?\b/i.test(h.text ?? ''))) &&
               ADIA.test(h.text ?? '')
           );
         if (adiado) jaPerguntouAgora = true;
@@ -3487,10 +3489,12 @@ Deno.serve(async (req: Request) => {
           .join(' . ');
       })();
       const umaSo = umaPerguntaPorVez(
-        (decisao.messages ?? [])
-          .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
-          .filter((t) => t.length > 0)
-          .filter((t, _i, todos) => !((repeteARoteiro(t) || lembraAEtapa(t)) && todos.length > 1))
+        semRefrao(
+          (decisao.messages ?? [])
+            .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
+            .filter((t) => t.length > 0),
+          (t) => repeteARoteiro(t) || lembraAEtapa(t)
+        )
       );
       // O roteiro lido no começo do turno pode ter ficado velho: se ele acabou
       // de responder a pendência, ela não volta. Relê do banco só quando a

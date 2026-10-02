@@ -52,3 +52,15 @@ export function comProximoPasso(
     .find((q) => q && !jaFeita(q));
   return candidata ? [...mensagens, candidata] : mensagens;
 }
+
+// O FILTRO DE REFRÃO NUNCA APAGA A RESPOSTA INTEIRA.
+//
+// 02/10, deslize 10: "ja te falei no audio kkk" -> as duas bolhas da resposta
+// falavam de fotos (assunto adiado) e o filtro apagou as duas. Resposta vazia
+// virava "Isso aqui eu não consigo fazer por aqui. Já avisei a Eduarda" -- o
+// dono largado no meio do cadastro por causa de um filtro de estilo.
+export function semRefrao(mensagens: string[], ehRefrao: (t: string) => boolean): string[] {
+  if (mensagens.length <= 1) return mensagens;
+  const sobra = mensagens.filter((t) => !ehRefrao(t));
+  return sobra.length > 0 ? sobra : mensagens;
+}

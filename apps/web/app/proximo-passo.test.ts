@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { comProximoPasso } from '../../../supabase/functions/eddy-agent/proximo-passo';
+import { comProximoPasso, semRefrao } from '../../../supabase/functions/eddy-agent/proximo-passo';
 
 const COR =
   'Agora, cor e mechas: prefere me mandar fotos de trabalhos seus ou um áudio explicando como você trabalha com cor?';
@@ -79,6 +79,31 @@ describe('a resposta do cadastro nunca morre sem próximo passo (02/10)', () => 
   ])('adiou: %s', (leva) => {
     expect(comProximoPasso(['Beleza!'], { proxima: COR, leva, bloqueado: false })).toEqual([
       'Beleza!',
+    ]);
+  });
+});
+
+describe('o filtro de refrão nunca apaga a resposta inteira (02/10, deslize 10)', () => {
+  const fotos = (t: string) => /fotos?/i.test(t);
+  it('as duas bolhas falam de fotos: fica tudo', () => {
+    const msgs = [
+      'Verdade, você já me explicou por áudio! Fico esperando as fotos.',
+      'Enquanto as fotos não chegam: tem alguma regra sua que a atendente precisa saber?',
+    ];
+    expect(semRefrao(msgs, fotos)).toEqual(msgs);
+  });
+  it('só uma é refrão: ela sai', () => {
+    expect(semRefrao(['Fico esperando as fotos.', 'Tem alguma regra sua?'], fotos)).toEqual([
+      'Tem alguma regra sua?',
+    ]);
+  });
+  it('uma bolha só: não mexe', () => {
+    expect(semRefrao(['Fico esperando as fotos.'], fotos)).toEqual(['Fico esperando as fotos.']);
+  });
+  it('nenhuma é refrão: não mexe', () => {
+    expect(semRefrao(['Anotei.', 'Tem alguma regra?'], fotos)).toEqual([
+      'Anotei.',
+      'Tem alguma regra?',
     ]);
   });
 });
