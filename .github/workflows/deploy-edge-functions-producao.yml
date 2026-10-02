@@ -62,6 +62,18 @@ jobs:
           fi
           mudadas=$(git diff --name-only HEAD^ HEAD -- 'supabase/functions/*' \
             | awk -F/ 'NF>=3 {print $3}' | sort -u | tr '\n' ' ')
+          # Quem IMPORTA um arquivo que mudou também é publicado. 02/10: o
+          # eddy-agent importa ../whatsapp-agent/uma-pergunta.ts; o arquivo
+          # mudou, so o whatsapp-agent foi publicado e o Eddy ficou com a
+          # versao velha sem ninguem ver.
+          for arq in $(git diff --name-only HEAD^ HEAD -- 'supabase/functions/*/*.ts'); do
+            pasta=$(echo "$arq" | awk -F/ '{print $3}')
+            nome=$(basename "$arq")
+            for dep in $(grep -rlF "'../$pasta/$nome'" supabase/functions/*/*.ts 2>/dev/null | awk -F/ '{print $3}' | sort -u); do
+              case " $mudadas " in *" $dep "*) ;; *) mudadas="$mudadas $dep" ;; esac
+            done
+          done
+          mudadas=$(echo $mudadas)
           echo "Mudaram: ${mudadas:-nenhuma}"
           echo "funcoes=$mudadas" >> "$GITHUB_OUTPUT"
 
