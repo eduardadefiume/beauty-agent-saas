@@ -14,6 +14,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 // Corrigir um agente e declarar o bug morto e contar metade.
 import { camposCorrompidos, semEscapes } from '../whatsapp-agent/resposta-limpa.ts';
 import { respostaAoSinal } from './sinal-do-dono.ts';
+import { devolucaoDita } from './devolucao-dita.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -1326,6 +1327,34 @@ Deno.serve(async (req: Request) => {
       // "essas perguntas voce tem que fazer ao dono" -- o dono responde, nao nos.
       // Lido ANTES do roteiro: 01/10, o dono respondeu os valores do sinal e o
       // Eddy largou o sinal no meio para perguntar de cor e mechas.
+      // A DEVOLUÇÃO DO SINAL COMO ELE DISSE (ver devolucao-dita.ts). Gravada
+      // antes do modelo: o contexto deste turno já sai com a regra certa.
+      const devolucaoDoTurno = (() => {
+        const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
+        let i = hist.length - 1;
+        while (i >= 0 && hist[i].direction === 'INBOUND') i--;
+        return devolucaoDita(
+          hist
+            .slice(i + 1)
+            .map((h) => h.text ?? '')
+            .join(' . ')
+        );
+      })();
+      if (devolucaoDoTurno) {
+        try {
+          await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal', {
+            p_tenant_id: tenantId,
+            p_campos: {
+              devolve: devolucaoDoTurno.devolve,
+              ...(devolucaoDoTurno.ateHoras != null
+                ? { devolveAteHoras: devolucaoDoTurno.ateHoras }
+                : {}),
+            },
+          });
+        } catch (erro) {
+          console.error(JSON.stringify({ event: 'devolucao_dita_falhou', erro: String(erro) }));
+        }
+      }
       let sinalResumo: {
         ativo?: boolean;
         falta?: string[];
@@ -2386,8 +2415,11 @@ Deno.serve(async (req: Request) => {
                   if (r.marcaHorario) partes.push('marcar horario na agenda');
                   if (r.pedeSinal) partes.push('pedir sinal para confirmar');
                   if (r.politicaDeCancelamento) partes.push('aplicar a regra de cancelamento');
+                  // 02/10: o Eddy disse ao William "anotado: você vai marcar
+                  // horário na agenda" -- quem marca é a atendente, não ele.
                   texto =
-                    `Gravei: o agente vai ${partes.join(', ')}. ` +
+                    `Gravei: a atendente do salão (não o dono) vai ${partes.join(', ')}. ` +
+                    'Ao confirmar para ele, diga que A ATENDENTE vai fazer isso pelas clientes (ex.: "a atendente vai responder e marcar o horário delas direto na sua agenda"); nunca diga que ele vai marcar. ' +
                     (r.marcaHorario
                       ? 'Como ele vai marcar, voce VAI precisar saber como cada profissional trabalha e quanto tempo cada servico leva, incluindo pausa.'
                       : 'Como ele NAO vai marcar, nao pergunte disponibilidade por profissional nem tempo de pausa: nao serve para nada neste salao.') +
@@ -2876,9 +2908,17 @@ Deno.serve(async (req: Request) => {
             }
           } else if (chamada.name === 'configurar_sinal') {
             try {
+              // O modelo não desmente o dono na devolução (devolucao-dita.ts).
+              const campos = { ...((chamada.input ?? {}) as Record<string, unknown>) };
+              if (devolucaoDoTurno) {
+                campos.devolve = devolucaoDoTurno.devolve;
+                if (devolucaoDoTurno.ateHoras != null)
+                  campos.devolveAteHoras = devolucaoDoTurno.ateHoras;
+                else delete campos.devolveAteHoras;
+              }
               const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal', {
                 p_tenant_id: tenantId,
-                p_campos: chamada.input ?? {},
+                p_campos: campos,
               })) as { ok?: boolean; reason?: string; sinal?: { falta?: string[] } } | null;
               if (r?.ok) {
                 anotadas++;
