@@ -18,7 +18,7 @@ const URL = /https?:\/\/\S+/g;
 // "Oi, tudo bem?" é cumprimento, não pergunta que espera resposta.
 const CUMPRIMENTO =
   /\b(tudo bem|tudo bom|td bem|tdb|tudo certinho|como vai|como você está|como voce esta|tudo joia|tudo jóia)\s*\?+/gi;
-const temPergunta = (t: string) => /\?/.test(t.replace(URL, '').replace(CUMPRIMENTO, ''));
+export const temPergunta = (t: string) => /\?/.test(t.replace(URL, '').replace(CUMPRIMENTO, ''));
 
 export function umaPerguntaPorVez(mensagens: string[]): string[] {
   const saida: string[] = [];
