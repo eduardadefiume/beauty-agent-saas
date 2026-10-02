@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { umaPerguntaPorVez } from '../../../supabase/functions/whatsapp-agent/uma-pergunta';
+import {
+  ateTresBolhas,
+  umaPerguntaPorVez,
+} from '../../../supabase/functions/whatsapp-agent/uma-pergunta';
 
 // 02/10, DEV, William-robô: "Você tem um jeito próprio de explicar isso pra
 // cliente?" + "Agora, cor e mechas: prefere fotos ou áudio?" na mesma resposta.
@@ -96,5 +99,18 @@ describe('atendente: cumprimento não é pergunta; a segunda pergunta sai (02/10
     [['Oii, td bem??', 'Qual serviço você quer?']],
   ])('não mexe: %j', (msgs) => {
     expect(umaPerguntaPorVez(msgs)).toEqual(msgs);
+  });
+});
+
+describe('no máximo 3 bolhas, sem perder nada (02/10)', () => {
+  it('a 4ª junta na 3ª', () => {
+    expect(ateTresBolhas(['a', 'b', 'c', 'Tenho sexta 10h, pode ser?'])).toEqual([
+      'a',
+      'b',
+      'c\n\nTenho sexta 10h, pode ser?',
+    ]);
+  });
+  it.each([[[]], [['a']], [['a', 'b', 'c']]])('não mexe: %j', (m) => {
+    expect(ateTresBolhas(m)).toEqual(m);
   });
 });

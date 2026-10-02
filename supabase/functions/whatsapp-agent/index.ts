@@ -35,7 +35,7 @@ import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
 import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
-import { umaPerguntaPorVez } from './uma-pergunta.ts';
+import { ateTresBolhas, umaPerguntaPorVez } from './uma-pergunta.ts';
 import { reservaPedeSinal, semConfirmarAntesDoDono } from './sinal-comprovante.ts';
 import {
   eleaCitouOAgendamento,
@@ -2131,10 +2131,11 @@ Deno.serve(async (req) => {
         throw new Error(motivoFalha ?? 'SEM_DECISAO');
       }
 
-      const textos = (decisao.messages ?? [])
-        .map((t) => (typeof t === 'string' ? t.trim() : ''))
-        .filter((t) => t.length > 0)
-        .slice(0, 3)
+      const textos = ateTresBolhas(
+        (decisao.messages ?? [])
+          .map((t) => (typeof t === 'string' ? t.trim() : ''))
+          .filter((t) => t.length > 0)
+      )
         // O escape do JSON escrito como letra. 16/09: a cliente leu
         // "Luzes \\u00e9 uma fam\\u00edlia tamb\\u00e9m". O porque esta em
         // resposta-limpa.ts.

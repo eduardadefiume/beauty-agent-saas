@@ -40,3 +40,14 @@ export function umaPerguntaPorVez(mensagens: string[]): string[] {
   }
   return saida;
 }
+
+// NO MÁXIMO 3 BOLHAS, SEM PERDER NADA. A atendente cortava a 4ª calada
+// (slice(0, 3)); o Eddy já tinha sido corrigido disso em 28/09 (caso E14,
+// a lista de serviços sumia). A sobra vai junto da 3ª.
+export function ateTresBolhas(mensagens: string[]): string[] {
+  return mensagens.reduce<string[]>((acc, t) => {
+    if (acc.length < 3) acc.push(t);
+    else acc[2] = `${acc[2]}\n\n${t}`;
+    return acc;
+  }, []);
+}
