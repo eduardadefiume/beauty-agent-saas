@@ -832,6 +832,12 @@ async function decidir(
     modoDoTeste = t?.modo ?? 'MESMO_DIA';
     const teste = t?.servicoDoTeste ?? 'teste de mecha';
     const valor = t?.valorDoTeste ? ` (${t.valorDoTeste})` : '';
+    // 02/10: sem o serviço do teste cadastrado, "marque só o teste" mandava a
+    // atendente marcar o que não existe.
+    const soOTeste = t?.servicoDoTeste
+      ? `Só marque ${teste}${valor} sozinho se ela quiser só o teste.`
+      : 'Este salão não tem o teste cadastrado como serviço à parte: não dá para marcar só o teste. ' +
+        'Se ela pedir só o teste, explique que ele é feito no começo do procedimento e, se ela insistir, diga que vai confirmar com o salão.';
     blocoDoTeste =
       '\n\nTESTE DE MECHA NESTE SALÃO: ' +
       (modoDoTeste === 'SEM_TESTE'
@@ -844,7 +850,7 @@ async function decidir(
             'ou já marcar o procedimento. Se for o procedimento, ou se ela não souber se o cabelo aguenta, ' +
             'explique que o teste mostra isso e que, passando, o procedimento segue na hora, no mesmo dia. ' +
             'Diga o valor do que ela vai marcar e siga até fechar. MARQUE O PROCEDIMENTO (o horário dele já ' +
-            `inclui o teste). Só marque ${teste}${valor} sozinho se ela quiser só o teste.`) +
+            `inclui o teste). ${soOTeste}`) +
       (t?.jeitoDeFalar ? ` Jeito do salão falar disso: ${t.jeitoDeFalar}` : '');
   } catch (erro) {
     console.error(JSON.stringify({ event: 'teste_mecha_resumo_falhou', erro: String(erro) }));
