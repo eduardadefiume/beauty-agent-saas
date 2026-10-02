@@ -36,6 +36,7 @@ import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
 import { ateTresBolhas, umaPerguntaPorVez } from './uma-pergunta.ts';
+import { comCacheNaUltima } from './cache-da-volta.ts';
 import { reservaPedeSinal, semConfirmarAntesDoDono } from './sinal-comprovante.ts';
 import {
   eleaCitouOAgendamento,
@@ -1018,7 +1019,8 @@ async function decidir(
       // dizendo o que falta, que e uma resposta com que ele sabe trabalhar.
       tools: FERRAMENTAS,
       tool_choice: { type: 'any' },
-      messages: mensagens,
+      // Cache entre as voltas do turno (cache-da-volta.ts).
+      messages: comCacheNaUltima(mensagens as never) as Anthropic.MessageParam[],
     });
 
     const u = (resposta.usage ?? {}) as Uso;

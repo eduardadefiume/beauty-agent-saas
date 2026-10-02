@@ -17,6 +17,7 @@ import { respostaAoSinal } from './sinal-do-dono.ts';
 import { devolucaoDita } from './devolucao-dita.ts';
 import { valorDaQuimicaDito } from './sinal-quimica-dito.ts';
 import { temPergunta, umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.ts';
+import { comCacheNaUltima } from '../whatsapp-agent/cache-da-volta.ts';
 import { comProximoPasso, padraoDaCor, semRefrao } from './proximo-passo.ts';
 import { corConfirmada } from './cor-confirmada.ts';
 
@@ -1861,7 +1862,8 @@ Deno.serve(async (req: Request) => {
               ? FERRAMENTAS.filter((f) => f.name === 'atender')
               : FERRAMENTAS,
           tool_choice: { type: 'any' },
-          messages: mensagens,
+          // Cache entre as voltas do turno (cache-da-volta.ts).
+          messages: comCacheNaUltima(mensagens as never) as Anthropic.MessageParam[],
         });
 
         const u = (resposta.usage ?? {}) as unknown as Record<string, number>;
