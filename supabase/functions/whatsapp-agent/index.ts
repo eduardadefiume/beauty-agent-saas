@@ -37,6 +37,7 @@ import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
 import { ateTresBolhas, umaPerguntaPorVez } from './uma-pergunta.ts';
 import { comCacheNaUltima } from './cache-da-volta.ts';
+import { alertaDoTurno } from './alerta-da-operadora.ts';
 import { reservaPedeSinal, semConfirmarAntesDoDono } from './sinal-comprovante.ts';
 import {
   eleaCitouOAgendamento,
@@ -2269,6 +2270,31 @@ Deno.serve(async (req) => {
           dryRun: true,
         });
         continue;
+      }
+
+      // O QUE A TRAVA SEGUROU CHEGA NO WHATSAPP DA OPERADORA (02/10). Avisar
+      // nao pode derrubar o turno.
+      const alerta = alertaDoTurno({
+        acaoDoModelo: decisao.action,
+        acaoFinal: acao,
+        textos,
+        precosSemBase: soltos.map((s) => s.trecho),
+        afirmouSemReserva: mentiuAgendamento,
+        respostaQuebrada: corrompidos.includes('messages'),
+        perguntaAoDono: decisao.ownerQuestion,
+        motivo: decisao.reason,
+        conversa: String(item.conversation_id).slice(0, 8),
+      });
+      if (alerta) {
+        try {
+          await rpc(supabaseUrl, serviceKey, 'alertar_operadora', {
+            p_tenant_id: item.tenant_id,
+            p_kind: alerta.tipo,
+            p_detail: alerta.detalhe,
+          });
+        } catch (erroAlerta) {
+          console.error(JSON.stringify({ event: 'alerta_falhou', erro: String(erroAlerta) }));
+        }
       }
 
       const enviados: unknown[] = [];

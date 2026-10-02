@@ -70,6 +70,16 @@ export const MODELOS: Modelo[] = [
       'horário foi liberado. Se ainda quiser fazer, responda esta mensagem que eu vejo outro horário para você.',
     exemplo: ['Marina', 'Luzes, terça 01/12 às 9h'],
   },
+  // 02/10: o alerta de falha do agente para a operadora (Duda), quando a
+  // janela de 24h dela está fechada. Lacunas: salão, o que houve, código.
+  {
+    codigo: 'ALERTA_DA_OPERACAO',
+    nome: 'alerta_da_operacao',
+    texto:
+      'Alerta do sistema no {{1}}: {{2}} (código {{3}}). ' +
+      'Responda esta mensagem para receber os próximos alertas completos.',
+    exemplo: ['Studio Rogério Hair', 'O agente parou de responder: acabou o crédito da IA.', 'A1B2C3'],
+  },
 ];
 
 function json(status: number, corpo: unknown): Response {
