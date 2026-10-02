@@ -18,7 +18,12 @@ const URL = /https?:\/\/\S+/g;
 // "Oi, tudo bem?" é cumprimento, não pergunta que espera resposta.
 const CUMPRIMENTO =
   /\b(tudo bem|tudo bom|td bem|tdb|tudo certinho|como vai|como você está|como voce esta|tudo joia|tudo jóia)\s*\?+/gi;
-export const temPergunta = (t: string) => /\?/.test(t.replace(URL, '').replace(CUMPRIMENTO, ''));
+// 02/10: o texto de confirmação do dono ("Chega 5 min antes tá?"), citado
+// entre aspas, contou como a pergunta do turno e a pergunta real do lembrete
+// foi cortada. O que está entre aspas é citação, não pergunta.
+const CITACAO = /"[^"]*"|“[^”]*”|«[^»]*»|'[^']{3,}'|^\s*["“«][^"”»]*$/g;
+export const temPergunta = (t: string) =>
+  /\?/.test(t.replace(URL, '').replace(CITACAO, '').replace(CUMPRIMENTO, ''));
 
 export function umaPerguntaPorVez(mensagens: string[]): string[] {
   const saida: string[] = [];

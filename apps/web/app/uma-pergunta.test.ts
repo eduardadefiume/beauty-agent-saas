@@ -114,3 +114,25 @@ describe('no máximo 3 bolhas, sem perder nada (02/10)', () => {
     expect(ateTresBolhas(m)).toEqual(m);
   });
 });
+
+describe('"?" dentro de aspas é texto citado, não pergunta (02/10)', () => {
+  it('caso real: o texto do dono com "tá?" não come a pergunta do lembrete', () => {
+    const msgs = [
+      '"Oi {nome}! Seu horário tá confirmado dia {data} às {hora}. Chega 5 min antes tá? Qualquer coisa me chama"',
+      'Quer que eu lembre a cliente na véspera? Hoje o lembrete está desligado.',
+    ];
+    expect(umaPerguntaPorVez(msgs)).toEqual(msgs);
+  });
+  it.each([
+    [['Fica assim: “Chega antes, tá?”', 'Quer mudar algo?']],
+    [["Fica assim: 'Tudo certo? Te espero!'", 'Pode ser?']],
+    [['Fica assim: «Vem mesmo?»', 'Confirma?']],
+  ])('aspas de todo tipo: %j', (msgs) => {
+    expect(umaPerguntaPorVez(msgs)).toEqual(msgs);
+  });
+  it('fora das aspas continua valendo', () => {
+    expect(umaPerguntaPorVez(['"Chega antes, tá?" Pode ser?', 'E o Instagram?'])).toEqual([
+      '"Chega antes, tá?" Pode ser?',
+    ]);
+  });
+});
