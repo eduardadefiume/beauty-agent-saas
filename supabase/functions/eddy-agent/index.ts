@@ -1503,8 +1503,12 @@ Deno.serve(async (req: Request) => {
           respondido?: boolean;
           jeitoDeFalar?: string | null;
           servicoDoTeste?: string | null;
+          fazMechas?: boolean;
         } | null;
-        if (teste?.servicoDoTeste) {
+        // 02/10: só perguntava se houvesse o serviço "Teste de mecha" já
+        // PUBLICADO -- no cadastro do zero nunca perguntou. Vale para quem faz
+        // luzes/mechas (rascunho ou publicado) ou já tem o teste cadastrado.
+        if (teste?.servicoDoTeste || teste?.fazMechas) {
           const sinalPronto = !sinalEmAndamento && (sinalResumo?.falta ?? []).length === 0;
           blocoDoTeste = teste.respondido
             ? '\n\nTESTE DE MECHA (o dono já decidiu): ' +
@@ -1517,7 +1521,10 @@ Deno.serve(async (req: Request) => {
               'Pergunte assim, com suas palavras: "Como funciona o teste de mecha no seu salão? O mais comum é fazer ' +
               'no começo do procedimento, no mesmo dia, já dentro do tempo das luzes: se o cabelo aguentar, segue na hora. ' +
               'Você faz assim, faz o teste uns dias antes, ou não faz teste?" Com a resposta, chame configurar_teste_de_mecha. ' +
-              'Depois, UMA pergunta: se ele tem um jeito próprio de explicar o teste para a cliente (se sim, grave em jeitoDeFalar).';
+              'Depois, UMA pergunta: se ele tem um jeito próprio de explicar o teste para a cliente (se sim, grave em jeitoDeFalar).' +
+              (teste.servicoDoTeste
+                ? ''
+                : ' O salão ainda NÃO tem o teste cadastrado como serviço: se ele faz o teste uns dias antes, ou cobra o teste à parte, pergunte o valor e o tempo e cadastre o serviço "Teste de mecha" (criar_servico) — sem ele a atendente não consegue marcar só o teste.');
         }
       } catch {
         // sem o resumo, o Eddy só não pergunta agora
