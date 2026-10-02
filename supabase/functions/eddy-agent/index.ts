@@ -18,6 +18,7 @@ import { devolucaoDita } from './devolucao-dita.ts';
 import { valorDaQuimicaDito } from './sinal-quimica-dito.ts';
 import { temPergunta, umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.ts';
 import { comProximoPasso, padraoDaCor, semRefrao } from './proximo-passo.ts';
+import { corConfirmada } from './cor-confirmada.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -1380,31 +1381,29 @@ Deno.serve(async (req: Request) => {
       // Eddy largou o sinal no meio para perguntar de cor e mechas.
       // A DEVOLUÇÃO DO SINAL COMO ELE DISSE (ver devolucao-dita.ts). Gravada
       // antes do modelo: o contexto deste turno já sai com a regra certa.
-      const devolucaoDoTurno = (() => {
-        const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
+      // O QUE O DONO DISSE NESTE TURNO, texto E áudio/foto lidos. 02/10: os
+      // leitores do código só olhavam o texto; "sinal de 50 pra química" por
+      // áudio passava batido.
+      const { falaDoTurno, ultimaDoEddyNoTurno } = (() => {
+        const hist = (contexto.history ?? []) as Array<{
+          direction?: string;
+          text?: string;
+          leituraDaMidia?: string | null;
+        }>;
         let i = hist.length - 1;
         while (i >= 0 && hist[i].direction === 'INBOUND') i--;
-        return devolucaoDita(
-          hist
+        return {
+          falaDoTurno: hist
             .slice(i + 1)
-            .map((h) => h.text ?? '')
-            .join(' . ')
-        );
+            .map((h) => [h.text ?? '', h.leituraDaMidia ?? ''].filter((x) => x.trim()).join(' '))
+            .join(' . '),
+          ultimaDoEddyNoTurno: i >= 0 ? (hist[i].text ?? '') : '',
+        };
       })();
+      const devolucaoDoTurno = devolucaoDita(falaDoTurno);
       gravadasPeloCodigo = 0;
       // O VALOR DO SINAL DA QUÍMICA COMO ELE DISSE (ver sinal-quimica-dito.ts).
-      const quimicaDoTurno = (() => {
-        const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
-        let i = hist.length - 1;
-        while (i >= 0 && hist[i].direction === 'INBOUND') i--;
-        return valorDaQuimicaDito(
-          hist
-            .slice(i + 1)
-            .map((h) => h.text ?? '')
-            .join(' . '),
-          i >= 0 ? (hist[i].text ?? '') : ''
-        );
-      })();
+      const quimicaDoTurno = valorDaQuimicaDito(falaDoTurno, ultimaDoEddyNoTurno);
       if (quimicaDoTurno != null) {
         try {
           const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal', {
@@ -3033,7 +3032,7 @@ Deno.serve(async (req: Request) => {
               if (gravadas > 0) anotadas++;
               texto =
                 (gravadas > 0
-                  ? `Gravadas ${gravadas} respostas de cor (padrão + exceções). `
+                  ? `Gravadas ${gravadas} respostas de cor (padrão + exceções). Confirme a ele numa linha curta que a cor ficou no padrão${(a.excecoes ?? []).length ? ', citando as mudanças que ele pediu' : ''}. `
                   : 'Nada gravado. ') +
                 (falhas.length
                   ? `Falharam: ${falhas.join('; ')}. Não diga que gravou essas. `
@@ -3339,22 +3338,40 @@ Deno.serve(async (req: Request) => {
             }
           } else if (chamada.name === 'responder_cor') {
             const args = chamada.input as { chave: string; valor: number };
-            try {
-              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_responder_cor', {
-                p_tenant_id: tenantId,
-                p_chave: args.chave,
-                p_valor: args.valor,
-                p_conversation_id: item.conversation_id,
-              })) as { ok?: boolean; reason?: string; restantes?: number } | null;
-              if (r?.ok) {
-                anotadas += 1;
-                texto = `Gravado: ${args.chave} = ${args.valor}. Faltam ${r.restantes ?? '?'} perguntas de cor.`;
-              } else {
-                texto = `NAO gravei ${args.chave}: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que anotou.`;
+            // Só o que ele disse, ou o padrão que ele aceitou (cor-confirmada.ts).
+            const unidade =
+              (
+                (
+                  roteiro.find((r) => r.campo === 'CORES') as
+                    { perguntasDeCor?: Array<{ chave?: string; unidade?: string }> } | undefined
+                )?.perguntasDeCor ?? []
+              ).find((q) => q.chave === args.chave)?.unidade ?? '';
+            if (
+              !corConfirmada({
+                unidade,
+                valor: Number(args.valor),
+                falaDoDono: falaDoTurno,
+                ultimaDoEddy: ultimaDoEddyNoTurno,
+              })
+            ) {
+              texto = `NAO gravei ${args.chave} = ${args.valor}: ele não disse esse valor. Não suponha: pergunte a ele, ou mostre o padrão da cor e grave com aceitar_padrao_da_cor quando ele aceitar.`;
+            } else
+              try {
+                const r = (await rpc(supabaseUrl, serviceKey, 'eddy_responder_cor', {
+                  p_tenant_id: tenantId,
+                  p_chave: args.chave,
+                  p_valor: args.valor,
+                  p_conversation_id: item.conversation_id,
+                })) as { ok?: boolean; reason?: string; restantes?: number } | null;
+                if (r?.ok) {
+                  anotadas += 1;
+                  texto = `Gravado: ${args.chave} = ${args.valor}. Faltam ${r.restantes ?? '?'} perguntas de cor.`;
+                } else {
+                  texto = `NAO gravei ${args.chave}: ${r?.reason ?? 'motivo desconhecido'}. Nao diga que anotou.`;
+                }
+              } catch (erro) {
+                texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
               }
-            } catch (erro) {
-              texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
-            }
           } else if (chamada.name === 'guardar_conhecimento') {
             // APRENDER E LIVRE, E ATE 24/09 SO ACONTECIA QUANDO ELE DESISTIA.
             //
@@ -3571,15 +3588,7 @@ Deno.serve(async (req: Request) => {
       // Uma pergunta por vez (ver uma-pergunta.ts): garantido no código. E
       // nunca termina sem próximo passo quando o cadastro tem pendência
       // (ver proximo-passo.ts).
-      const levaDoDono = (() => {
-        const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
-        let i = hist.length - 1;
-        while (i >= 0 && hist[i].direction === 'INBOUND') i--;
-        return hist
-          .slice(i + 1)
-          .map((h) => h.text ?? '')
-          .join(' . ');
-      })();
+      const levaDoDono = falaDoTurno;
       const umaSo = umaPerguntaPorVez(
         semRefrao(
           (decisao.messages ?? [])
