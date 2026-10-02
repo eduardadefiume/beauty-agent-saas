@@ -924,6 +924,25 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'definir_adicional_do_tom',
+    description:
+      'Grava quanto um TOM/COR custa a mais (e, se ele disser, quanto tempo leva a mais) sobre o preço do procedimento. Ex.: "o platinado eu cobro mais cem" -> tom "platinado", reais 100. "O resto é o preço normal" -> não precisa chamar para os outros. ' +
+      'É isso que a atendente soma no orçamento de cor; NÃO use criar_regra nem guardar_conhecimento para adicional de tom. Vale na hora. Diga a ele em qual tom do sistema ficou (vem na resposta). reais 0 = sem adicional.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tom: {
+          type: 'string',
+          description: 'Como ele falou: platinado, loiro mel, morena iluminada, ruivo...',
+        },
+        reais: { type: 'number', description: 'Quanto a mais, em reais. 0 = sem adicional.' },
+        minutos: { type: 'integer', description: 'Minutos a mais, só se ele disser.' },
+      },
+      required: ['tom', 'reais'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'guardar_conhecimento',
     description:
       'Guarda, com as palavras dele, o que o dono ensinou e que NENHUMA outra ferramenta grava: uma regra solta ("não corto cabelo curto"), uma preferência, um jeito de falar com as clientes, o que uma foto mostra ("essa é um loiro iluminado"). Aprender é livre: não tem régua de confiança, e depois alguém transforma isto em serviço, preço ou regra. Use sempre que ele ensinar algo que não coube em outra ferramenta, em vez de só dizer que anotou. Só diga "anotei" depois de receber "Guardado".',
@@ -2929,6 +2948,29 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
+            }
+          } else if (chamada.name === 'definir_adicional_do_tom') {
+            const a = chamada.input as { tom: string; reais: number; minutos?: number };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_adicional_do_tom', {
+                p_tenant_id: tenantId,
+                p_tom: a.tom,
+                p_reais: Number(a.reais ?? 0),
+                p_minutos: a.minutos ?? null,
+              })) as { ok?: boolean; reason?: string; tom?: string; tons?: unknown } | null;
+              if (r?.ok) {
+                anotadas++;
+                texto =
+                  `Gravado no tom "${r.tom}" e JÁ VALE no orçamento da atendente. Como ficaram os tons: ` +
+                  JSON.stringify(r.tons) +
+                  `. Confirme com ele numa linha que "${a.tom}" ficou como ${r.tom}.`;
+              } else if (r?.reason === 'TOM_NAO_EXISTE') {
+                texto = `NÃO gravei: não achei "${a.tom}" entre os tons (${JSON.stringify(r.tons)}). Pergunte a qual deles corresponde.`;
+              } else {
+                texto = `NÃO gravei: ${r?.reason ?? 'motivo desconhecido'}. Não diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Não deu para gravar agora (${String(erro).slice(0, 120)}). Não diga que anotou.`;
             }
           } else if (chamada.name === 'configurar_teste_de_mecha') {
             const a = chamada.input as { modo: string; diasAntes?: number; jeitoDeFalar?: string };
