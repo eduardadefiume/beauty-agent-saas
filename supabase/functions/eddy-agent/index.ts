@@ -822,6 +822,30 @@ const FERRAMENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'configurar_teste_de_mecha',
+    description:
+      'Grava como o salão faz o teste de mecha (para luzes, mechas, descoloração, química). Vale na hora para a atendente. ' +
+      'MESMO_DIA: o teste é feito no começo do procedimento, no mesmo dia, dentro do tempo dele (o padrão). ' +
+      'ANTES: o teste é marcado à parte, diasAntes dias antes. SEM_TESTE: o salão não faz teste. ' +
+      'jeitoDeFalar: como o dono quer que a atendente explique o teste para a cliente, nas palavras dele. Só chame com o que ele disse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        modo: { type: 'string', enum: ['MESMO_DIA', 'ANTES', 'SEM_TESTE'] },
+        diasAntes: {
+          type: 'integer',
+          description: 'Só para ANTES: quantos dias antes do procedimento.',
+        },
+        jeitoDeFalar: {
+          type: 'string',
+          description: 'Opcional: a explicação do teste nas palavras dele.',
+        },
+      },
+      required: ['modo'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'resolver_mexida_no_google',
     description:
       'Faz o que o dono decidiu sobre um horário de cliente que ele apagou ou mudou no Google (lista em HORÁRIOS QUE O DONO MEXEU NO GOOGLE). DESMARCAR: desmarca e manda à cliente uma mensagem educada pedindo desculpas. MUDAR (só quando ele moveu): passa a cliente para o novo horário e avisa ela. VOLTAR: foi sem querer; o evento volta ao Google como era e a cliente não fica sabendo de nada. Só chame depois que ele decidir.',
@@ -1399,6 +1423,41 @@ Deno.serve(async (req: Request) => {
             : '');
       }
 
+      // O TESTE DE MECHA DESTE SALÃO. Regra da Duda (01/10): padrão global é o
+      // teste no começo do procedimento, no mesmo dia, dentro do tempo dele;
+      // "cada salão tem uma forma de falar e um padrão de regras e isso tem que
+      // ser perguntado ao dono quando ele estiver configurando". A pergunta vem
+      // logo depois do sinal (regras de agendamento), uma vez só.
+      let blocoDoTeste = '';
+      try {
+        const teste = (await rpc(supabaseUrl, serviceKey, 'teste_mecha_resumo', {
+          p_tenant_id: tenantId,
+        })) as {
+          modo?: string;
+          diasAntes?: number | null;
+          respondido?: boolean;
+          jeitoDeFalar?: string | null;
+          servicoDoTeste?: string | null;
+        } | null;
+        if (teste?.servicoDoTeste) {
+          const sinalPronto = !sinalEmAndamento && (sinalResumo?.falta ?? []).length === 0;
+          blocoDoTeste = teste.respondido
+            ? '\n\nTESTE DE MECHA (o dono já decidiu): ' +
+              JSON.stringify(teste) +
+              '. Se ele quiser mudar, use configurar_teste_de_mecha.'
+            : '\n\nTESTE DE MECHA: AINDA NÃO PERGUNTADO AO DONO. ' +
+              (sinalPronto
+                ? 'É a PRÓXIMA pergunta, antes das outras do cadastro (só espere se ele estiver no meio de outro assunto). '
+                : 'Pergunte depois que o sinal estiver configurado. ') +
+              'Pergunte assim, com suas palavras: "Como funciona o teste de mecha no seu salão? O mais comum é fazer ' +
+              'no começo do procedimento, no mesmo dia, já dentro do tempo das luzes: se o cabelo aguentar, segue na hora. ' +
+              'Você faz assim, faz o teste uns dias antes, ou não faz teste?" Com a resposta, chame configurar_teste_de_mecha. ' +
+              'Depois, UMA pergunta: se ele tem um jeito próprio de explicar o teste para a cliente (se sim, grave em jeitoDeFalar).';
+        }
+      } catch {
+        // sem o resumo, o Eddy só não pergunta agora
+      }
+
       // AS PERGUNTAS DA ATENDENTE QUE ESPERAM O DONO. So entram quando ha
       // alguma: nao custam token no dia a dia.
       let perguntasAbertas = '';
@@ -1597,6 +1656,7 @@ Deno.serve(async (req: Request) => {
             fotosERegua +
             mexidasAbertas +
             blocoDoSinal +
+            blocoDoTeste +
             (sinaisEsperando.length > 0
               ? '\n\nSINAIS ESPERANDO VOCÊ (comprovante de cliente que o dono ainda não conferiu): ' +
                 JSON.stringify(sinaisEsperando) +
@@ -2787,6 +2847,32 @@ Deno.serve(async (req: Request) => {
               }
             } catch (erro) {
               texto = `Nao deu para gravar agora (${String(erro).slice(0, 120)}). Nao diga que anotou.`;
+            }
+          } else if (chamada.name === 'configurar_teste_de_mecha') {
+            const a = chamada.input as { modo: string; diasAntes?: number; jeitoDeFalar?: string };
+            try {
+              const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_teste_mecha', {
+                p_tenant_id: tenantId,
+                p_modo: a.modo,
+                p_dias_antes: a.diasAntes ?? null,
+                p_jeito_de_falar: a.jeitoDeFalar ?? null,
+              })) as { ok?: boolean; reason?: string; agora?: unknown } | null;
+              if (r?.ok) {
+                anotadas++;
+                texto =
+                  'Gravado e JÁ VALE para a atendente (não passa por publicar). Como ficou: ' +
+                  JSON.stringify(r.agora) +
+                  (a.jeitoDeFalar
+                    ? ''
+                    : ' Agora pergunte UMA vez se ele tem um jeito próprio de explicar o teste para a cliente.');
+              } else if (r?.reason === 'FALTA_QUANTOS_DIAS_ANTES') {
+                texto =
+                  'NÃO gravei: falta saber quantos dias antes do procedimento ele faz o teste. Pergunte.';
+              } else {
+                texto = `NÃO gravei: ${r?.reason ?? 'motivo desconhecido'}. Não diga que anotou.`;
+              }
+            } catch (erro) {
+              texto = `Não deu para gravar agora (${String(erro).slice(0, 120)}). Não diga que anotou.`;
             }
           } else if (chamada.name === 'configurar_sinal') {
             try {
