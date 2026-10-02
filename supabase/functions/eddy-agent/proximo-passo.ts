@@ -13,15 +13,42 @@
 import { temPergunta } from '../whatsapp-agent/uma-pergunta.ts';
 
 const VAI_PARAR =
-  /\b(por hoje|depois (eu )?(continuo|termino|vejo|falo|te falo|respondo)|falo depois|mais tarde|amanh[aã]|tenho que (ir|sair)|vou (parar|sair|atender)|agora n[aã]o (d[aá]|posso)|outra hora|to ocupad|t[oô] ocupad|estou ocupad)/i;
+  /\b(depois (eu )?(te )?(mando|envio)|(te )?(mando|envio) (depois|mais tarde|amanh)|por hoje|depois (eu )?(continuo|termino|vejo|falo|te falo|respondo)|falo depois|mais tarde|amanh[aã]|tenho que (ir|sair)|vou (parar|sair|atender)|agora n[aã]o (d[aá]|posso)|outra hora|to ocupad|t[oô] ocupad|estou ocupad)/i;
+
+// 02/10, deslize 9: o acréscimo repetiu, palavra por palavra, a pergunta
+// genérica da cor que ele já tinha respondido por áudio -- o refrão que a
+// regra antiga evitava. Pergunta já feita não volta; se a etapa tem
+// sub-perguntas ainda não feitas, vai a próxima delas.
+const chave = (t: string) =>
+  String(t ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
 
 export function comProximoPasso(
   mensagens: string[],
-  o: { proxima: string; leva: string; bloqueado: boolean }
+  o: {
+    proxima: string;
+    leva: string;
+    bloqueado: boolean;
+    jaFeitas?: string[];
+    alternativas?: string[];
+  }
 ): string[] {
-  const proxima = (o.proxima ?? '').trim();
-  if (!proxima || o.bloqueado || mensagens.length === 0) return mensagens;
+  if (o.bloqueado || mensagens.length === 0) return mensagens;
   if (mensagens.some((m) => temPergunta(String(m ?? '')))) return mensagens;
   if (VAI_PARAR.test(o.leva ?? '')) return mensagens;
-  return [...mensagens, proxima];
+  const feitas = (o.jaFeitas ?? []).map(chave).filter((f) => f.length >= 20);
+  const jaFeita = (q: string) => {
+    const k = chave(q);
+    return feitas.some((f) => f.includes(k) || k.includes(f));
+  };
+  const candidata = [o.proxima, ...(o.alternativas ?? [])]
+    .map((q) => (q ?? '').trim())
+    .find((q) => q && !jaFeita(q));
+  return candidata ? [...mensagens, candidata] : mensagens;
 }

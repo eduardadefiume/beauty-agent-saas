@@ -43,4 +43,42 @@ describe('a resposta do cadastro nunca morre sem próximo passo (02/10)', () => 
   ])('não mexe: %j / %s', (msgs, leva, bloqueado, proxima) => {
     expect(comProximoPasso(msgs, { proxima, leva, bloqueado })).toEqual(msgs);
   });
+
+  it('não repete pergunta já feita; usa a próxima sub-pergunta da etapa (02/10, deslize 9)', () => {
+    const sub = 'Até quantos níveis a coloração daqui clareia sem precisar descolorir?';
+    expect(
+      comProximoPasso(['Anotei: Platinado fica R$100 a mais e 2h a mais.'], {
+        proxima: COR,
+        leva: 'o platinado demora 2h a mais tbm',
+        bloqueado: false,
+        jaFeitas: ['Então sobre cor e mechas: blá', COR],
+        alternativas: [sub],
+      })
+    ).toEqual(['Anotei: Platinado fica R$100 a mais e 2h a mais.', sub]);
+  });
+
+  it('pergunta e sub-perguntas todas já feitas: não acrescenta nada', () => {
+    const sub = 'Até quantos níveis clareia?';
+    expect(
+      comProximoPasso(['Anotei.'], {
+        proxima: COR,
+        leva: 'ok',
+        bloqueado: false,
+        jaFeitas: [COR, sub],
+        alternativas: [sub],
+      })
+    ).toEqual(['Anotei.']);
+  });
+
+  it.each([
+    'foto depois te mando',
+    'te mando depois as fotos',
+    'mando mais tarde',
+    'depois eu mando',
+    'amanhã te envio',
+  ])('adiou: %s', (leva) => {
+    expect(comProximoPasso(['Beleza!'], { proxima: COR, leva, bloqueado: false })).toEqual([
+      'Beleza!',
+    ]);
+  });
 });

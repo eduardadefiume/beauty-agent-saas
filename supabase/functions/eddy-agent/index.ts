@@ -1295,7 +1295,8 @@ Deno.serve(async (req: Request) => {
       // perguntou nas duas ultimas rodadas e o dono esta em outro assunto,
       // a pergunta espera o dono terminar.
       const SINAL_DA_ETAPA: Record<string, RegExp> = {
-        CORES: /\bcor(es)?\b|mechas|colora/i,
+        // 02/10: "foto depois te mando" é adiar a cor (as fotos são de tom).
+        CORES: /\bcor(es)?\b|mechas|colora|\bfotos?\b/i,
         REGRAS: /\bregra/i,
         LEMBRETE: /lembr/i,
         MENSAGEM_DE_CONFIRMACAO: /confirma(ção|cao)|recebe para fechar/i,
@@ -3495,6 +3496,7 @@ Deno.serve(async (req: Request) => {
       // de responder a pendência, ela não volta. Relê do banco só quando a
       // resposta ficou sem pergunta.
       let proximaDoRoteiro = '';
+      let subPerguntas: string[] = [];
       if (
         decisao.action === 'REPLY' &&
         !adiado &&
@@ -3506,14 +3508,28 @@ Deno.serve(async (req: Request) => {
           const agora = (await rpc(supabaseUrl, serviceKey, 'build_owner_context', {
             p_conversation_id: item.conversation_id,
             p_history_limit: 1,
-          })) as { negocio?: { falta?: Array<{ perguntaSugerida?: string }> } } | null;
+          })) as {
+            negocio?: {
+              falta?: Array<{
+                perguntaSugerida?: string;
+                perguntasDeCor?: Array<{ pergunta?: string }>;
+              }>;
+            };
+          } | null;
           proximaDoRoteiro = agora?.negocio?.falta?.[0]?.perguntaSugerida ?? '';
+          subPerguntas = (agora?.negocio?.falta?.[0]?.perguntasDeCor ?? [])
+            .map((q) => q.pergunta ?? '')
+            .filter(Boolean);
         } catch {
           proximaDoRoteiro = '';
         }
       }
       const textos = comProximoPasso(umaSo, {
         proxima: proximaDoRoteiro,
+        alternativas: subPerguntas,
+        jaFeitas: ((contexto.history ?? []) as Array<{ direction?: string; text?: string }>)
+          .filter((h) => h.direction === 'OUTBOUND')
+          .map((h) => h.text ?? ''),
         leva: levaDoDono,
         bloqueado: adiado || sinalEmAndamento,
       })
