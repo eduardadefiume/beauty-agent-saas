@@ -16,6 +16,7 @@ import { camposCorrompidos, semEscapes } from '../whatsapp-agent/resposta-limpa.
 import { respostaAoSinal } from './sinal-do-dono.ts';
 import { devolucaoDita } from './devolucao-dita.ts';
 import { valorDaQuimicaDito } from './sinal-quimica-dito.ts';
+import { umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -3429,10 +3430,13 @@ Deno.serve(async (req: Request) => {
       // cobranca. A pergunta so volta quando ele puxar o assunto ou terminar.
       const lembraAEtapa = (t: string) =>
         jaPerguntouAgora && !!sinalDaEtapa && sinalDaEtapa.test(t) && t.length <= 240;
-      const textos = (decisao.messages ?? [])
-        .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
-        .filter((t) => t.length > 0)
-        .filter((t, _i, todos) => !((repeteARoteiro(t) || lembraAEtapa(t)) && todos.length > 1))
+      // Uma pergunta por vez (ver uma-pergunta.ts): garantido no código.
+      const textos = umaPerguntaPorVez(
+        (decisao.messages ?? [])
+          .map((t) => (typeof t === 'string' ? semEscapes(t).trim() : ''))
+          .filter((t) => t.length > 0)
+          .filter((t, _i, todos) => !((repeteARoteiro(t) || lembraAEtapa(t)) && todos.length > 1))
+      )
         // No maximo 3 baloes, mas sem perder nada: 28/09, caso E14, o 4o
         // balao (os servicos que so a tabela tinha) era cortado calado.
         .reduce<string[]>((acc, t) => {
