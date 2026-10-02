@@ -35,6 +35,7 @@ import { falasDaConversa, travaDoProcedimento } from './antes-do-horario.ts';
 import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
+import { umaPerguntaPorVez } from './uma-pergunta.ts';
 import { reservaPedeSinal, semConfirmarAntesDoDono } from './sinal-comprovante.ts';
 import {
   eleaCitouOAgendamento,
@@ -1047,6 +1048,8 @@ async function decidir(
         decisao.messages = decisao.messages.map((m) =>
           typeof m === 'string' ? quemMandaAFoto(m) : m
         );
+        // Uma pergunta por vez: "sim" não pode servir para duas (uma-pergunta.ts).
+        decisao.messages = umaPerguntaPorVez(decisao.messages.map((m) => String(m ?? '')));
       }
       // Comprovante neste turno: nada de "confirmado" antes do dono (sinal-comprovante.ts).
       if (comprovanteDoTurno && decisao.action === 'REPLY') {
