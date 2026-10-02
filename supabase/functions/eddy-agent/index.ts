@@ -15,6 +15,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 import { camposCorrompidos, semEscapes } from '../whatsapp-agent/resposta-limpa.ts';
 import { respostaAoSinal } from './sinal-do-dono.ts';
 import { devolucaoDita } from './devolucao-dita.ts';
+import { valorDaQuimicaDito } from './sinal-quimica-dito.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -52,7 +53,7 @@ const CACHE_TTL = '1h' as const;
 // As perguntas do sinal, na ordem de app.sinal_resumo().falta.
 const PERGUNTA_DO_SINAL: Record<string, string> = {
   VALORES:
-    '"Em quais procedimentos você quer cobrar sinal, e quanto em cada? Ex.: luzes R$ 100, progressiva R$ 50, corte não cobra." -> definir_sinal_do_servico (uma chamada por procedimento)',
+    '"Em quais procedimentos você quer cobrar sinal, e quanto em cada? Ex.: luzes R$ 100, progressiva R$ 50, corte não cobra." -> definir_sinal_do_servico (uma chamada por procedimento); se ele falar de toda a química ("só química, 50"), configurar_sinal valorQuimicaReais',
   PERIODO:
     '"O sinal vale sempre, ou só num período? Ex.: só em dezembro." -> configurar_sinal (sempre = valeDe "" e valeAte "")',
   PRAZO:
@@ -757,6 +758,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       'Grava o que o DONO respondeu sobre o sinal (só os campos que ele respondeu agora). Vale na hora, sem publicar. ' +
       'Período: valeDe/valeAte (AAAA-MM-DD); "sempre" = os dois vazios (""). Prazo: prazoHoras (padrão 24) e, se ele quiser mais tempo quando a cliente marca num mês para o outro (ex.: novembro para dezembro), prazoMesAnteriorHoras; "não" = "". ' +
       'Pix: pixChave e pixTitular (nome que aparece no Pix). Devolução: devolve true/false e devolveAteHoras (com quantas horas de antecedência ela tem que avisar). ' +
+      'Valor para TODA a química ("sinal só pra química, 50 reais"): valorQuimicaReais (vale para luzes, mechas, progressiva, coloração etc., os de hoje e os que ele cadastrar depois; 0 = tira). Valor de UM procedimento é definir_sinal_do_servico, que ganha da regra da química. ' +
       'ativo true SÓ quando ele disser para ligar (e só depois de ter valor e Pix).',
     input_schema: {
       type: 'object',
@@ -766,6 +768,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         valeAte: { type: 'string' },
         prazoHoras: { type: 'integer' },
         prazoMesAnteriorHoras: { type: ['integer', 'string'] },
+        valorQuimicaReais: { type: 'number', description: 'Sinal de toda a química, em reais.' },
         pixChave: { type: 'string' },
         pixTitular: { type: 'string' },
         devolve: { type: 'boolean' },
@@ -1131,6 +1134,9 @@ Deno.serve(async (req: Request) => {
   const resultados: unknown[] = [];
   let respondidas = 0;
   let anotadas = 0;
+  // Gravado pelo código antes do modelo (devolução, valor da química): conta
+  // como gravação DESTE turno para a trava do "anotei".
+  let gravadasPeloCodigo = 0;
   let criados = 0;
   let aprendidas = 0;
   let publicacoes = 0;
@@ -1340,6 +1346,34 @@ Deno.serve(async (req: Request) => {
             .join(' . ')
         );
       })();
+      gravadasPeloCodigo = 0;
+      // O VALOR DO SINAL DA QUÍMICA COMO ELE DISSE (ver sinal-quimica-dito.ts).
+      const quimicaDoTurno = (() => {
+        const hist = (contexto.history ?? []) as Array<{ direction?: string; text?: string }>;
+        let i = hist.length - 1;
+        while (i >= 0 && hist[i].direction === 'INBOUND') i--;
+        return valorDaQuimicaDito(
+          hist
+            .slice(i + 1)
+            .map((h) => h.text ?? '')
+            .join(' . '),
+          i >= 0 ? (hist[i].text ?? '') : ''
+        );
+      })();
+      if (quimicaDoTurno != null) {
+        try {
+          const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal', {
+            p_tenant_id: tenantId,
+            p_campos: { valorQuimicaReais: quimicaDoTurno },
+          })) as { ok?: boolean } | null;
+          if (r?.ok) {
+            anotadas++;
+            gravadasPeloCodigo++;
+          }
+        } catch (erro) {
+          console.error(JSON.stringify({ event: 'quimica_dita_falhou', erro: String(erro) }));
+        }
+      }
       if (devolucaoDoTurno) {
         try {
           await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal', {
@@ -1351,6 +1385,8 @@ Deno.serve(async (req: Request) => {
                 : {}),
             },
           });
+          anotadas++;
+          gravadasPeloCodigo++;
         } catch (erro) {
           console.error(JSON.stringify({ event: 'devolucao_dita_falhou', erro: String(erro) }));
         }
@@ -1729,7 +1765,7 @@ Deno.serve(async (req: Request) => {
       // olhava `criados`, e "cor gravada certinho" (que teria de passar por
       // `responder_cor`, contada em `anotadas`) nao tinha como ser pega.
       const gravacoes = () => criados + anotadas + aprendidas;
-      const gravacoesAoEntrar = gravacoes();
+      const gravacoesAoEntrar = gravacoes() - gravadasPeloCodigo;
       let jaCobreiAMentira = false;
       let jaCobreiOErroTecnico = false;
       let decisao: Decisao | null = null;
@@ -1875,7 +1911,8 @@ Deno.serve(async (req: Request) => {
                     `NAO ENVIEI. Voce escreveu que anotou R$ ${faltando.join(', R$ ')}, e esse valor nao ` +
                     'esta gravado em lugar nenhum. Grave antes: preco de servico com `definir_preco`, ' +
                     'segundo preco do mesmo servico (por volume, tamanho) com `criar_variacao`, condicao ' +
-                    'com `criar_regra`. Se nao tiver como gravar, diga a ele que esse valor AINDA NAO ' +
+                    'com `criar_regra`, sinal de um procedimento com `definir_sinal_do_servico`, sinal de ' +
+                    'toda a quimica com `configurar_sinal` valorQuimicaReais. Se nao tiver como gravar, diga a ele que esse valor AINDA NAO ' +
                     'ficou registrado.',
                 })),
               });
@@ -2910,6 +2947,7 @@ Deno.serve(async (req: Request) => {
             try {
               // O modelo não desmente o dono na devolução (devolucao-dita.ts).
               const campos = { ...((chamada.input ?? {}) as Record<string, unknown>) };
+              if (quimicaDoTurno != null) campos.valorQuimicaReais = quimicaDoTurno;
               if (devolucaoDoTurno) {
                 campos.devolve = devolucaoDoTurno.devolve;
                 if (devolucaoDoTurno.ateHoras != null)
@@ -2930,7 +2968,9 @@ Deno.serve(async (req: Request) => {
                     : ' O sinal está completo e ligado.');
               } else if (r?.reason === 'FALTA_VALOR_OU_PIX') {
                 texto =
-                  'NÃO liguei: falta o valor de pelo menos um procedimento ou a chave Pix. Pergunte o que falta.';
+                  'NÃO liguei (o resto do que ele disse ficou gravado): falta o valor do sinal ou a chave Pix. Como ficou: ' +
+                  JSON.stringify((r as { sinal?: unknown }).sinal ?? null) +
+                  ' Pergunte o que falta.';
               } else {
                 texto = `NÃO gravei: ${r?.reason ?? 'motivo desconhecido'}. Não diga que anotou.`;
               }
@@ -2964,7 +3004,12 @@ Deno.serve(async (req: Request) => {
                   (PERGUNTA_DO_SINAL[(r.sinal?.falta ?? []).find((f) => f !== 'VALORES') ?? ''] ??
                     'nenhuma, o sinal está completo');
               } else if (r?.reason === 'SERVICO_NAO_EXISTE') {
-                texto = `NÃO gravei: não tem "${a.servico}" no cadastro. Os procedimentos são: ${(r.servicos ?? []).join(', ')}. Pergunte qual é.`;
+                texto =
+                  `NÃO gravei: não tem "${a.servico}" no cadastro. ` +
+                  ((r.servicos ?? []).length
+                    ? `Os procedimentos são: ${(r.servicos ?? []).join(', ')}. Pergunte qual é. `
+                    : 'O salão ainda não tem nenhum procedimento cadastrado. ') +
+                  'Se ele falou de química em geral (luzes, progressiva, coloração...), grave com configurar_sinal valorQuimicaReais, que vale para todos os químicos, inclusive os que ele cadastrar depois. Não diga que guardou sem gravar.';
               } else if (r?.reason === 'SINAL_MAIOR_QUE_O_PRECO') {
                 texto = `NÃO gravei: o sinal ficaria maior que o preço (${r.preco}). Confira com ele.`;
               } else {
