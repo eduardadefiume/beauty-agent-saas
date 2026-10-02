@@ -43,9 +43,15 @@ export function comProximoPasso(
   if (mensagens.some((m) => temPergunta(String(m ?? '')))) return mensagens;
   if (VAI_PARAR.test(o.leva ?? '')) return mensagens;
   const feitas = (o.jaFeitas ?? []).map(chave).filter((f) => f.length >= 20);
+  const bate = (f: string, k: string) => f.includes(k) || k.includes(f);
+  // Pergunta feita lá atrás não volta (deslize 9). A ÚLTIMA pergunta do Eddy,
+  // que ele interrompeu ("antes de regra, muda o sinal"), volta UMA vez.
   const jaFeita = (q: string) => {
     const k = chave(q);
-    return feitas.some((f) => f.includes(k) || k.includes(f));
+    const vezes = feitas.filter((f) => bate(f, k)).length;
+    if (vezes === 0) return false;
+    const ultima = feitas[feitas.length - 1] ?? '';
+    return !(vezes === 1 && bate(ultima, k));
   };
   const candidata = [o.proxima, ...(o.alternativas ?? [])]
     .map((q) => (q ?? '').trim())

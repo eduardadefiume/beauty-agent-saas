@@ -55,7 +55,7 @@ describe('a resposta do cadastro nunca morre sem próximo passo (02/10)', () => 
         proxima: COR,
         leva: 'o platinado demora 2h a mais tbm',
         bloqueado: false,
-        jaFeitas: ['Então sobre cor e mechas: blá', COR],
+        jaFeitas: [COR, 'Pra eu guardar o tom certinho, me manda uma foto de cada um desses?'],
         alternativas: [sub],
       })
     ).toEqual(['Anotei: Platinado fica R$100 a mais e 2h a mais.', sub]);
@@ -68,7 +68,7 @@ describe('a resposta do cadastro nunca morre sem próximo passo (02/10)', () => 
         proxima: COR,
         leva: 'ok',
         bloqueado: false,
-        jaFeitas: [COR, sub],
+        jaFeitas: [COR, sub, 'Feito.', sub],
         alternativas: [sub],
       })
     ).toEqual(['Anotei.']);
@@ -148,5 +148,39 @@ describe('o padrão da cor numa mensagem só (02/10)', () => {
   });
   it('nada pendente: vazio', () => {
     expect(padraoDaCor([])).toBe('');
+  });
+});
+
+describe('retoma UMA vez a pergunta que ele interrompeu (02/10)', () => {
+  const REGRAS = 'Tem alguma regra sua que a atendente precisa saber, do jeito que você diria?';
+  it('caso real: "antes de regra, muda o sinal" -> retoma as regras', () => {
+    expect(
+      comProximoPasso(['Beleza, mudei: agora só devolve o sinal com 48h.'], {
+        proxima: REGRAS,
+        leva: 'ah antes de regra, muda uma coisa do sinal: 48 horas',
+        bloqueado: false,
+        jaFeitas: ['Anotei a cor.', REGRAS],
+      })
+    ).toEqual(['Beleza, mudei: agora só devolve o sinal com 48h.', REGRAS]);
+  });
+  it('já retomou uma vez e ele interrompeu de novo: não vira refrão', () => {
+    expect(
+      comProximoPasso(['Feito.'], {
+        proxima: REGRAS,
+        leva: 'muda o corte pra 90',
+        bloqueado: false,
+        jaFeitas: [REGRAS, 'Feito, corte em 85.', REGRAS],
+      })
+    ).toEqual(['Feito.']);
+  });
+  it('feita lá atrás, não foi a última: não repete (deslize 9)', () => {
+    expect(
+      comProximoPasso(['Anotei.'], {
+        proxima: REGRAS,
+        leva: 'o platinado demora 2h',
+        bloqueado: false,
+        jaFeitas: [REGRAS, 'Me manda uma foto de cada um desses?'],
+      })
+    ).toEqual(['Anotei.']);
   });
 });
