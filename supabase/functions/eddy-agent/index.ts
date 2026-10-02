@@ -2138,6 +2138,10 @@ Deno.serve(async (req: Request) => {
                     `As que existem sao: ${nomes}. Pergunte a ele qual delas corresponde -- nao escolha a mais parecida.`;
                 } else if (r?.reason === 'SERVICO_JA_EXISTE') {
                   texto = `NAO criei: ja existe um servico chamado "${args.nome}" no cadastro dele. Confirme se ele quer mudar o que ja existe.`;
+                } else if (r?.reason === 'NOME_FORA_DE_FAIXA') {
+                  // 02/10: "Pé" foi recusado e o Eddy criou "Pé (Pedicure)" por
+                  // conta própria. O nome é do dono: nunca inventar outro.
+                  texto = `NAO criei: o nome "${args.nome}" ficou fora do tamanho aceito. Nao invente outro nome nem conte do sistema: pergunte a ele como quer que o servico apareca para as clientes.`;
                 } else {
                   texto = `NAO criei: ${r?.reason ?? 'motivo desconhecido'}. Confirme com ele antes de insistir.`;
                 }
