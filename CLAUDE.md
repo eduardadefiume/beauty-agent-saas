@@ -27,6 +27,13 @@
   desfaz o que o DEV tem a mais (ex.: a migração 20260923235500, que a produção nunca recebeu e
   vai receber no próximo `dev → main` pelo `migrar-banco`).
 
+## Aviso de falha (05/10/2026)
+
+- `app.operator_contacts` (Duda, 5516994215487) recebe no WhatsApp os alertas de `app.agent_alerts`
+  (cron `avisar-operadora`, 1/min). Conversa da operadora num salão que não é dela nasce pausada.
+- Crédito/chave/IA ocupada não estacionam mais conversa (8 em 8 min); 1ª resposta boa libera todas.
+- Modelo `alerta_da_operacao` enviado à Meta em 05/10 (PENDING). Sem ele, cai no `aviso_ao_dono`.
+
 ## Como trabalhar
 
 - Responder à Duda **sempre em português**, curto, passo a passo, com honestidade brutal.
