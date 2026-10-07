@@ -108,3 +108,39 @@ describe('alerta da operadora (02/10)', () => {
     expect(a!.detalhe.length).toBeLessThanOrEqual(780);
   });
 });
+
+import { envioRecusado } from '../../../supabase/functions/whatsapp-agent/alerta-da-operadora';
+
+// 07/10, DEV: Eddy marcou REPLY no "o 1" e a janela de 24h recusou o envio.
+describe('envio recusado (07/10)', () => {
+  it('tudo enviado: nada a avisar', () => {
+    expect(envioRecusado([{ ok: true, outboxId: 'a' }, { ok: true }])).toBeNull();
+  });
+  it('duplicado conta como enviado', () => {
+    expect(envioRecusado([{ ok: true, duplicate: true }])).toBeNull();
+  });
+  it('caso real: janela fechada', () => {
+    expect(
+      envioRecusado([
+        { ok: false, reason: 'SERVICE_WINDOW_CLOSED' },
+        { ok: false, reason: 'SERVICE_WINDOW_CLOSED' },
+      ])
+    ).toBe('2 de 2 mensagens não saíram: SERVICE_WINDOW_CLOSED');
+  });
+  it('uma de três falhou', () => {
+    expect(envioRecusado([{ ok: true }, { ok: false, reason: 'CHANNEL_DISCONNECTED' }, { ok: true }])).toBe(
+      '1 de 3 mensagens não saíram: CHANNEL_DISCONNECTED'
+    );
+  });
+  it('banco devolveu vazio/nulo/sem motivo', () => {
+    expect(envioRecusado([null, undefined, {}, { ok: false }])).toBe(
+      '4 de 4 mensagens não saíram: SEM_RESPOSTA_DO_BANCO'
+    );
+  });
+  it('ok como texto "true" não é sucesso', () => {
+    expect(envioRecusado([{ ok: 'true' }])).not.toBeNull();
+  });
+  it('lista vazia: nada enviado, nada recusado', () => {
+    expect(envioRecusado([])).toBeNull();
+  });
+});

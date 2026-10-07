@@ -37,7 +37,7 @@ import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
 import { ateTresBolhas, umaPerguntaPorVez } from './uma-pergunta.ts';
 import { comCacheNaUltima } from './cache-da-volta.ts';
-import { alertaDoTurno } from './alerta-da-operadora.ts';
+import { alertaDoTurno, envioRecusado } from './alerta-da-operadora.ts';
 import { reservaPedeSinal, semConfirmarAntesDoDono } from './sinal-comprovante.ts';
 import {
   eleaCitouOAgendamento,
@@ -2349,6 +2349,19 @@ Deno.serve(async (req) => {
               p_idempotency_key: `agent:${item.last_inbound_message_id}:${item.trigger}:${i}`,
             })
           );
+        }
+        // 07/10: envio recusado não é resposta dada (ver alerta-da-operadora.ts).
+        const recusado = envioRecusado(enviados);
+        if (recusado) {
+          try {
+            await rpc(supabaseUrl, serviceKey, 'alertar_operadora', {
+              p_tenant_id: item.tenant_id,
+              p_kind: 'RESPOSTA_NAO_ENVIADA',
+              p_detail: `Atendente: ${recusado} [conversa ${String(item.conversation_id).slice(0, 8)}]`,
+            });
+          } catch (erroAlerta) {
+            console.error(JSON.stringify({ event: 'alerta_falhou', erro: String(erroAlerta) }));
+          }
         }
         // A FINALIZACAO DO SALAO SAI DEPOIS DO "MARCADO" DELA. Texto e arte
         // sao do dono, preenchidos no banco, e nao passam pelo modelo. Falhar

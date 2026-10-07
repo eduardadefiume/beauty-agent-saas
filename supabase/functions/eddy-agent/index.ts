@@ -20,6 +20,7 @@ import { temPergunta, umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.t
 import { comCacheNaUltima } from '../whatsapp-agent/cache-da-volta.ts';
 import { comProximoPasso, padraoDaCor, semRefrao } from './proximo-passo.ts';
 import { corConfirmada } from './cor-confirmada.ts';
+import { envioRecusado } from '../whatsapp-agent/alerta-da-operadora.ts';
 
 // eddy-agent — o agente que conversa com o DONO do salao, nao com as clientes.
 //
@@ -3743,14 +3744,31 @@ Deno.serve(async (req: Request) => {
       }
 
       {
+        const envios: unknown[] = [];
         for (let i = 0; i < saidas.length; i++) {
-          await rpc(supabaseUrl, serviceKey, 'enqueue_outbound_message', {
-            p_tenant_id: item.tenant_id,
-            p_conversation_id: item.conversation_id,
-            p_body_text: saidas[i],
-            p_actor: 'AGENT',
-            p_idempotency_key: `eddy:${item.last_inbound_message_id}:${i}`,
-          });
+          envios.push(
+            await rpc(supabaseUrl, serviceKey, 'enqueue_outbound_message', {
+              p_tenant_id: item.tenant_id,
+              p_conversation_id: item.conversation_id,
+              p_body_text: saidas[i],
+              p_actor: 'AGENT',
+              p_idempotency_key: `eddy:${item.last_inbound_message_id}:${i}`,
+            })
+          );
+        }
+        // 07/10: envio recusado (janela de 24h fechada, canal caído) não é
+        // resposta dada. O dono ficaria em silêncio e ninguém saberia.
+        const recusado = envioRecusado(envios);
+        if (recusado) {
+          try {
+            await rpc(supabaseUrl, serviceKey, 'alertar_operadora', {
+              p_tenant_id: item.tenant_id,
+              p_kind: 'RESPOSTA_NAO_ENVIADA',
+              p_detail: `Eddy: ${recusado} [conversa ${String(item.conversation_id).slice(0, 8)}]`,
+            });
+          } catch (erroAlerta) {
+            console.error(JSON.stringify({ event: 'alerta_falhou', erro: String(erroAlerta) }));
+          }
         }
         // O que ele disse ao dono entra no historico do onboarding tambem, para
         // a tela mostrar a mesma conversa que aconteceu no WhatsApp.

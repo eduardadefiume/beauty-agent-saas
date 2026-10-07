@@ -51,3 +51,21 @@ export function alertaDoTurno(t: {
 
   return null;
 }
+
+// O ENVIO RECUSADO NÃO PODE PASSAR POR RESPOSTA DADA (07/10).
+//
+// O Eddy respondeu o "o 1" do William cinco dias depois (o crédito tinha
+// acabado). A janela de 24h já tinha fechado, enqueue_outbound_message
+// devolveu {ok:false, reason:'SERVICE_WINDOW_CLOSED'} e o código marcou
+// REPLY sem olhar. Para o dono: silêncio. Aqui, cada resultado de envio é
+// conferido; duplicado é sucesso (a mensagem já está na fila).
+export function envioRecusado(resultados: unknown[]): string | null {
+  const motivos: string[] = [];
+  for (const r of resultados) {
+    const x = (r ?? {}) as { ok?: unknown; reason?: unknown };
+    if (x.ok === true) continue;
+    motivos.push(typeof x.reason === 'string' && x.reason ? x.reason : 'SEM_RESPOSTA_DO_BANCO');
+  }
+  if (motivos.length === 0) return null;
+  return `${motivos.length} de ${resultados.length} mensagens não saíram: ${[...new Set(motivos)].join(', ')}`;
+}
