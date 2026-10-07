@@ -36,6 +36,7 @@ import { horarioApareceuNaConversa } from './horario-combinado.ts';
 import { nomeDito } from './nome-dito.ts';
 import { fichaDita, quemMandaAFoto, tomDaFoto } from './ficha-dita.ts';
 import { ateTresBolhas, umaPerguntaPorVez } from './uma-pergunta.ts';
+import { bolhasDaResposta, type FormatoDaResposta } from './formato-da-resposta.ts';
 import { comCacheNaUltima } from './cache-da-volta.ts';
 import { alertaDoTurno, envioRecusado } from './alerta-da-operadora.ts';
 import { reservaPedeSinal, semConfirmarAntesDoDono } from './sinal-comprovante.ts';
@@ -262,11 +263,23 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description:
             'REPLY: você sabe a resposta e vai falar com a cliente agora. ASK_OWNER: falta uma informação que só a dona tem e você NÃO consegue responder nada de útil agora; a cliente recebe sozinha um aviso de que vai ser confirmado, e você não escreve nada. HANDOFF: assunto delicado que uma pessoa precisa conduzir.',
         },
-        messages: {
-          type: 'array',
-          items: { type: 'string' },
+        bolha1: {
+          type: 'string',
           description:
-            'As mensagens para a cliente, uma por balão de WhatsApp. Vazio quando action não for REPLY.',
+            'Primeiro balão de WhatsApp para a cliente (o cumprimento, quando houver, vai sozinho aqui). Vazio quando action não for REPLY.',
+        },
+        bolha2: {
+          type: 'string',
+          description: 'Segundo balão, se precisar. Vazio se não precisar.',
+        },
+        bolha3: {
+          type: 'string',
+          description: 'Terceiro e último balão, se precisar. Não existe quarto. Vazio se não precisar.',
+        },
+        pergunta: {
+          type: 'string',
+          description:
+            'A ÚNICA pergunta desta resposta, se houver: sai no fim da última bolha. Os balões acima não levam pergunta nenhuma. Vazio se não for perguntar nada.',
         },
         ownerQuestion: {
           type: 'string',
@@ -283,7 +296,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description: 'Uma frase curta para o painel da equipe. Nunca é enviada à cliente.',
         },
       },
-      required: ['action', 'messages', 'ownerQuestion', 'contextSummary', 'reason'],
+      required: ['action', 'bolha1', 'bolha2', 'bolha3', 'pergunta', 'ownerQuestion', 'contextSummary', 'reason'],
       additionalProperties: false,
     },
   },
@@ -1046,6 +1059,8 @@ async function decidir(
     const desfecho = chamadas.find((c) => c.name === 'atender');
     if (desfecho) {
       const decisao = desfecho.input as Decisao;
+      // O formato é a regra: 3 bolhas + 1 pergunta (formato-da-resposta.ts).
+      decisao.messages = bolhasDaResposta(desfecho.input as FormatoDaResposta);
       // "Ja te mando uma foto do tom?" -- quem manda a foto e ela (ficha-dita.ts).
       if (Array.isArray(decisao.messages)) {
         decisao.messages = decisao.messages.map((m) =>
