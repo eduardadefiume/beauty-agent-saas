@@ -35,7 +35,8 @@ export function alertaDoTurno(t: {
   };
 
   if (travas.length > 0) {
-    const escrito = t.textos.length > 0 ? ` | Ela tinha escrito: "${curto(t.textos.join(' / '), 300)}"` : '';
+    const escrito =
+      t.textos.length > 0 ? ` | Ela tinha escrito: "${curto(t.textos.join(' / '), 300)}"` : '';
     return {
       tipo: 'RESPOSTA_BLOQUEADA',
       detalhe: curto(travas.join('; ') + escrito + onde, 780),

@@ -274,7 +274,8 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         },
         bolha3: {
           type: 'string',
-          description: 'Terceiro e último balão, se precisar. Não existe quarto. Vazio se não precisar.',
+          description:
+            'Terceiro e último balão, se precisar. Não existe quarto. Vazio se não precisar.',
         },
         pergunta: {
           type: 'string',
@@ -296,7 +297,16 @@ const FERRAMENTAS: Anthropic.Tool[] = [
           description: 'Uma frase curta para o painel da equipe. Nunca é enviada à cliente.',
         },
       },
-      required: ['action', 'bolha1', 'bolha2', 'bolha3', 'pergunta', 'ownerQuestion', 'contextSummary', 'reason'],
+      required: [
+        'action',
+        'bolha1',
+        'bolha2',
+        'bolha3',
+        'pergunta',
+        'ownerQuestion',
+        'contextSummary',
+        'reason',
+      ],
       additionalProperties: false,
     },
   },

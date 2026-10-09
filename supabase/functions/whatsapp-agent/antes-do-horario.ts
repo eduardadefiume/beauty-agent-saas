@@ -368,7 +368,7 @@ function palavrasQueCasam(pedido: string, nomeDoServico: string): string[] | nul
   for (const [lado, oposto] of [
     ['feminin', 'masculin'],
     ['masculin', 'feminin'],
-  ]) {
+  ] as const) {
     if (nome.includes(oposto) && texto.includes(lado) && !texto.includes(oposto)) return null;
   }
 

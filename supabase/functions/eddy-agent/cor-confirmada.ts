@@ -39,7 +39,10 @@ const EXTENSO: Record<string, number> = {
 
 function numerosDitos(t: string): number[] {
   const n: number[] = [];
-  for (const m of t.matchAll(/(\d+(?:[.,]\d+)?)/g)) n.push(Number(m[1].replace(',', '.')));
+  for (const m of t.matchAll(/(\d+(?:[.,]\d+)?)/g)) {
+    const dito = m[1];
+    if (dito) n.push(Number(dito.replace(',', '.')));
+  }
   for (const [p, v] of Object.entries(EXTENSO)) if (new RegExp(`\\b${p}\\b`).test(t)) n.push(v);
   if (/\bmeia hora\b/.test(t)) n.push(30);
   if (/\b(uma|1) hora\b/.test(t)) n.push(60);

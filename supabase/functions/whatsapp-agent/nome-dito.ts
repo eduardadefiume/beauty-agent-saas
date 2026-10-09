@@ -25,9 +25,11 @@ export function nomeDito(falasDela: string[]): string | null {
   for (let i = falasDela.length - 1; i >= 0; i--) {
     const m = String(falasDela[i] ?? '').match(APRESENTACAO);
     if (!m) continue;
-    const primeiro = m[1].split(/\s+/)[0];
+    const dito = m[1];
+    if (!dito) continue;
+    const primeiro = dito.split(/\s+/)[0] ?? '';
     if (NAO_E_NOME.has(primeiro)) continue;
-    return m[1].trim();
+    return dito.trim();
   }
   return null;
 }

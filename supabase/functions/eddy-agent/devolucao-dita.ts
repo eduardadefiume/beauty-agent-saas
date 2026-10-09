@@ -33,10 +33,12 @@ function horas(trecho: string): number | null {
     /\b(\d{1,3}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|doze|vinte|trinta)\s*(h|hs|hrs?|horas?|dias?|semanas?)\b/
   );
   if (!m) return null;
-  const n = /^\d+$/.test(m[1]) ? Number(m[1]) : NUM[m[1]];
+  const quanto = m[1] ?? '';
+  const unidade = m[2] ?? '';
+  const n = /^\d+$/.test(quanto) ? Number(quanto) : NUM[quanto];
   if (!n) return null;
-  if (/^dia/.test(m[2])) return n * 24;
-  if (/^semana/.test(m[2])) return n * 24 * 7;
+  if (/^dia/.test(unidade)) return n * 24;
+  if (/^semana/.test(unidade)) return n * 24 * 7;
   return n;
 }
 

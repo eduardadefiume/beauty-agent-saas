@@ -10,7 +10,7 @@
 import type { Fala } from './antes-do-horario.ts';
 
 function horaEMinuto(ms: number): { h: number; m: number } {
-  const [h, m] = new Date(ms)
+  const [h = 0, m = 0] = new Date(ms)
     .toLocaleTimeString('pt-BR', {
       timeZone: 'America/Sao_Paulo',
       hour: '2-digit',

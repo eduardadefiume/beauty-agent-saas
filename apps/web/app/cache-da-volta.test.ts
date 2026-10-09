@@ -29,10 +29,10 @@ describe('cache entre as voltas do mesmo turno (02/10, custo)', () => {
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
     ];
     const v2 = comCacheNaUltima(historico);
-    expect(v1[0].content).toHaveLength(1);
-    expect(v2[0].content).toBe('CTX');
-    expect(v2[1].content).toEqual(historico[1].content);
-    expect(v2[2].content).toEqual([
+    expect(v1[0]?.content).toHaveLength(1);
+    expect(v2[0]?.content).toBe('CTX');
+    expect(v2[1]?.content).toEqual(historico[1]?.content);
+    expect(v2[2]?.content).toEqual([
       {
         type: 'tool_result',
         tool_use_id: 't1',
@@ -80,7 +80,7 @@ describe('cache entre as voltas do mesmo turno (02/10, custo)', () => {
         ],
       },
     ]);
-    expect(r[0].content).toEqual([
+    expect(r[0]?.content).toEqual([
       { type: 'text', text: 'a', cache_control: { type: 'ephemeral' } },
       { type: 'thinking', thinking: '' },
     ]);

@@ -98,11 +98,12 @@ const ROTULO: Record<string, (v: number) => string> = {
 export function padraoDaCor(perguntas: PerguntaDeCor[]): string {
   const itens = (perguntas ?? [])
     .filter((p) => p && typeof p.sugestao === 'number')
-    .map((p) =>
-      ROTULO[p.chave ?? '']
-        ? ROTULO[p.chave ?? ''](p.sugestao as number)
-        : `${(p.pergunta ?? '').replace(/\?$/, '')}: ${p.sugestao}`
-    );
+    .map((p) => {
+      const rotulo = ROTULO[p.chave ?? ''];
+      return rotulo
+        ? rotulo(p.sugestao as number)
+        : `${(p.pergunta ?? '').replace(/\?$/, '')}: ${p.sugestao}`;
+    });
   if (itens.length === 0) return '';
   return (
     'Pro resto da cor eu uso o padrão da maioria dos salões: ' +

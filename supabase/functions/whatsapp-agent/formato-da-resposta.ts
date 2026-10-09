@@ -30,7 +30,7 @@ export function bolhasDaResposta(r: FormatoDaResposta): string[] {
   const pergunta = texto(r.pergunta);
   if (!pergunta) return bolhas;
   if (bolhas.length === 0) return [pergunta];
-  const ultima = bolhas[bolhas.length - 1];
+  const ultima = bolhas[bolhas.length - 1] ?? '';
   // A pergunta repetida na bolha (o modelo escreveu nos dois lugares) não dobra.
   if (ultima.includes(pergunta)) return bolhas;
   bolhas[bolhas.length - 1] = ultima + '\n\n' + pergunta;

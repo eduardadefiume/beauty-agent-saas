@@ -24,3 +24,6 @@ config/backup/*.json
 
 # copiado de node_modules no build (apps/web/scripts/copiar-sqlite-wasm.mjs)
 apps/web/public/sql-wasm.wasm
+
+# Log de sessao da plataforma Manus (13/08). Nao versionar.
+.manus-logs/

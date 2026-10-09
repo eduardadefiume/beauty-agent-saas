@@ -56,7 +56,7 @@ export function pediuOutroServico(
   const ditos = nomeados(fala, catalogo);
   if (ditos.length === 0) return null;
   if (ditos.some((d) => sem(d) === sem(servicoQueVaiMarcar))) return null;
-  return ditos[0];
+  return ditos[0] ?? null;
 }
 
 // ELA NÃO PEDIU PARA DESMARCAR ISSO.

@@ -49,13 +49,13 @@ const NEGA = /\bnao (cobr|quero|vou|tem)|\bsem sinal\b|\bnenhum\b/;
 const QUIMICA = /\bquimicas?\b/;
 
 function valorDoTrecho(t: string): number | null {
-  const m = t.match(NUMERO);
-  if (m) {
-    const n = Number(m[1].replace(',', '.'));
+  const emNumero = t.match(NUMERO)?.[1];
+  if (emNumero) {
+    const n = Number(emNumero.replace(',', '.'));
     return n > 0 ? n : null;
   }
-  const e = t.match(EXTENSO);
-  return e ? POR_EXTENSO[e[1]] : null;
+  const emExtenso = t.match(EXTENSO)?.[1];
+  return emExtenso ? (POR_EXTENSO[emExtenso] ?? null) : null;
 }
 
 export function valorDaQuimicaDito(fala: string, ultimaDoEddy = ''): number | null {

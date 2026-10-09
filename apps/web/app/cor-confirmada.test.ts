@@ -11,7 +11,7 @@ describe('responder_cor só grava o que ele disse (02/10)', () => {
     expect(c('NIVEIS', 2, 'oxe, ja te expliquei no audio de cor')).toBe(false);
     expect(c('SIM_NAO', 1, 'oxe, ja te expliquei no audio de cor')).toBe(false);
   });
-  it.each([
+  it.each<[string, number, string, string?]>([
     ['NIVEIS', 2, 'clareia até 2 tons'],
     ['NIVEIS', 3, 'a partir de três níveis eu faço teste'],
     ['MINUTOS', 30, 'meia hora por nível'],
@@ -27,9 +27,9 @@ describe('responder_cor só grava o que ele disse (02/10)', () => {
     ['NIVEIS', 2, 'o resto faço o normal', PADRAO],
     ['REAIS', 0, 'isso mesmo', PADRAO],
   ])('grava: %s %s "%s"', (u, v, f, antes) => {
-    expect(c(u as string, v as number, f as string, (antes as string) ?? '')).toBe(true);
+    expect(c(u, v, f, antes ?? '')).toBe(true);
   });
-  it.each([
+  it.each<[string, number, string, string?]>([
     ['NIVEIS', 2, 'ok'], // aceitou, mas não tinha padrão na mesa
     ['MINUTOS', 30, 'uns 40 min'],
     ['REAIS', 50, 'não cobro'],
@@ -37,6 +37,6 @@ describe('responder_cor só grava o que ele disse (02/10)', () => {
     ['REAIS', 0, 'cobro 30'],
     ['NIVEIS', 3, 'pode ser', 'Quanto custa a matização?'],
   ])('não grava: %s %s "%s"', (u, v, f, antes) => {
-    expect(c(u as string, v as number, f as string, (antes as string) ?? '')).toBe(false);
+    expect(c(u, v, f, antes ?? '')).toBe(false);
   });
 });
