@@ -92,3 +92,47 @@ export function valorDaQuimicaDito(fala: string, ultimaDoEddy = ''): number | nu
   }
   return null;
 }
+
+// O VALOR DO SINAL PARA TODOS OS SERVIÇOS, COMO O DONO DISSE.
+//
+// 10/10, PRODUÇÃO, William: "Todos os serviços, químicas, colorações,
+// progressivas, selantes, luzes, cortes, escovas." (o R$ 50 ele tinha dito
+// antes, e o Eddy repetiu na pergunta) e "o sinal deve ser feito para todo o
+// serviço solicitado no mês de dezembro ... 50 reais". Só a química foi
+// gravada; corte e escova ficaram sem sinal.
+//
+// Lê "todos os serviços / todo serviço / qualquer serviço" e o valor: na fala
+// dele, ou -- se ele não repetiu -- o único valor em reais da pergunta que ele
+// respondeu. Exceção ("todos menos manicure", "nem todos") ou dois valores
+// diferentes: null, fica com o modelo.
+const TODOS =
+  /\b(todos? (os |o )?(servicos?|procedimentos?|atendimentos?)|qualquer (servico|procedimento|atendimento|horario)|todo (servico|procedimento|horario|agendamento)|todo o (servico|procedimento))\b/;
+const EXCECAO =
+  /\b(menos|exceto|fora (o|a|os|as)|nem todos?|nao (e |eh |vale )?(pra|para|em) todos?|so (pra|para|em|na|no|nas|nos) )/;
+const DINHEIRO =
+  /r\$\s*(\d{1,4}(?:,\d{1,2})?)(?!\d|,\d)|(?<!\d|\d,)(\d{1,4}(?:,\d{1,2})?)\s*(?:reais|real|conto|pila)\b/g;
+
+function valoresEmReais(t: string): number[] {
+  const achados = [...t.matchAll(DINHEIRO)].map((m) =>
+    Number((m[1] ?? m[2] ?? '').replace(',', '.'))
+  );
+  return [...new Set(achados.filter((n) => n > 0))];
+}
+
+export function valorDeTodosDito(fala: string, ultimaDoEddy = ''): number | null {
+  const t = sem(fala);
+  if (!TODOS.test(t) || EXCECAO.test(t)) return null;
+  const naFala = valoresEmReais(t);
+  if (naFala.length === 0) {
+    const doTrecho = t
+      .split(/[;!?\n]|[.](?!\d)/)
+      .map((x) => valorDoTrecho(` ${x.trim()} `))
+      .filter((v): v is number => v != null);
+    if (new Set(doTrecho).size === 1) return doTrecho[0]!;
+    if (doTrecho.length > 1) return null;
+  }
+  if (naFala.length === 1) return naFala[0]!;
+  if (naFala.length > 1) return null;
+  const naPergunta = valoresEmReais(sem(ultimaDoEddy));
+  return naPergunta.length === 1 ? naPergunta[0]! : null;
+}

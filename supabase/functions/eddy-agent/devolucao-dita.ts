@@ -45,34 +45,41 @@ function horas(trecho: string): number | null {
 const DEVOLUCAO =
   /(devolv|devolu|reembols|estorn|volta o (sinal|dinheiro)|perde o sinal|fica com o sinal|nao volta|não volta)/;
 
-export function devolucaoDita(fala: string): DevolucaoDita | null {
-  const t = sem(fala);
+// 10/10, PRODUÇÃO, William: "o valor da entrada não SERÁ devolvido" virou
+// "devolve com 48h". A negação só era vista colada ("não devolv"), e o "dois
+// dias" de OUTRA regra (cobrança integral) entrou na conta. Agora a negação
+// aceita até três palavras no meio ("não vai ser devolvido", "não há
+// devolução", "sem reembolso") e cada frase é lida sozinha: frases que dizem
+// coisas diferentes sobre a devolução deixam a decisão com o modelo.
+const NEGADA =
+  /\b(?:nao|nunca|sem)\s+(?:[a-z]+\s+){0,3}?(?:devolv|devolu|reembols|estorn)\w*|\b(?:nao volta|perde o sinal|perdeu o sinal|desmarcou perdeu|fica com o sinal)\b/g;
+const POSITIVA = /(devolv|devolu|reembols|estorn|volta o (sinal|dinheiro))/;
+const MENOS = /\b(menos de|antes de completar|com menos|abaixo de|dentro de|nas ultimas)\b/;
+
+function daFrase(t: string): DevolucaoDita | null {
   if (!DEVOLUCAO.test(t) && !/\b(desmarc|cancel)/.test(t)) return null;
+  const negada = new RegExp(NEGADA.source).test(t);
+  const positiva = POSITIVA.test(t.replace(NEGADA, ' '));
   const h = horas(t);
   // "com menos de 24h não devolve" / "se desmarcar em cima da hora (menos de 1 dia) perde"
-  if (
-    h &&
-    /\b(menos de|antes de completar|com menos|abaixo de|dentro de|nas ultimas)\b/.test(t) &&
-    /\b(nao devolv|nao tem devolu|perde|fica com|nao volta|nao reembols|nao estorn)/.test(t)
-  ) {
-    return { devolve: true, ateHoras: h };
-  }
+  if (h && negada && MENOS.test(t)) return { devolve: true, ateHoras: h };
   // "devolve se avisar com 48h", "avisando 2 dias antes devolve", "com mais de 24h devolve"
-  if (
-    h &&
-    /\b(devolv|reembols|estorn|volta)/.test(t) &&
-    !/\bnao devolv|\bnao reembols|\bnao estorn|\bnao volta/.test(t)
-  ) {
-    return { devolve: true, ateHoras: h };
-  }
-  // "não devolve", "sinal não volta", "não tem devolução", "desmarcou perdeu"
-  if (
-    /\b(nao devolv|nao tem devolu|sem devolu|nao volta|nao reembols|nunca devolv|perde o sinal|perdeu o sinal|desmarcou perdeu)/.test(
-      t
-    )
-  ) {
-    return { devolve: false, ateHoras: null };
-  }
-  if (/\bdevolv\w* sempre|\bsempre devolv/.test(t)) return { devolve: true, ateHoras: 0 };
+  if (h && positiva && !negada) return { devolve: true, ateHoras: h };
+  if (/\bdevolv\w* sempre|\bsempre devolv/.test(t) && !negada)
+    return { devolve: true, ateHoras: 0 };
+  // "não devolve", "sinal não volta", "não será devolvido", "sem reembolso"
+  if (negada && !positiva) return { devolve: false, ateHoras: null };
   return null;
+}
+
+export function devolucaoDita(fala: string): DevolucaoDita | null {
+  const lidas = sem(fala)
+    .split(/[.;!?\n\t]+/)
+    .map((f) => daFrase(` ${f.trim()} `))
+    .filter((x): x is DevolucaoDita => x !== null);
+  if (lidas.length === 0) return null;
+  const [primeira] = lidas;
+  return lidas.every((x) => x.devolve === primeira!.devolve && x.ateHoras === primeira!.ateHoras)
+    ? primeira!
+    : null;
 }
