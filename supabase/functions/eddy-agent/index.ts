@@ -15,7 +15,8 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.120.0';
 import { camposCorrompidos, semEscapes } from '../whatsapp-agent/resposta-limpa.ts';
 import { respostaAoSinal } from './sinal-do-dono.ts';
 import { devolucaoDita } from './devolucao-dita.ts';
-import { valorDaQuimicaDito } from './sinal-quimica-dito.ts';
+import { valorDaQuimicaDito, valorDeTodosDito } from './sinal-quimica-dito.ts';
+import { disseQueGravou } from './disse-que-gravou.ts';
 import { temPergunta, umaPerguntaPorVez } from '../whatsapp-agent/uma-pergunta.ts';
 import { comCacheNaUltima } from '../whatsapp-agent/cache-da-volta.ts';
 import { comProximoPasso, padraoDaCor, semRefrao } from './proximo-passo.ts';
@@ -58,17 +59,19 @@ const CACHE_TTL = '1h' as const;
 // As perguntas do sinal, na ordem de app.sinal_resumo().falta.
 const PERGUNTA_DO_SINAL: Record<string, string> = {
   VALORES:
-    '"Em quais procedimentos você quer cobrar sinal, e quanto em cada? Ex.: luzes R$ 100, progressiva R$ 50, corte não cobra." -> definir_sinal_do_servico (uma chamada por procedimento); se ele falar de toda a química ("só química, 50"), configurar_sinal valorQuimicaReais',
+    '"Em quais procedimentos você quer cobrar sinal, e quanto em cada? Ex.: luzes R$ 100, progressiva R$ 50, corte não cobra." -> definir_sinal_do_servico (uma chamada por procedimento); se ele falar de toda a química ("só química, 50"), configurar_sinal valorQuimicaReais; se falar de todos os serviços ("todos, 50", "qualquer serviço"), configurar_sinal valorTodosReais',
   PERIODO:
     '"O sinal vale sempre, ou só num período? Ex.: só em dezembro." -> configurar_sinal (sempre = valeDe "" e valeAte "")',
   PRAZO:
     '"Depois de marcar, quanto tempo a cliente tem pra pagar o sinal? O normal é 24h. E se ela marcar com antecedência, tipo em novembro pra dezembro, quer dar mais tempo (ex.: 48h)?" -> configurar_sinal (prazoHoras e prazoMesAnteriorHoras). ' +
-    'Diga também, numa linha, que o prazo nunca passa de 2h antes do horário e que, se não pagar no prazo, o horário é liberado e a cliente é avisada.',
+    'Diga também, numa linha, que o prazo nunca passa de 2h antes do horário e que, se não pagar no prazo, o horário é liberado e a cliente é avisada. ' +
+    'Se ele disser "só agenda com o Pix pago" / "no ato", é o prazo mais curto (prazoHoras 1): diga isso a ele com essas palavras, não invente outro número.',
   PIX: '"Qual a chave Pix que a cliente vai usar pra pagar o sinal, e em nome de quem aparece?" -> configurar_sinal (pixChave, pixTitular)',
   DEVOLUCAO:
     '"Se a cliente pagar o sinal e depois desmarcar, você devolve? Se sim, com quantas horas de antecedência ela tem que avisar?" -> configurar_sinal (devolve, devolveAteHoras)',
   LIGAR:
-    'mostre o resumo do sinal em poucas linhas e pergunte "Posso ligar o sinal?" -> configurar_sinal ativo true',
+    // 10/10, William: "Posso ligar o sinal?" -> "Ligar o que?". Palavra de sistema não é palavra de dono.
+    'mostre o resumo do sinal em poucas linhas, com as palavras dele (o que ele disse sobre devolução, prazo e quais serviços), e pergunte "Posso começar a pedir esse sinal para as clientes que marcarem?" -> configurar_sinal ativo true',
 };
 
 const O_QUE_AINDA_NAO_FACO =
@@ -763,7 +766,8 @@ const FERRAMENTAS: Anthropic.Tool[] = [
       'Grava o que o DONO respondeu sobre o sinal (só os campos que ele respondeu agora). Vale na hora, sem publicar. ' +
       'Período: valeDe/valeAte (AAAA-MM-DD); "sempre" = os dois vazios (""). Prazo: prazoHoras (padrão 24) e, se ele quiser mais tempo quando a cliente marca num mês para o outro (ex.: novembro para dezembro), prazoMesAnteriorHoras; "não" = "". ' +
       'Pix: pixChave e pixTitular (nome que aparece no Pix). Devolução: devolve true/false e devolveAteHoras (com quantas horas de antecedência ela tem que avisar). ' +
-      'Valor para TODA a química ("sinal só pra química, 50 reais"): valorQuimicaReais (vale para luzes, mechas, progressiva, coloração etc., os de hoje e os que ele cadastrar depois; 0 = tira). Valor de UM procedimento é definir_sinal_do_servico, que ganha da regra da química. ' +
+      'Valor para TODA a química ("sinal só pra química, 50 reais"): valorQuimicaReais (vale para luzes, mechas, progressiva, coloração etc., os de hoje e os que ele cadastrar depois; 0 = tira). Valor para TODOS os serviços ("sinal de 50 em tudo", "todos os serviços", "qualquer horário"): valorTodosReais (corte, escova, química, os de hoje e os que ele cadastrar depois; 0 = tira). ' +
+      'Quem ganha: valor de UM procedimento (definir_sinal_do_servico) > química > todos. Se ele disse "todos", NÃO diga que corte ou escova ficam de fora. ' +
       'ativo true SÓ quando ele disser para ligar (e só depois de ter valor e Pix).',
     input_schema: {
       type: 'object',
@@ -774,6 +778,7 @@ const FERRAMENTAS: Anthropic.Tool[] = [
         prazoHoras: { type: 'integer' },
         prazoMesAnteriorHoras: { type: ['integer', 'string'] },
         valorQuimicaReais: { type: 'number', description: 'Sinal de toda a química, em reais.' },
+        valorTodosReais: { type: 'number', description: 'Sinal de todos os serviços, em reais.' },
         pixChave: { type: 'string' },
         pixTitular: { type: 'string' },
         devolve: { type: 'boolean' },
@@ -1406,6 +1411,22 @@ Deno.serve(async (req: Request) => {
       gravadasPeloCodigo = 0;
       // O VALOR DO SINAL DA QUÍMICA COMO ELE DISSE (ver sinal-quimica-dito.ts).
       const quimicaDoTurno = valorDaQuimicaDito(falaDoTurno, ultimaDoEddyNoTurno);
+      // "Todos os serviços" como ele disse (10/10, William): grava antes do modelo.
+      const todosDoTurno = valorDeTodosDito(falaDoTurno, ultimaDoEddyNoTurno);
+      if (todosDoTurno != null) {
+        try {
+          const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal', {
+            p_tenant_id: tenantId,
+            p_campos: { valorTodosReais: todosDoTurno },
+          })) as { ok?: boolean } | null;
+          if (r?.ok) {
+            anotadas++;
+            gravadasPeloCodigo++;
+          }
+        } catch (erro) {
+          console.error(JSON.stringify({ event: 'todos_dito_falhou', erro: String(erro) }));
+        }
+      }
       if (quimicaDoTurno != null) {
         try {
           const r = (await rpc(supabaseUrl, serviceKey, 'eddy_definir_sinal', {
@@ -1915,11 +1936,8 @@ Deno.serve(async (req: Request) => {
           // agente, que e um problema pior que uma frase errada.
           // Com as flexoes: "cor gravada certinho" passou em 24/09 porque a
           // lista tinha "gravado" e nao "gravada".
-          const prometeuTerGravado =
-            /\b((anot|grav|registr|cadastr|salv|guard|atualiz|arquiv)(ei|ado|ada|ados|adas|ou|amos)|corrig(i|ido|ida|idos|idas|imos))\b/i;
-          const falaQueGravou = (escolha.messages ?? []).some((m) =>
-            prometeuTerGravado.test(String(m ?? ''))
-          );
+          // 10/10: "Já ajustei" passou -- a lista de verbos fica em disse-que-gravou.ts.
+          const falaQueGravou = disseQueGravou(escolha.messages ?? []);
 
           if (
             falaQueGravou &&
@@ -1941,7 +1959,7 @@ Deno.serve(async (req: Request) => {
                   'Escolha: chame a ferramenta que grava isso agora (cor e `responder_cor`, uma ' +
                   'vez por resposta; regra e `criar_regra`; redes, confirmacao e lembrete tem ' +
                   'ferramenta propria; nome e endereco `registrar_identidade`; servico ' +
-                  '`criar_servico`; preco `definir_preco`) -- ou, se faltar informacao, chame ' +
+                  '`criar_servico`; preco `definir_preco`; sinal `configurar_sinal` ou `definir_sinal_do_servico`) -- ou, se faltar informacao, chame ' +
                   '`atender` de novo e apenas PERGUNTE, sem dizer que anotou.',
               })),
             });
@@ -1954,7 +1972,7 @@ Deno.serve(async (req: Request) => {
           // ter anotado tem que estar gravado: neste turno ou ja no cadastro.
           const frasesDeGravacao = (escolha.messages ?? [])
             .map((m) => String(m ?? ''))
-            .filter((m) => prometeuTerGravado.test(m));
+            .filter((m) => disseQueGravou([m]));
           const valoresDitos = frasesDeGravacao.flatMap((m) =>
             [...m.matchAll(/R\$\s?(\d{1,5}(?:[.,]\d{1,2})?)/g)].map((x) =>
               Number(x[1].replace(',', '.'))
@@ -3100,6 +3118,7 @@ Deno.serve(async (req: Request) => {
               // O modelo não desmente o dono na devolução (devolucao-dita.ts).
               const campos = { ...((chamada.input ?? {}) as Record<string, unknown>) };
               if (quimicaDoTurno != null) campos.valorQuimicaReais = quimicaDoTurno;
+              if (todosDoTurno != null) campos.valorTodosReais = todosDoTurno;
               if (devolucaoDoTurno) {
                 campos.devolve = devolucaoDoTurno.devolve;
                 if (devolucaoDoTurno.ateHoras != null)
@@ -3161,7 +3180,8 @@ Deno.serve(async (req: Request) => {
                   ((r.servicos ?? []).length
                     ? `Os procedimentos são: ${(r.servicos ?? []).join(', ')}. Pergunte qual é. `
                     : 'O salão ainda não tem nenhum procedimento cadastrado. ') +
-                  'Se ele falou de química em geral (luzes, progressiva, coloração...), grave com configurar_sinal valorQuimicaReais, que vale para todos os químicos, inclusive os que ele cadastrar depois. Não diga que guardou sem gravar.';
+                  'Se ele falou de química em geral (luzes, progressiva, coloração...), grave com configurar_sinal valorQuimicaReais, que vale para todos os químicos, inclusive os que ele cadastrar depois. ' +
+                  'Se ele falou de todos os serviços, grave com configurar_sinal valorTodosReais. Não diga que guardou sem gravar.';
               } else if (r?.reason === 'SINAL_MAIOR_QUE_O_PRECO') {
                 texto = `NÃO gravei: o sinal ficaria maior que o preço (${r.preco}). Confira com ele.`;
               } else {
