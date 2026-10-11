@@ -78,7 +78,22 @@ export const MODELOS: Modelo[] = [
     texto:
       'Alerta do sistema no {{1}}: {{2}} (código {{3}}). ' +
       'Responda esta mensagem para receber os próximos alertas completos.',
-    exemplo: ['Studio Rogério Hair', 'O agente parou de responder: acabou o crédito da IA.', 'A1B2C3'],
+    exemplo: [
+      'Studio Rogério Hair',
+      'O agente parou de responder: acabou o crédito da IA.',
+      'A1B2C3',
+    ],
+  },
+  // 11/10: o Eddy retomando o cadastro com o dono depois de 24h parado (o
+  // William parou em 10/10 e o único modelo que servia era o aviso_ao_dono,
+  // "sobre a cliente ..."). Lacunas: nome do dono, salão, a pergunta.
+  {
+    codigo: 'CONTINUAR_CADASTRO',
+    nome: 'continuar_cadastro',
+    texto:
+      'Olá, {{1}}! Aqui é o Eddy, do {{2}}. Para a atendente ficar pronta, falta uma informação sua: {{3}} ' +
+      'Pode responder por aqui mesmo, escrito ou por áudio.',
+    exemplo: ['William', 'S-William', 'Quais serviços você faz e quanto cobra em cada um?'],
   },
 ];
 
